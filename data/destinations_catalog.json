@@ -1,0 +1,158 @@
+{
+  "as_of": "2026-10-17",
+  "source": "USGS National Digital Trails / 3DEP Public Domain & OpenStreetMap ODbL",
+  "destinations": [
+    {
+      "id": "white_mountains_nh",
+      "name": "New Hampshire White Mountains",
+      "state_or_region": "New Hampshire (White Mountain National Forest)",
+      "agency": "USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts across Franconia Ridge and the Presidential Range (Mt. Washington).",
+      "bbox": [
+        -71.71,
+        44.125,
+        -71.24,
+        44.285
+      ],
+      "base_ele_m": 520.0,
+      "max_ele_m": 1917.0,
+      "trail_count": 37,
+      "poi_count": 9,
+      "bundled_file": "packs/white_mountains_nh.json"
+    },
+    {
+      "id": "yosemite_valley",
+      "name": "Yosemite Valley & High Country",
+      "state_or_region": "California (Yosemite National Park)",
+      "agency": "NPS Yosemite GIS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Granite monoliths, thundering waterfalls, and high-country rim loops from Happy Isles to Glacier Point and Half Dome.",
+      "bbox": [
+        -119.605,
+        37.71,
+        -119.515,
+        37.755
+      ],
+      "base_ele_m": 1210.0,
+      "max_ele_m": 2695.0,
+      "trail_count": 5,
+      "poi_count": 5,
+      "bundled_file": "packs/yosemite_valley.json"
+    },
+    {
+      "id": "acadia_np",
+      "name": "Acadia National Park",
+      "state_or_region": "Maine (Mount Desert Island)",
+      "agency": "NPS Acadia GIS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Pink granite peaks rising straight from the Atlantic Ocean, historic iron-rung cliff trails, and glacial lakes.",
+      "bbox": [
+        -68.265,
+        44.315,
+        -68.17,
+        44.38
+      ],
+      "base_ele_m": 10.0,
+      "max_ele_m": 466.0,
+      "trail_count": 4,
+      "poi_count": 4,
+      "bundled_file": "packs/acadia_np.json"
+    },
+    {
+      "id": "shenandoah_central",
+      "name": "Shenandoah National Park Central",
+      "state_or_region": "Virginia (Blue Ridge Mountains)",
+      "agency": "NPS Shenandoah GIS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Blue Ridge granite scrambles, Appalachian Trail ridge walks, and cascading hollow waterfalls.",
+      "bbox": [
+        -78.41,
+        38.54,
+        -78.275,
+        38.58
+      ],
+      "base_ele_m": 350.0,
+      "max_ele_m": 1234.0,
+      "trail_count": 2,
+      "poi_count": 3,
+      "bundled_file": "packs/shenandoah_central.json"
+    },
+    {
+      "id": "rocky_mountain_bear_lake",
+      "name": "Rocky Mountain National Park \u2013 Bear Lake Corridor",
+      "state_or_region": "Colorado (Front Range / Continental Divide)",
+      "agency": "NPS Rocky Mountain GIS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "High-altitude glacial gorges, alpine cirque lakes, and Continental Divide tundra climbs between 9,475 ft and 12,324 ft.",
+      "bbox": [
+        -105.7,
+        40.27,
+        -105.635,
+        40.325
+      ],
+      "base_ele_m": 2850.0,
+      "max_ele_m": 3756.0,
+      "trail_count": 3,
+      "poi_count": 4,
+      "bundled_file": "packs/rocky_mountain_bear_lake.json"
+    },
+    {
+      "id": "zion_canyon",
+      "name": "Zion Canyon",
+      "state_or_region": "Utah (Zion National Park)",
+      "agency": "NPS Zion GIS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Soaring Navajo sandstone cliffs, Virgin River narrows, and carved canyon switchbacks.",
+      "bbox": [
+        -112.995,
+        37.19,
+        -112.94,
+        37.28
+      ],
+      "base_ele_m": 1200.0,
+      "max_ele_m": 1765.0,
+      "trail_count": 2,
+      "poi_count": 3,
+      "bundled_file": "packs/zion_canyon.json"
+    },
+    {
+      "id": "mount_rainier_paradise",
+      "name": "Mount Rainier \u2013 Paradise Corridor",
+      "state_or_region": "Washington (Mount Rainier National Park)",
+      "agency": "NPS Mount Rainier GIS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Subalpine wildflower meadows, cascading waterfalls, and high-altitude viewpoints overlooking active glaciers.",
+      "bbox": [
+        -121.75,
+        46.78,
+        -121.715,
+        46.815
+      ],
+      "base_ele_m": 1640.0,
+      "max_ele_m": 2100.0,
+      "trail_count": 2,
+      "poi_count": 3,
+      "bundled_file": "packs/mount_rainier_paradise.json"
+    },
+    {
+      "id": "mount_monadnock",
+      "name": "Mount Monadnock",
+      "state_or_region": "New Hampshire (Monadnock State Park \u2014 Jaffrey & Dublin)",
+      "agency": "NH Division of Parks & Recreation, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "One of the most-climbed mountains in the world: a 3,165 ft bald summit with a dense web of short, steep, rocky trails from Jaffrey, Dublin and the Old Toll Road.",
+      "bbox": [
+        -72.17,
+        42.81,
+        -72.045,
+        42.905
+      ],
+      "base_ele_m": 300.0,
+      "max_ele_m": 965.0,
+      "trail_count": 38,
+      "poi_count": 7,
+      "bundled_file": "packs/mount_monadnock.json"
+    }
+  ]
+}

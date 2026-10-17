@@ -1,0 +1,129 @@
+{
+  "as_of": "2026-10-17",
+  "source": "National Park Service (NPS) & The Mountaineers Ten Essentials (Public Domain / Educational Guidance)",
+  "ten_essentials": [
+    {
+      "id": "navigation",
+      "category": "Navigation",
+      "name": "Offline Topo Map, Compass & Charged Phone (AegisHiker Pack Loaded)",
+      "weight_g": 280,
+      "essential": true,
+      "reason": "Ten Essentials #1: Always carry a physical or offline map/compass and verify regional pack is cached offline."
+    },
+    {
+      "id": "headlamp",
+      "category": "Illumination",
+      "name": "Headlamp + Spare Batteries / Charging Cable",
+      "weight_g": 95,
+      "essential": true,
+      "reason": "Ten Essentials #2: Essential if delayed past sunset or navigating forest canopy at dusk."
+    },
+    {
+      "id": "sun_protection",
+      "category": "Sun Protection",
+      "name": "Sunglasses, Broad-Brim Hat & SPF 30+ Sunscreen",
+      "weight_g": 140,
+      "essential": true,
+      "reason": "Ten Essentials #3: UV exposure increases ~4% per 300 m (1,000 ft) of elevation gain."
+    },
+    {
+      "id": "first_aid",
+      "category": "First Aid",
+      "name": "Backcountry First-Aid Kit + Blister Care (Leukotape/Moleskin)",
+      "weight_g": 240,
+      "essential": true,
+      "reason": "Ten Essentials #4: Treat blisters, sprains, and minor cuts immediately on trail."
+    },
+    {
+      "id": "knife_repair",
+      "category": "Tools & Repair",
+      "name": "Multi-tool / Pocket Knife & Duct Tape Strip",
+      "weight_g": 110,
+      "essential": true,
+      "reason": "Ten Essentials #5: Gear repair and emergency utility."
+    },
+    {
+      "id": "fire",
+      "category": "Fire",
+      "name": "Waterproof Matches / Lighter & Tinder",
+      "weight_g": 45,
+      "essential": true,
+      "reason": "Ten Essentials #6: Emergency warmth and signaling."
+    },
+    {
+      "id": "shelter",
+      "category": "Emergency Shelter",
+      "name": "Ultralight Emergency Bivy Sack or Space Blanket",
+      "weight_g": 115,
+      "essential": true,
+      "reason": "Ten Essentials #7: Wind and hypothermia protection if immobilized."
+    },
+    {
+      "id": "extra_food",
+      "category": "Nutrition",
+      "name": "Extra Day's Emergency High-Calorie Trail Ration (Bars, Nuts, Electrolytes)",
+      "weight_g": 450,
+      "essential": true,
+      "reason": "Ten Essentials #8: Sustains energy and body heat during unexpected delays."
+    },
+    {
+      "id": "extra_water",
+      "category": "Hydration",
+      "name": "Water Bottles/Reservoir + Water Filter (Sawyer/Katadyn) or Purification Tablets",
+      "weight_g": 320,
+      "essential": true,
+      "reason": "Ten Essentials #9: Never drink untreated surface water; carry capacity for calculated trip need."
+    },
+    {
+      "id": "extra_clothes",
+      "category": "Clothing Layers",
+      "name": "Insulating Mid-Layer (Fleece/Puffy) & Waterproof/Windproof Rain Shell",
+      "weight_g": 550,
+      "essential": true,
+      "reason": "Ten Essentials #10: Mountain weather shifts rapidly; avoid cotton."
+    }
+  ],
+  "conditional_items": [
+    {
+      "id": "microspikes",
+      "category": "Traction & Alpine",
+      "name": "Microspikes / Trail Crampons & Insulated Gloves",
+      "weight_g": 380,
+      "trigger": "snow_or_high_altitude",
+      "reason": "Recommended for snow/ice trail conditions or alpine routes above 2,200 m (7,200 ft)."
+    },
+    {
+      "id": "trekking_poles",
+      "category": "Mobility",
+      "name": "Adjustable Trekking Poles (Pair)",
+      "weight_g": 480,
+      "trigger": "steep_or_strenuous",
+      "reason": "Reduces knee impact on steep descents (>12% grade or >500 m elevation gain/loss)."
+    },
+    {
+      "id": "gaiters_mud",
+      "category": "Footwear",
+      "name": "Waterproof Trail Gaiters & Spare Merino Socks",
+      "weight_g": 160,
+      "trigger": "muddy_or_high_water",
+      "reason": "Trail condition flagged for mud or stream crossings."
+    },
+    {
+      "id": "dog_kit",
+      "category": "Canine Companion",
+      "name": "Collapsible Dog Bowl, Leash, Waste Bags, Paw Balm & Extra 1.0 L Water",
+      "weight_g": 350,
+      "trigger": "dogs",
+      "reason": "Hiking with dog(s): pack extra water and paw protection for rocky terrain."
+    },
+    {
+      "id": "power_bank",
+      "category": "Electronics",
+      "name": "10,000 mAh USB Power Bank & Weatherproof Phone Pouch",
+      "weight_g": 210,
+      "trigger": "long_duration",
+      "reason": "Continuous GPS tracking on hikes over 4 hours benefits from backup battery power."
+    }
+  ]
+}
+

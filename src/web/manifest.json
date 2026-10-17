@@ -1,0 +1,10 @@
+{
+  "name": "AegisHiker Field Companion",
+  "short_name": "AegisHiker",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0F1B14",
+  "theme_color": "#2ECC71",
+  "description": "Offline-capable trail navigation, live GPS tracking, and condition filtering companion for AegisHiker."
+}
+

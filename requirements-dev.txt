@@ -1,0 +1,6 @@
+# Development and package tests (not shipped in the .deb or snap)
+-r requirements.txt
+pytest>=8
+pytest-timeout>=2.3
+pyflakes>=3
+

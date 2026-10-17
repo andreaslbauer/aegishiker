@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AegisHiker
+GenericName=AegisHiker
+Comment=Offline-First Trail Brainstormer, Route Composer, Photo Matcher & Mobile Companion
+Icon=aegishiker
+Exec=aegishiker
+Terminal=false
+Categories=Utility;Application;
+Keywords=aegishiker;python;app;
+StartupNotify=true
+StartupWMClass=AegisHiker

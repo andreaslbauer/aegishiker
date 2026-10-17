@@ -1,0 +1,15 @@
+# GUI (Essentials only, like the other Aegis apps: no Qt Addons wheel)
+PySide6-Essentials>=6.7
+
+# Local LLM via Ollama, structured output
+ollama>=0.4
+pydantic>=2.9
+requests>=2.32
+
+# QR codes for the phone page (pure Python) and photo cleaning/thumbnails
+segno>=1.6
+Pillow>=10
+
+# Optional: password-protected .aegishike exports
+cryptography>=42
+

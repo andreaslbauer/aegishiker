@@ -1,0 +1,2 @@
+"""AegisHiker package."""
+

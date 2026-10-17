@@ -1,0 +1,92 @@
+name: aegishiker
+base: core24
+icon: src/assets/appicon.svg
+adopt-info: code
+
+lint:
+  ignore:
+    - library
+compression: xz
+title: AegisHiker
+contact: mailto:maintainer@example.com
+license: Proprietary
+issues: https://example.com/support
+website: https://example.com
+summary: Offline-First Trail Brainstormer, Route Composer, Photo Matcher & Mobile Companion
+description: |
+  aegishiker is a high-performance desktop application.
+
+grade: stable
+confinement: strict
+
+apps:
+  aegishiker:
+    command: bin/aegishiker
+    extensions: [gnome]
+    desktop: usr/share/applications/aegishiker.desktop
+    plugs:
+      - home
+      - network
+      - opengl
+      - removable-media
+      - desktop
+      - desktop-legacy
+      - x11
+      - wayland
+      - gsettings
+      - audio-playback
+    environment:
+      QTWEBENGINE_DISABLE_SANDBOX: "1"
+
+parts:
+  aegishiker:
+    plugin: dump
+    source: dist/
+    organize:
+      opt/aegishiker/aegishiker: bin/aegishiker
+    prime:
+      - bin/aegishiker
+      - usr/lib/*
+      - lib/*
+    stage-packages:
+      - libgl1
+      - libxkbcommon0
+      - libxcb-cursor0
+      - libasound2
+      - libdbus-1-3
+    build-packages:
+      - build-essential
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-dev
+
+  code:
+    plugin: dump
+    source: .
+    override-build: |
+      craftctl default
+      # Get version for adopt-info
+      if [ -f version.txt ]; then
+        VERSION=$(cat version.txt | tr -d '[:space:]')
+        craftctl set version=$VERSION
+      fi
+      # Security & prune cleanup
+      rm -rf $CRAFT_PART_INSTALL/tests
+    prime:
+      - version.txt
+      - main.py
+      - src
+      - assets
+    stage:
+      - main.py
+      - src
+      - version.txt
+      - assets
+
+  desktop-assets:
+    plugin: dump
+    source: debian/
+    prime:
+      - usr/share/applications/aegishiker.desktop
+      - usr/share/icons/hicolor/*/apps/aegishiker.png

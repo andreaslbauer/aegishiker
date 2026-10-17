@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#14281D" />
+      <stop offset="100%" stop-color="#0B1610" />
+    </linearGradient>
+    <linearGradient id="peakGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2ECC71" />
+      <stop offset="100%" stop-color="#1E8449" />
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="48" fill="url(#bgGrad)" stroke="#2ECC71" stroke-width="6"/>
+  <!-- Topographic contour rings -->
+  <ellipse cx="128" cy="182" rx="84" ry="26" fill="none" stroke="#2C4D3B" stroke-width="3" stroke-dasharray="8 6"/>
+  <ellipse cx="128" cy="182" rx="60" ry="16" fill="none" stroke="#39664E" stroke-width="2.5"/>
+  <!-- Mountain Peaks -->
+  <polygon points="38,188 104,76 168,188" fill="url(#peakGrad)" opacity="0.92"/>
+  <polygon points="96,188 156,92 218,188" fill="#27AE60" opacity="0.88"/>
+  <!-- Snow Cap -->
+  <polygon points="104,76 84,110 104,102 124,110" fill="#ECF5EE"/>
+  <!-- Winding Trail Path -->
+  <path d="M 128 218 Q 92 192 132 166 T 106 116" fill="none" stroke="#F39C12" stroke-width="7" stroke-linecap="round"/>
+  <!-- Summit / Waypoint Marker -->
+  <circle cx="104" cy="76" r="8" fill="#F39C12" stroke="#ECF5EE" stroke-width="3"/>
+</svg>
+

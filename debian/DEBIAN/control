@@ -1,0 +1,9 @@
+Package: aegishiker
+Version: 0.1.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Maintainer <maintainer@example.com>
+Depends: python3, python3-venv, libgl1, libxkbcommon0, libxcb-cursor0, libasound2
+Description: Offline-First Trail Brainstormer, Route Composer, Photo Matcher & Mobile Companion
+ aegishiker is a high-performance desktop application.

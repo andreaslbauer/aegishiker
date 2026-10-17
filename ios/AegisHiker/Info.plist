@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>AegisHiker</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.aegis.hiker</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>AegisHiker uses on-device GPS to show your position on offline trail maps and alert you if you stray off-route.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>AegisHiker uses background GPS and barometric altitude so off-trail alerts and breadcrumb recording continue while your screen is locked.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>AegisHiker reads barometric pressure to compute accurate elevation gain without cellular service.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>location</string>
+    </array>
+</dict>
+</plist>
+

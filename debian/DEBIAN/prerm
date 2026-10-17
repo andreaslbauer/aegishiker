@@ -1,0 +1,24 @@
+#!/bin/bash
+# ==============================================================================
+# prerm script for aegishiker
+# ==============================================================================
+
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Clean up temporary runtimes or runtime artifacts if necessary
+        # User configurations and databases should be preserved
+        true
+        ;;
+
+    failed-upgrade)
+        ;;
+
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

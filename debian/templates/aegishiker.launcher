@@ -1,0 +1,31 @@
+#!/bin/bash
+# ==============================================================================
+# aegishiker Launcher Script
+# Sets up virtual environment, library paths, and launches the application
+# ==============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="${SCRIPT_DIR}"
+VENV_DIR="${APP_DIR}/venv"
+
+if [ ! -d "${VENV_DIR}" ]; then
+    echo "Error: Virtual environment not found at ${VENV_DIR}"
+    echo "The package may be corrupted. Please reinstall."
+    exit 1
+fi
+
+# Detect Python version and PySide/Qt library path if present
+PY_VER=$("${VENV_DIR}/bin/python3" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PYSIDE_DIR="${VENV_DIR}/lib/python${PY_VER}/site-packages/PySide6"
+
+if [ -d "${PYSIDE_DIR}/Qt/lib" ]; then
+    export LD_LIBRARY_PATH="${PYSIDE_DIR}/Qt/lib:${LD_LIBRARY_PATH}"
+    export QT_QPA_PLATFORM_PLUGIN_PATH="${PYSIDE_DIR}/Qt/plugins"
+fi
+
+cd "${APP_DIR}"
+# Diagnostics log for crash debugging
+LAUNCHER_STDERR_LOG="$HOME/.aegishiker/logs/launcher_stderr.log"
+mkdir -p "$(dirname "$LAUNCHER_STDERR_LOG")"
+
+exec "${VENV_DIR}/bin/python3" "${APP_DIR}/main.py" "$@" 2>> "$LAUNCHER_STDERR_LOG"

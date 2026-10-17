@@ -1,0 +1,169 @@
+"""Main application window for AegisHiker."""
+from typing import Optional
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction, QCloseEvent, QIcon
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QLabel,
+    QMainWindow,
+    QStatusBar,
+    QTabWidget,
+    QWidget,
+)
+
+from src.core import paths
+from src.core.about import APP_NAME, get_version
+from src.gui.app_state import AppState
+from src.gui.chat_dock import ChatDock
+from src.gui.dialogs.about_dialog import AboutDialog
+from src.gui.dialogs.help_dialog import HelpDialog
+from src.gui.dialogs.region_download_dialog import RegionDownloadDialog
+from src.gui.panels.brainstorm_panel import BrainstormPanel
+from src.gui.panels.composer_panel import ComposerPanel
+from src.gui.panels.explore_panel import ExplorePanel
+from src.gui.panels.gear_panel import GearPanel
+from src.gui.panels.library_panel import LibraryPanel
+from src.gui.panels.phone_sync_panel import PhoneSyncPanel
+from src.gui.panels.reexperience_panel import ReexperiencePanel
+from src.gui.panels.settings_panel import SettingsPanel
+from src.gui.panels.telemetry_panel import TelemetryPanel
+from src.gui.report import export_trailhead_pdf
+from src.gui.busy import busy
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, app_state: Optional[AppState] = None, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.app_state = app_state or AppState()
+
+        self.setWindowTitle(f"{APP_NAME} v{get_version()} — Local AI Trail Planner & Field Companion")
+        self.resize(1360, 860)
+
+        icon_path = paths.get_assets_dir() / "appicon.svg"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+
+        # Central tabbed workspace
+        self.tabs = QTabWidget()
+        self.explore_panel = ExplorePanel(self.app_state)
+        self.brainstorm_panel = BrainstormPanel(self.app_state)
+        self.composer_panel = ComposerPanel(self.app_state)
+        self.reexperience_panel = ReexperiencePanel(self.app_state)
+        self.phone_sync_panel = PhoneSyncPanel(self.app_state)
+        self.telemetry_panel = TelemetryPanel(self.app_state)
+        self.gear_panel = GearPanel(self.app_state)
+        self.library_panel = LibraryPanel(self.app_state)
+        self.settings_panel = SettingsPanel(self.app_state)
+
+        self.tabs.addTab(self.explore_panel, "1. Explore Regions")
+        self.tabs.addTab(self.brainstorm_panel, "2. AI Brainstorm")
+        self.tabs.addTab(self.composer_panel, "3. Trail Composer")
+        self.tabs.addTab(self.reexperience_panel, "4. Re-experience Hike Map")
+        self.tabs.addTab(self.phone_sync_panel, "5. Mobile Companion")
+        self.tabs.addTab(self.telemetry_panel, "6. Telemetry & Splits")
+        self.tabs.addTab(self.gear_panel, "7. Gear & Hydration")
+        self.tabs.addTab(self.library_panel, "8. Trail Library")
+        self.tabs.addTab(self.settings_panel, "9. Preferences")
+
+        self.setCentralWidget(self.tabs)
+
+        # AI Trail Guide Dock
+        self.chat_dock = ChatDock(self.app_state, self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
+
+        # Cross-panel navigation signals
+        self.explore_panel.open_in_composer_requested.connect(self._switch_to_composer)
+        self.brainstorm_panel.route_selected_for_composer.connect(self._switch_to_composer)
+        self.library_panel.open_route_requested.connect(self._switch_to_composer)
+        self.composer_panel.hike_logged_and_mapped.connect(self._switch_to_reexperience)
+
+        self._build_menus()
+        self._build_status_bar()
+
+    def _switch_to_composer(self, _route_id: str) -> None:
+        self.tabs.setCurrentWidget(self.composer_panel)
+
+    def _switch_to_reexperience(self, _session_id: str) -> None:
+        self.reexperience_panel.refresh_all()
+        self.tabs.setCurrentWidget(self.reexperience_panel)
+
+    def _build_menus(self) -> None:
+        menubar = self.menuBar()
+
+        file_menu = menubar.addMenu("&File")
+        dl_act = QAction("Download Custom Offline Region...", self)
+        dl_act.triggered.connect(lambda: RegionDownloadDialog(self.app_state, self).exec())
+        file_menu.addAction(dl_act)
+
+        i_hiked_act = QAction("✓ I Hiked This Trail...", self)
+        i_hiked_act.triggered.connect(self.composer_panel.open_i_hiked_this_wizard)
+        file_menu.addAction(i_hiked_act)
+
+        pdf_act = QAction("Export Trailhead & Safety PDF...", self)
+        pdf_act.triggered.connect(self._export_active_pdf)
+        file_menu.addAction(pdf_act)
+
+        file_menu.addSeparator()
+        quit_act = QAction("E&xit", self)
+        quit_act.triggered.connect(self.close)
+        file_menu.addAction(quit_act)
+
+        view_menu = menubar.addMenu("&View")
+        toggle_chat_act = self.chat_dock.toggleViewAction()
+        toggle_chat_act.setText("Toggle AI Trail Guide Dock")
+        view_menu.addAction(toggle_chat_act)
+
+        help_menu = menubar.addMenu("&Help")
+        guide_act = QAction("User Guide & Leave No Trace...", self)
+        guide_act.triggered.connect(lambda: HelpDialog("getting_started", self).exec())
+        help_menu.addAction(guide_act)
+
+        about_act = QAction(f"About {APP_NAME}...", self)
+        about_act.triggered.connect(lambda: AboutDialog(self).exec())
+        help_menu.addAction(about_act)
+
+    def _build_status_bar(self) -> None:
+        bar = QStatusBar(self)
+        self.setStatusBar(bar)
+        self.status_lbl = QLabel("Ready — 7 offline regional packs loaded (including New Hampshire White Mountains)")
+        bar.addWidget(self.status_lbl, 1)
+
+        voyager_db = self.app_state.voyager_bridge.discover_db_path()
+        v_text = f"Voyager DB: {voyager_db.name}" if voyager_db else "Voyager DB: Ready"
+        self.voyager_pill = QLabel(v_text)
+        self.voyager_pill.setStyleSheet("color: #2ECC71; padding-right: 10px;")
+        bar.addPermanentWidget(self.voyager_pill)
+
+        self.app_state.status_message.connect(self.status_lbl.setText)
+
+    def _export_active_pdf(self) -> None:
+        route = self.app_state.get_active_route()
+        if not route:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Trailhead & Leave-Behind Safety PDF",
+            f"{route.name.lower().replace(' ', '_')}_trailhead.pdf",
+            "PDF Documents (*.pdf)",
+        )
+        if not path:
+            return
+        with busy(self, "Exporting trailhead safety PDF…", title="Exporting PDF"):
+            dest = self.app_state.get_active_destination()
+            gear = self.app_state.db.list_gear(route.id)
+            photos = self.app_state.get_active_route_photos()
+            export_trailhead_pdf(
+                output_path=path,
+                route=route,
+                destination=dest,
+                gear_items=gear,
+                photos=photos,
+                emergency_contact=str(self.app_state.settings.get("emergency_contact", "")),
+                unit_system=str(self.app_state.settings.get("unit_system", "metric")),
+            )
+        self.status_lbl.setText(f"Exported PDF to {path}")
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.app_state.close()
+        super().closeEvent(event)
+

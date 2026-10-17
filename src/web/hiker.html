@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#0F1B14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="manifest.json" />
+<title>AegisHiker Field Companion</title>
+<style>
+  :root {
+    --bg: #0F1B14;
+    --panel: #16261D;
+    --panel-alt: #1E3327;
+    --text: #ECF5EE;
+    --muted: #98B2A1;
+    --accent: #2ECC71;
+    --warn: #F39C12;
+    --danger: #E74C3C;
+    --border: #2C4637;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding-bottom: 80px;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  header h1 { margin: 0; font-size: 17px; color: var(--accent); }
+  .status-pill {
+    font-size: 11px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .status-pill.online { color: var(--accent); border-color: var(--accent); }
+  .alert-banner {
+    display: none;
+    background: var(--danger);
+    color: #fff;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    text-align: center;
+  }
+  .container { padding: 12px 14px; max-width: 720px; margin: 0 auto; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .card h2 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .hud-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .hud-box {
+    background: var(--panel-alt);
+    border-radius: 8px;
+    padding: 8px 6px;
+    text-align: center;
+  }
+  .hud-val { font-size: 16px; font-weight: 700; }
+  .hud-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; margin-top: 2px; }
+  canvas {
+    width: 100%;
+    background: #0A130E;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: block;
+  }
+  #mapCanvas { height: 270px; touch-action: none; }
+  #elevCanvas { height: 130px; margin-top: 8px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  button, select {
+    background: var(--panel-alt);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #09180F; border-color: var(--accent); }
+  button.warn { background: var(--warn); color: #191003; border-color: var(--warn); }
+  button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .chip {
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 999px;
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .chip.active { background: var(--accent); color: #09180F; border-color: var(--accent); font-weight: 700; }
+  .trail-list { max-height: 190px; overflow-y: auto; margin-top: 8px; }
+  .trail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 9px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .trail-item:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AegisHiker Field Companion</h1>
+  <span id="connStatus" class="status-pill">Checking...</span>
+</header>
+<div id="offTrailBanner" class="alert-banner">
+  OFF-TRAIL ALERT: You are more than 45m from the planned route corridor!
+</div>
+
+<div class="container">
+  <div class="card">
+    <h2>Active Route &amp; Offline Region Pack</h2>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <select id="destSelect" style="flex:1;"></select>
+      <select id="routeSelect" style="flex:1;"></select>
+      <button id="cacheBtn" class="primary">Cache Pack Offline</button>
+    </div>
+    <div id="cacheStatus" style="font-size:11px; color:var(--muted); margin-top:6px;">
+      IndexedDB ready for zero-signal trailhead usage.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Live Trail HUD</h2>
+    <div class="hud-grid">
+      <div class="hud-box"><div class="hud-val" id="hudDist">0.00 km</div><div class="hud-lbl">Traveled</div></div>
+      <div class="hud-box"><div class="hud-val" id="hudRem">0.00 km</div><div class="hud-lbl">Remaining</div></div>
+      <div class="hud-box"><div class="hud-val" id="hudElev">-- m</div><div class="hud-lbl">Altitude</div></div>
+      <div class="hud-box"><div class="hud-val" id="hudDev">0 m</div><div class="hud-lbl">Route Dev</div></div>
+    </div>
+    <div class="btn-row">
+      <button id="startGpsBtn" class="primary">Start Live GPS</button>
+      <button id="simStepBtn">Simulate GPS Step</button>
+      <button id="syncBtn" class="warn">Sync Telemetry to Desktop</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Offline Vector Trail Map &amp; Elevation Profile</h2>
+    <canvas id="mapCanvas" width="660" height="270"></canvas>
+    <canvas id="elevCanvas" width="660" height="130"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Trailhead Condition Filter (100% Offline)</h2>
+    <div style="font-size:12px; color:var(--muted);">Tap to exclude adverse trail conditions on-device:</div>
+    <div class="chips" id="conditionChips">
+      <span class="chip" data-cond="muddy">Avoid Muddy</span>
+      <span class="chip" data-cond="icy">Avoid Icy</span>
+      <span class="chip" data-cond="overgrown">Avoid Overgrown</span>
+      <span class="chip" data-cond="closed">Avoid Closed</span>
+    </div>
+    <div class="trail-list" id="trailList"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
+  const basePath = window.location.pathname.replace(/\/hiker\.html$/, "").replace(/\/$/, "");
+  const state = {
+    destinations: [],
+    routes: [],
+    activeDest: null,
+    activeRoute: null,
+    excludedConditions: new Set(["closed"]),
+    telemetry: [],
+    watchId: null,
+    simIdx: 0
+  };
+
+  // IndexedDB wrapper for offline packs
+  function openIdb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open("aegishiker_offline_db", 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains("packs")) db.createObjectStore("packs", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("routes")) db.createObjectStore("routes", { keyPath: "id" });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function idbPut(storeName, obj) {
+    const db = await openIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).put(obj);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function idbGetAll(storeName) {
+    const db = await openIdb();
+    return new Promise((resolve) => {
+      const tx = db.transaction(storeName, "readonly");
+      const req = tx.objectStore(storeName).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+  }
+
+  function haversineM(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  async function loadInitialState() {
+    const connEl = document.getElementById("connStatus");
+    try {
+      const res = await fetch(basePath + "/state");
+      const data = await res.json();
+      connEl.textContent = "LAN Connected";
+      connEl.classList.add("online");
+      state.destinations = data.destinations || [];
+      state.routes = data.routes || [];
+      for (const r of state.routes) await idbPut("routes", r);
+      if (data.active_destination && data.active_destination.destination) {
+        const packObj = {
+          id: data.active_destination.destination.id,
+          ...data.active_destination
+        };
+        await idbPut("packs", packObj);
+        state.activeDest = packObj;
+      }
+      if (data.active_route) {
+        state.activeRoute = data.active_route;
+        await idbPut("routes", data.active_route);
+      }
+    } catch (err) {
+      connEl.textContent = "Offline Mode (IndexedDB)";
+      connEl.classList.remove("online");
+      const cachedPacks = await idbGetAll("packs");
+      const cachedRoutes = await idbGetAll("routes");
+      state.destinations = cachedPacks.map(p => p.destination);
+      state.routes = cachedRoutes;
+      state.activeDest = cachedPacks[0] || null;
+      state.activeRoute = cachedRoutes[0] || null;
+    }
+    populateSelectors();
+    renderAll();
+  }
+
+  function populateSelectors() {
+    const dSel = document.getElementById("destSelect");
+    dSel.innerHTML = "";
+    state.destinations.forEach(d => {
+      const opt = document.createElement("option");
+      opt.value = d.id;
+      opt.textContent = d.name + " (" + d.region + ")";
+      if (state.activeDest && state.activeDest.id === d.id) opt.selected = true;
+      dSel.appendChild(opt);
+    });
+
+    const rSel = document.getElementById("routeSelect");
+    rSel.innerHTML = "";
+    state.routes.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r.id;
+      opt.textContent = r.name + " (" + Number(r.distance_m/1000).toFixed(1) + " km)";
+      if (state.activeRoute && state.activeRoute.id === r.id) opt.selected = true;
+      rSel.appendChild(opt);
+    });
+  }
+
+  document.getElementById("cacheBtn").addEventListener("click", async () => {
+    const destId = document.getElementById("destSelect").value;
+    if (!destId) return;
+    try {
+      const res = await fetch(basePath + "/pack/" + encodeURIComponent(destId));
+      const data = await res.json();
+      if (data.destination) {
+        const packObj = { id: data.destination.id, ...data };
+        await idbPut("packs", packObj);
+        state.activeDest = packObj;
+        document.getElementById("cacheStatus").textContent =
+          "Cached '" + data.destination.name + "' (" + (data.trails || []).length + " trails) in IndexedDB.";
+        renderAll();
+      }
+    } catch (e) {
+      document.getElementById("cacheStatus").textContent = "Using existing IndexedDB cache.";
+    }
+  });
+
+  document.getElementById("destSelect").addEventListener("change", async (e) => {
+    const destId = e.target.value;
+    try {
+      const res = await fetch(basePath + "/pack/" + encodeURIComponent(destId));
+      const data = await res.json();
+      if (data.destination) {
+        state.activeDest = { id: data.destination.id, ...data };
+        await idbPut("packs", state.activeDest);
+      }
+    } catch (_) {
+      const packs = await idbGetAll("packs");
+      state.activeDest = packs.find(p => p.id === destId) || state.activeDest;
+    }
+    renderAll();
+  });
+
+  document.getElementById("routeSelect").addEventListener("change", (e) => {
+    const rId = e.target.value;
+    state.activeRoute = state.routes.find(r => r.id === rId) || state.activeRoute;
+    state.simIdx = 0;
+    renderAll();
+  });
+
+  document.querySelectorAll("#conditionChips .chip").forEach(chip => {
+    if (state.excludedConditions.has(chip.dataset.cond)) chip.classList.add("active");
+    chip.addEventListener("click", () => {
+      const c = chip.dataset.cond;
+      if (state.excludedConditions.has(c)) {
+        state.excludedConditions.delete(c);
+        chip.classList.remove("active");
+      } else {
+        state.excludedConditions.add(c);
+        chip.classList.add("active");
+      }
+      renderAll();
+    });
+  });
+
+  function renderTrailList() {
+    const container = document.getElementById("trailList");
+    container.innerHTML = "";
+    const trails = (state.activeDest && state.activeDest.trails) || [];
+    const filtered = trails.filter(t => !state.excludedConditions.has((t.condition || "good").toLowerCase()));
+    filtered.forEach(t => {
+      const row = document.createElement("div");
+      row.className = "trail-item";
+      row.innerHTML = `<span><strong>${t.name}</strong> <small style="color:var(--muted)">(${t.difficulty}, ${t.condition})</small></span>
+                       <span>${(t.length_m/1000).toFixed(1)} km / +${Math.round(t.elevation_gain_m)}m</span>`;
+      container.appendChild(row);
+    });
+  }
+
+  function renderMap() {
+    const canvas = document.getElementById("mapCanvas");
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const trails = (state.activeDest && state.activeDest.trails) || [];
+    const routeCoords = (state.activeRoute && state.activeRoute.coordinates) || [];
+    const allPts = [];
+    trails.forEach(t => (t.coordinates || []).forEach(c => allPts.push([c[0], c[1]])));
+    routeCoords.forEach(c => allPts.push([c[0], c[1]]));
+    if (allPts.length === 0) return;
+
+    let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+    allPts.forEach(p => {
+      if (p[0] < minLat) minLat = p[0];
+      if (p[0] > maxLat) maxLat = p[0];
+      if (p[1] < minLon) minLon = p[1];
+      if (p[1] > maxLon) maxLon = p[1];
+    });
+    const pad = 24;
+    const project = (lat, lon) => {
+      const x = pad + ((lon - minLon) / Math.max(1e-6, maxLon - minLon)) * (w - 2*pad);
+      const y = h - pad - ((lat - minLat) / Math.max(1e-6, maxLat - minLat)) * (h - 2*pad);
+      return [x, y];
+    };
+
+    // Draw background trail segments
+    trails.forEach(t => {
+      const cond = (t.condition || "good").toLowerCase();
+      const excluded = state.excludedConditions.has(cond);
+      ctx.beginPath();
+      (t.coordinates || []).forEach((c, idx) => {
+        const [x, y] = project(c[0], c[1]);
+        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = excluded ? "rgba(231, 76, 60, 0.25)" : "rgba(152, 178, 161, 0.55)";
+      ctx.lineWidth = excluded ? 1.5 : 2.5;
+      ctx.stroke();
+    });
+
+    // Draw active route
+    if (routeCoords.length > 1) {
+      ctx.beginPath();
+      routeCoords.forEach((c, idx) => {
+        const [x, y] = project(c[0], c[1]);
+        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = "#2ECC71";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+
+    // Draw live telemetry breadcrumb & current position
+    if (state.telemetry.length > 0) {
+      const last = state.telemetry[state.telemetry.length - 1];
+      const [hx, hy] = project(last.lat, last.lon);
+      ctx.beginPath();
+      ctx.arc(hx, hy, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#F39C12";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
+    }
+  }
+
+  function renderElevation() {
+    const canvas = document.getElementById("elevCanvas");
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const prof = (state.activeRoute && state.activeRoute.elevation_profile) || [];
+    if (prof.length < 2) return;
+
+    const maxD = Math.max(1, prof[prof.length - 1].distance_m);
+    let minE = Infinity, maxE = -Infinity;
+    prof.forEach(p => {
+      if (p.ele_m < minE) minE = p.ele_m;
+      if (p.ele_m > maxE) maxE = p.ele_m;
+    });
+    const pad = 18;
+    ctx.beginPath();
+    prof.forEach((p, idx) => {
+      const x = pad + (p.distance_m / maxD) * (w - 2*pad);
+      const y = h - pad - ((p.ele_m - minE) / Math.max(10, maxE - minE)) * (h - 2*pad);
+      if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = "#2ECC71";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  }
+
+  function recordPoint(lat, lon, ele_m, accuracy_m) {
+    const pt = {
+      timestamp: new Date().toISOString(),
+      lat: lat,
+      lon: lon,
+      ele_m: ele_m || 0,
+      accuracy_m: accuracy_m || 5.0,
+      speed_mps: 1.25
+    };
+    state.telemetry.push(pt);
+    let traveled = 0;
+    for (let i = 1; i < state.telemetry.length; i++) {
+      traveled += haversineM(
+        state.telemetry[i-1].lat, state.telemetry[i-1].lon,
+        state.telemetry[i].lat, state.telemetry[i].lon
+      );
+    }
+    const routeCoords = (state.activeRoute && state.activeRoute.coordinates) || [];
+    let minDev = 0;
+    if (routeCoords.length > 0) {
+      minDev = Infinity;
+      routeCoords.forEach(c => {
+        const d = haversineM(lat, lon, c[0], c[1]);
+        if (d < minDev) minDev = d;
+      });
+    }
+    const totalDist = (state.activeRoute && state.activeRoute.distance_m) || 0;
+    document.getElementById("hudDist").textContent = (traveled / 1000).toFixed(2) + " km";
+    document.getElementById("hudRem").textContent = (Math.max(0, totalDist - traveled) / 1000).toFixed(2) + " km";
+    document.getElementById("hudElev").textContent = Math.round(pt.ele_m) + " m";
+    document.getElementById("hudDev").textContent = Math.round(minDev) + " m";
+    document.getElementById("offTrailBanner").style.display = minDev > 45 ? "block" : "none";
+    renderMap();
+  }
+
+  document.getElementById("startGpsBtn").addEventListener("click", () => {
+    if (!navigator.geolocation) return;
+    if (state.watchId !== null) {
+      navigator.geolocation.clearWatch(state.watchId);
+      state.watchId = null;
+      document.getElementById("startGpsBtn").textContent = "Start Live GPS";
+      return;
+    }
+    document.getElementById("startGpsBtn").textContent = "Stop Live GPS";
+    state.watchId = navigator.geolocation.watchPosition((pos) => {
+      recordPoint(
+        pos.coords.latitude,
+        pos.coords.longitude,
+        pos.coords.altitude || 0,
+        pos.coords.accuracy || 5
+      );
+    });
+  });
+
+  document.getElementById("simStepBtn").addEventListener("click", () => {
+    const coords = (state.activeRoute && state.activeRoute.coordinates) || [];
+    if (coords.length === 0) return;
+    const c = coords[state.simIdx % coords.length];
+    state.simIdx += 1;
+    recordPoint(c[0], c[1], c[2] || 500, 4.0);
+  });
+
+  document.getElementById("syncBtn").addEventListener("click", async () => {
+    const payload = {
+      route_id: state.activeRoute ? state.activeRoute.id : null,
+      destination_id: state.activeDest ? state.activeDest.id : null,
+      notes: "Synced from AegisHiker Field Companion PWA",
+      telemetry_points: state.telemetry
+    };
+    try {
+      const res = await fetch(basePath + "/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const out = await res.json();
+      alert("Synced to desktop! Session ID: " + out.session_id + " (" + out.points_saved + " GPS pts)");
+    } catch (e) {
+      alert("Currently offline; telemetry stays buffered on device until back on LAN.");
+    }
+  });
+
+  function renderAll() {
+    renderTrailList();
+    renderMap();
+    renderElevation();
+  }
+
+  loadInitialState();
+})();
+</script>
+</body>
+</html>
+

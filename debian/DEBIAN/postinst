@@ -1,0 +1,36 @@
+#!/bin/bash
+# ==============================================================================
+# postinst script for aegishiker
+# ==============================================================================
+
+set -e
+
+case "$1" in
+    configure)
+        # Update desktop database to register the application
+        if [ -x /usr/bin/update-desktop-database ]; then
+            update-desktop-database -q /usr/share/applications || true
+        fi
+        
+        # Update icon cache
+        if [ -x /usr/bin/gtk-update-icon-cache ]; then
+            gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+        fi
+        
+        # Ensure the launcher script is executable
+        chmod +x /opt/aegishiker/aegishiker || true
+        
+        echo "aegishiker has been installed successfully!"
+        echo "Launch from your application menu or run 'aegishiker' in terminal."
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

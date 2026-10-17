@@ -1,0 +1,32 @@
+{
+  "as_of": "2026-10-17",
+  "source": "USFS / NPS Backcountry Safety & Leave No Trace Seven Principles",
+  "safety_rules": [
+    "Always leave a trip plan (Leave-Behind Safety Card) with a trusted contact before entering the backcountry.",
+    "Set a hard turnaround time before starting: reaching the summit is optional; returning to the trailhead safely is mandatory.",
+    "Phone GPS works in Airplane Mode without cell service, but cold temperatures drain lithium batteries rapidly—keep your phone in an inside pocket.",
+    "Never rely solely on a battery-powered device; carry a paper Trailhead Sheet and compass.",
+    "Treat all backcountry surface water (streams, lakes, springs) via filtration (0.1 micron) or chemical/boiling purification.",
+    "Above treeline (e.g., Franconia Ridge, Mt. Washington, Rocky Mountain alpine tundra), turn back immediately if thunder is heard or cumulus clouds build."
+  ],
+  "leave_no_trace": [
+    "Plan ahead and prepare.",
+    "Travel and camp on durable surfaces.",
+    "Dispose of waste properly (pack it in, pack it out).",
+    "Leave what you find.",
+    "Minimize campfire impacts.",
+    "Respect wildlife.",
+    "Be considerate of other visitors."
+  ],
+  "emergency_contacts": {
+    "general_us": "911 (or Text-to-911 where supported)",
+    "nh_white_mountains": "NH Fish & Game Dispatch: (603) 271-3361 / 911",
+    "yosemite_np": "Yosemite Emergency Dispatch: (209) 372-0911 / 911",
+    "acadia_np": "Acadia NPS Dispatch: (207) 288-3338 / 911",
+    "shenandoah_np": "Shenandoah NPS Emergency: (800) 732-0911 / 911",
+    "rocky_mountain_np": "RMNP Dispatch: (970) 586-1204 / 911",
+    "zion_np": "Zion NPS Dispatch: (435) 772-3322 / 911",
+    "mount_rainier_np": "Mount Rainier NPS Dispatch: (360) 569-6600 / 911"
+  }
+}
+

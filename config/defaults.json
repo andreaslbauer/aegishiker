@@ -1,0 +1,17 @@
+{
+  "as_of": "2026-10-17",
+  "source": "AegisHiker Backcountry Reference Defaults (Naismith 1892, Langmuir 1984, Tobler 1993)",
+  "hiker_profile": {
+    "name": "Default Hiker",
+    "flat_speed_kmh": 4.8,
+    "climb_rate_m_per_hr": 600.0,
+    "body_weight_kg": 75.0,
+    "pack_weight_kg": 6.0,
+    "fitness_level": "moderate",
+    "elevation_hysteresis_m": 3.0,
+    "off_trail_threshold_m": 50.0,
+    "photo_corridor_m": 250.0
+  },
+  "units": "us"
+}
+
