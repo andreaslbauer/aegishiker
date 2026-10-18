@@ -264,7 +264,9 @@ class SegmentChain:
             for cl in clusters:
                 reps = [cl[0]] if cum[cl[-1]] - cum[cl[0]] < 50.0 else [cl[0], cl[-1]]
                 for k in reps:
-                    if cum[k] < FORK_MIN_ALONG_M:
+                    # Forks right after the start are "a different start" (use Undo) — but the end of
+                    # a short segment (a 90 m climb up to a ridge trail) is where the hike goes on
+                    if cum[k] < FORK_MIN_ALONG_M and cum[-1] - cum[k] > JUNCTION_M:
                         continue
                     vi = by_k[k][0]
                     for target in (len(trail.coords_3d) - 1, 0):

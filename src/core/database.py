@@ -13,7 +13,7 @@ import sqlite3
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.hiking.photo_matcher import dedupe_pins
+from src.hiking.photo_matcher import dedupe_pins, photo_keys
 from src.hiking.models import (
     ComposedRoute,
     ContourLine,
@@ -200,6 +200,13 @@ class Database:
             );
 
             CREATE INDEX IF NOT EXISTS idx_photo_pin_session ON hike_photo_pin(session_id);
+
+            -- Photos the user removed from a hike: a rescan of AegisPhotoVoyager must not add them back
+            CREATE TABLE IF NOT EXISTS hike_photo_excluded (
+                session_id TEXT NOT NULL REFERENCES hike_session(id) ON DELETE CASCADE,
+                photo_key TEXT NOT NULL,
+                PRIMARY KEY (session_id, photo_key)
+            );
 
             CREATE TABLE IF NOT EXISTS telemetry_point (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -936,6 +943,38 @@ class Database:
         with self._lock:
             self._conn.execute("DELETE FROM hike_session WHERE id=?", (session_id,))
             self._conn.commit()
+
+    def remove_photos_from_session(self, session_id: str, pins: List[HikePhotoPin]) -> None:
+        """Drop photos from a hike and remember them, so a rescan of AegisPhotoVoyager leaves them
+        out. The photo files themselves are never touched."""
+        with self._lock:
+            for pin in pins:
+                self._conn.execute("DELETE FROM hike_photo_pin WHERE id=? AND session_id=?", (pin.id, session_id))
+                for key in photo_keys(pin):
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO hike_photo_excluded (session_id, photo_key) VALUES (?, ?)",
+                        (session_id, json.dumps(list(key))),
+                    )
+            count = self._conn.execute(
+                "SELECT COUNT(*) FROM hike_photo_pin WHERE session_id=?", (session_id,)
+            ).fetchone()[0]
+            row = self._conn.execute("SELECT stats FROM hike_session WHERE id=?", (session_id,)).fetchone()
+            if row:
+                stats = HikeStats.model_validate_json(row["stats"])
+                stats.photo_count = int(count)
+                self._conn.execute(
+                    "UPDATE hike_session SET stats=?, modified=? WHERE id=?",
+                    (stats.model_dump_json(), now_iso(), session_id),
+                )
+            self._conn.commit()
+
+    def excluded_photo_keys(self, session_id: str) -> set:
+        """Identities (see photo_keys) of photos removed from this hike."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT photo_key FROM hike_photo_excluded WHERE session_id=?", (session_id,)
+            ).fetchall()
+        return {tuple(json.loads(r[0])) for r in rows}
 
     # ── AI Hike Brief & Chat Messages ──────────────────────────────────────────
 
