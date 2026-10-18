@@ -11,7 +11,8 @@ from typing import List, Optional
 from .models import ComposedRoute, HikePhotoPin, HikeSession
 
 MIN_SPAN_MIN = 20.0  # shorter photo spans say little about duration: use the route estimate
-PARTIAL_COVERAGE = 0.8  # photos covering less of the route than this suggest a partial hike
+PARTIAL_COVERAGE = 0.7  # photos covering less of the route than this suggest a partial hike
+# (lenient: few people photograph the last stretch back to the car)
 
 
 @dataclass

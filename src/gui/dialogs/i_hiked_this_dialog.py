@@ -34,7 +34,7 @@ from src.core import paths
 from src.gui.app_state import AppState
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import ComposedRoute, HikeSession, TrailPhotoPin
-from src.hiking.hike_days import HikeDay, build_day_session, group_pins_by_day
+from src.hiking.hike_days import PARTIAL_COVERAGE, HikeDay, build_day_session, group_pins_by_day
 from src.hiking.units import format_distance
 from src.gui.busy import busy, run_in_background
 
@@ -122,7 +122,7 @@ class IHikedThisDialog(QDialog):
         btn_row.addStretch(1)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
-        self.save_btn = QPushButton("Save Completed Hike(s) & Generate Interactive Maps")
+        self.save_btn = QPushButton("Save Completed Hike(s) && Generate Interactive Maps")
         self.save_btn.setObjectName("PrimaryButton")
         self.save_btn.clicked.connect(self.finalize_hike)
         btn_row.addWidget(cancel_btn)
@@ -198,7 +198,7 @@ class IHikedThisDialog(QDialog):
                 label = (
                     f"{group.day:%a %b %d, %Y} · {len(group.pins)} photo{'s' if len(group.pins) != 1 else ''} · {span}"
                     f" · photos along {format_distance(lo, unit)}–{format_distance(hi, unit)}"
-                    + (" (part of the route)" if len(group.pins) >= 2 and cov < 0.8 else "")
+                    + (" (part of the route)" if len(group.pins) >= 2 and cov < PARTIAL_COVERAGE else "")
                 )
             item = QListWidgetItem(label, self.days_list)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
