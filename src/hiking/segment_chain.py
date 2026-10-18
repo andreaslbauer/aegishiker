@@ -5,6 +5,8 @@ segment: at its end, or forking off partway along it (the current segment is the
 junction). Turning around on the current trail (out-and-back) and re-using trails already walked
 are always allowed. The chain is complete when it returns to its starting point or the user ends it.
 """
+import bisect
+import heapq
 import math
 import re
 from collections import defaultdict
@@ -61,10 +63,29 @@ class Candidate:
     gain_m: float
     loss_m: float
     turnaround: bool = False  # walking back the way we came on the same trail
+    extra_legs: List[Leg] = field(default_factory=list)  # further segments of a routed ("via") option
+    gap_m: float = 0.0  # >0: the trail is close but not connected; the gap is walked in a straight line
+    picked: bool = False  # added because the user clicked this trail on the map
 
     @property
     def trail_name(self) -> str:
-        return self.leg.trail.name
+        return (self.extra_legs[-1] if self.extra_legs else self.leg).trail.name
+
+    def coords(self) -> List[List[float]]:
+        """The whole option's path (all of a routed option's segments)."""
+        out: List[List[float]] = []
+        for leg in [self.leg, *self.extra_legs]:
+            out.extend(leg.coords())
+        return out
+
+    @property
+    def via_names(self) -> List[str]:
+        """Trails walked to reach a routed option (excluding the destination trail)."""
+        names: List[str] = []
+        for leg in [self.leg, *self.extra_legs][:-1]:
+            if not names or names[-1] != leg.trail.name:
+                names.append(leg.trail.name)
+        return names
 
 
 @dataclass
@@ -104,6 +125,7 @@ class SegmentChain:
         else:
             self.legs[-1] = Leg(last.trail, last.start, cut_vertex)
         self.legs.append(cand.leg)
+        self.legs.extend(cand.extra_legs)
 
     def end_here(self) -> None:
         self._history.append(([replace(leg) for leg in self.legs], self.ended))
@@ -302,10 +324,144 @@ class SegmentChain:
         """Indices of candidates whose segment passes within `tol_m` of the point, nearest first."""
         hits = []
         for i, c in enumerate(cands):
-            d = self._dist_to_line_m(lat, lon, c.leg.coords())
+            d = self._dist_to_line_m(lat, lon, c.coords())
             if d <= tol_m:
                 hits.append((d, i))
         return [i for _d, i in sorted(hits)]
+
+    # ── reaching a trail clicked on the map ───────────────────────────────
+
+    CLOSE_GAP_M = 300.0  # a clicked trail this close (but not connected) can be jumped to
+    MAX_GAP_M = 1500.0  # beyond this an unconnected trail is not offered
+    MAX_ROUTE_M = 25_000.0
+
+    def _network(self):
+        """Walkable graph over every trail vertex: neighbours along a trail plus junction links
+        (the same rules as the option list: 25 m anywhere, 75 m at a trail's end). Built once."""
+        if getattr(self, "_graph", None) is not None:
+            return self._graph
+        offsets, n = [], 0
+        for t in self.trails:
+            offsets.append(n)
+            n += len(t.coords_3d)
+        adj: List[List[Tuple[int, float]]] = [[] for _ in range(n)]
+        for ti, t in enumerate(self.trails):
+            pts, base = t.coords_3d, offsets[ti]
+            for vi in range(len(pts) - 1):
+                d = haversine_m(pts[vi][1], pts[vi][0], pts[vi + 1][1], pts[vi + 1][0])
+                adj[base + vi].append((base + vi + 1, d))
+                adj[base + vi + 1].append((base + vi, d))
+            for vi, p in enumerate(pts):
+                for tj, vj, d in self._near_vertices(p[0], p[1]):
+                    if tj != ti:
+                        adj[base + vi].append((offsets[tj] + vj, d))
+        self._graph = (offsets, adj)
+        return self._graph
+
+    def _node_trail(self, offsets: List[int], node: int) -> Tuple[int, int]:
+        ti = bisect.bisect_right(offsets, node) - 1
+        return ti, node - offsets[ti]
+
+    def _route_legs(self, start: Tuple[int, int], goal: Tuple[int, int]) -> Optional[List[Leg]]:
+        """Shortest walk over the trail network as legs, or None if not reachable."""
+        offsets, adj = self._network()
+        src, dst = offsets[start[0]] + start[1], offsets[goal[0]] + goal[1]
+        dist = {src: 0.0}
+        prev: Dict[int, int] = {}
+        heap = [(0.0, src)]
+        while heap:
+            d, u = heapq.heappop(heap)
+            if u == dst:
+                break
+            if d > dist.get(u, math.inf) or d > self.MAX_ROUTE_M:
+                continue
+            for v, w in adj[u]:
+                nd = d + w
+                if nd < dist.get(v, math.inf):
+                    dist[v] = nd
+                    prev[v] = u
+                    heapq.heappush(heap, (nd, v))
+        if dst not in dist:
+            return None
+        path = [dst]
+        while path[-1] != src:
+            path.append(prev[path[-1]])
+        path.reverse()
+        legs: List[Leg] = []
+        run_t, run_start, run_end = None, None, None
+        for node in path:
+            ti, vi = self._node_trail(offsets, node)
+            if ti != run_t:
+                if run_t is not None and run_end != run_start:
+                    legs.append(Leg(self.trails[run_t], run_start, run_end))
+                run_t, run_start = ti, vi
+            run_end = vi
+        if run_t is not None and run_end != run_start:
+            legs.append(Leg(self.trails[run_t], run_start, run_end))
+        # A hop across an overlapping trail splits one trail into two legs: join them again
+        merged: List[Leg] = []
+        for leg in legs:
+            prev = merged[-1] if merged else None
+            if prev and prev.trail.id == leg.trail.id and prev.step == leg.step:
+                a = prev.trail.coords_3d[prev.end]
+                b = leg.trail.coords_3d[leg.start]
+                if haversine_m(a[1], a[0], b[1], b[0]) <= 100.0 and (leg.start - prev.end) * prev.step >= 0:
+                    merged[-1] = Leg(prev.trail, prev.start, leg.end)
+                    continue
+                merged.append(leg)
+            else:
+                merged.append(leg)
+        return merged
+
+    def candidate_to(self, trail: TrailSegment, lat: float, lon: float) -> Optional[Candidate]:
+        """An option reaching a trail the user clicked on the map although it isn't offered:
+        routed over the network to the clicked spot ("via" other trails), or, when it's close but
+        not mapped as connected, a short straight jump onto it. None if neither is sensible."""
+        if not self.legs or self.complete:
+            return None
+        last = self.legs[-1]
+        here = last.trail.coords_3d[last.end]
+        ti = next(i for i, t in enumerate(self.trails) if t.id == trail.id)
+        pts = trail.coords_3d
+        click_v = min(range(len(pts)), key=lambda i: haversine_m(lat, lon, pts[i][1], pts[i][0]))
+        entry_v = min(range(len(pts)), key=lambda i: haversine_m(here[1], here[0], pts[i][1], pts[i][0]))
+        gap = haversine_m(here[1], here[0], pts[entry_v][1], pts[entry_v][0])
+        last_ti = next(i for i, t in enumerate(self.trails) if t.id == last.trail.id)
+
+        legs = None if trail.id == last.trail.id else self._route_legs((last_ti, last.end), (ti, click_v))
+        if legs:
+            routed = sum(leg.stats()["distance_m"] for leg in legs)
+            if gap <= self.CLOSE_GAP_M and routed > max(3 * gap, gap + 800.0):
+                legs = None  # a long detour around to something right next to us: offer the jump
+        if legs:
+            return self._multi_candidate(legs, gap_m=0.0)
+        if gap > self.MAX_GAP_M:
+            return None
+        # Jump: walk the clicked trail from its nearest point in the direction of the click
+        if click_v == entry_v:
+            target = len(pts) - 1 if (len(pts) - 1 - entry_v) >= entry_v else 0
+        else:
+            target = len(pts) - 1 if click_v > entry_v else 0
+        if target == entry_v:
+            return None
+        return self._multi_candidate([Leg(trail, entry_v, target)], gap_m=gap)
+
+    def _multi_candidate(self, legs: List[Leg], gap_m: float) -> Optional[Candidate]:
+        last = self.legs[-1]
+        leg_len = len(last.coords())
+        coords: List[List[float]] = []
+        for leg in legs:
+            coords.extend(leg.coords())
+        stats = summarize_elevation(coords) if len(coords) > 1 else {"distance_m": 0.0, "elevation_gain_m": 0.0, "elevation_loss_m": 0.0}
+        end = coords[-1]
+        start = coords[0]
+        return Candidate(
+            leg=legs[0], extra_legs=legs[1:], cut_at=leg_len - 1, along_m=last.stats()["distance_m"],
+            at_place=self.place_near(start[0], start[1], 200.0),
+            toward_place=self.place_near(end[0], end[1], 350.0),
+            distance_m=stats["distance_m"] + gap_m, gain_m=stats["elevation_gain_m"],
+            loss_m=stats["elevation_loss_m"], gap_m=gap_m, picked=True,
+        )
 
     # ── result ────────────────────────────────────────────────────────────
 

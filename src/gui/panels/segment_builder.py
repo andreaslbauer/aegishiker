@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.gui.app_state import AppState
+from src.gui.busy import busy
 from src.hiking.models import ComposedRoute, DestinationPack
 from src.hiking.segment_chain import Candidate, SegmentChain
 from src.hiking.units import format_distance, format_elevation
@@ -43,6 +44,7 @@ class SegmentBuilder(QWidget):
         self.chain: Optional[SegmentChain] = None
         self.pack_id: Optional[str] = None
         self._candidates: List[Candidate] = []
+        self._picked: List[Candidate] = []  # options added by clicking trails on the map
         self._name_edited = False
         self.setMinimumWidth(340)
 
@@ -82,7 +84,7 @@ class SegmentBuilder(QWidget):
         self.legs_list.setWordWrap(True)
         col.addWidget(self.legs_list)
 
-        self.next_lbl = QLabel("2. Next segment (double-click, or click it on the map):")
+        self.next_lbl = QLabel("2. Next segment (double-click, or click any trail on the map):")
         col.addWidget(self.next_lbl)
         self.cand_list = QListWidget()
         self.cand_list.setWordWrap(True)
@@ -236,7 +238,7 @@ class SegmentBuilder(QWidget):
                 return True
             hits = self.chain.candidates_at(self._candidates, lat, lon, tol_m)
             if not hits:
-                self.app_state.status_message.emit("Click one of the dashed yellow trail options to add it.")
+                self._offer_clicked_trail(lat, lon, tol_m)
                 return True
             idx = hits[0] if len(hits) == 1 else self._choose(
                 [(self._candidate_text(self._candidates[h], self._unit()).split("\n")[0], h) for h in hits]
@@ -258,6 +260,34 @@ class SegmentBuilder(QWidget):
             self.reverse_chk.setChecked(reverse)
             self.start_chain()
         return True
+
+    def _offer_clicked_trail(self, lat: float, lon: float, tol_m: float) -> None:
+        """A trail clicked on the map that isn't an option yet becomes one: routed over the
+        connecting trails, or (close but not mapped as connected) a short jump onto it. It is added
+        to the list, selected and previewed; the user confirms with Add Segment / double-click."""
+        assert self.chain is not None
+        trails = self.chain.trails_at(lat, lon, tol_m)
+        if not trails:
+            self.app_state.status_message.emit("Click a trail, or one of the dashed yellow options, to add it.")
+            return
+        pick = 0 if len(trails) == 1 else self._choose(
+            [(f"Go to {t.name}", n) for n, (t, _rev, _d) in enumerate(trails)]
+        )
+        if pick is None:
+            return
+        trail = trails[pick][0]
+        with busy(self, "Finding a way to that trail…", show_dialog=False):
+            cand = self.chain.candidate_to(trail, lat, lon)
+        if cand is None:
+            self.app_state.status_message.emit(
+                f"{trail.name} can't be reached from here on the mapped trails, and is too far to jump to."
+            )
+            return
+        self._picked = [c for c in self._picked if c.trail_name != cand.trail_name] + [cand]
+        self._show_candidates(select=cand)
+        how = (f"{format_distance(cand.gap_m, self._unit())} away, not connected on the map" if cand.gap_m
+               else (f"via {' → '.join(cand.via_names)}" if cand.via_names else "from here"))
+        self.app_state.status_message.emit(f"Added {trail.name} ({how}) to the options — Add Segment to use it.")
 
     def _choose(self, options: List[tuple]) -> Optional[int]:
         """Several trails share the clicked spot: let the user say which one is meant."""
@@ -295,8 +325,7 @@ class SegmentBuilder(QWidget):
 
     def _on_candidate_highlighted(self, row: int) -> None:
         if 0 <= row < len(self._candidates):
-            leg = self._candidates[row].leg
-            self.preview_changed.emit([(p[1], p[0]) for p in leg.coords()])
+            self.preview_changed.emit([(p[1], p[0]) for p in self._candidates[row].coords()])
         else:
             self.preview_changed.emit(None)
 
@@ -319,6 +348,7 @@ class SegmentBuilder(QWidget):
                     self.legs_list,
                 )
             self.legs_list.scrollToBottom()
+            self._picked = []  # the hike changed: clicked options are recomputed on demand
             self._candidates = chain.candidates()
             for c in self._candidates:
                 self.cand_list.addItem(self._candidate_text(c, unit))
@@ -350,10 +380,31 @@ class SegmentBuilder(QWidget):
         self._fit_rows(self.cand_list)
         self._sync_ui()
         self.preview_changed.emit(None)
-        self.candidates_changed.emit(
-            [] if not chain or chain.complete else [[(p[1], p[0]) for p in c.leg.coords()] for c in self._candidates]
-        )
+        self._emit_candidate_paths()
         self.draft_changed.emit(draft)
+
+    def _emit_candidate_paths(self) -> None:
+        chain = self.chain
+        self.candidates_changed.emit(
+            [] if not chain or chain.complete else [[(p[1], p[0]) for p in c.coords()] for c in self._candidates]
+        )
+
+    def _show_candidates(self, select: Optional[Candidate] = None) -> None:
+        """Rebuild the option list: map-picked options first, then the computed ones."""
+        assert self.chain is not None
+        computed = [c for c in self._candidates if not c.picked]
+        self._candidates = list(self._picked) + computed
+        self.cand_list.blockSignals(True)
+        self.cand_list.clear()
+        unit = self._unit()
+        for c in self._candidates:
+            self.cand_list.addItem(self._candidate_text(c, unit))
+        self.cand_list.blockSignals(False)
+        self._fit_rows(self.cand_list)
+        self._sync_ui()
+        self._emit_candidate_paths()
+        if select is not None:
+            self.cand_list.setCurrentRow(self._candidates.index(select))
 
     @staticmethod
     def _fit_rows(lst: QListWidget) -> None:
@@ -371,6 +422,15 @@ class SegmentBuilder(QWidget):
         self._fit_rows(self.cand_list)
 
     def _candidate_text(self, c: Candidate, unit: str) -> str:
+        if c.picked:
+            stats = (f"{format_distance(c.distance_m, unit)} · +{format_elevation(c.gain_m, unit)}"
+                     f" / -{format_elevation(c.loss_m, unit)}")
+            toward = f" toward {c.toward_place}" if c.toward_place else ""
+            if c.gap_m:
+                return (f"↷ {c.trail_name}{toward} — {format_distance(c.gap_m, unit)} away, "
+                        f"not connected on the map (walk across)\n    {stats}")
+            via = f"\n    via {' → '.join(c.via_names)}" if c.via_names else ""
+            return f"📍 {c.trail_name}{toward} (picked on the map){via}\n    {stats}"
         at = c.at_place or f"{format_distance(c.along_m, unit)} along"
         toward = f" toward {c.toward_place}" if c.toward_place else ""
         stats = (f"{format_distance(c.distance_m, unit)} · +{format_elevation(c.gain_m, unit)}"

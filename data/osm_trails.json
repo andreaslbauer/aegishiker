@@ -39,7 +39,8 @@
       {"id": "wmnf_osm_airline", "osm_name": "Airline Trail", "name": "Air Line Trail", "code": "WMNF-AL", "tags": ["presidentials", "mount_adams", "alpine", "ridge"]},
       {"id": "wmnf_osm_liberty_spring", "osm_name": "Liberty Spring Trail", "code": "WMNF-LS", "tags": ["appalachian_trail", "franconia_notch", "campsite"]},
       {"id": "wmnf_osm_whitehouse", "osm_name": "Whitehouse Trail", "code": "WMNF-WH", "tags": ["connector", "franconia_notch"]},
-      {"id": "wmnf_osm_franconia_ridge_full", "osm_name": "Franconia Ridge Trail", "name": "Franconia Ridge Trail (Mt. Flume \u2013 Mt. Lafayette)", "code": "WMNF-FRF", "tags": ["appalachian_trail", "ridge", "alpine"]}
+      {"id": "wmnf_osm_franconia_ridge_full", "osm_name": "Franconia Ridge Trail", "name": "Franconia Ridge Trail (Mt. Flume \u2013 Mt. Lafayette)", "code": "WMNF-FRF", "tags": ["appalachian_trail", "ridge", "alpine"]},
+      {"id": "wmnf_osm_lost_pond", "osm_name": "Lost Pond Trail", "code": "WMNF-LP", "tags": ["pinkham_notch", "pond", "appalachian_trail", "family"], "note": "Short Appalachian Trail stretch from Pinkham Notch along the Ellis River to Lost Pond, with views of Mt. Washington across the water."}
     ],
     "auto": {
       "_comment": "Every named hiking trail in the strip added east to the Maine border (2026-10)",

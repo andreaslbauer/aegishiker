@@ -108,3 +108,32 @@ def test_monadnock_summit_connects_pumpelly_to_smith_summit() -> None:
     names = [c.trail_name for c in chain.candidates()]
     assert {"Smith Summit Trail", "Dublin Trail", "White Dot Trail", "White Arrow Trail"} <= set(names)
     assert names.count("Smith Summit Trail") == 1
+
+
+def test_clicked_trail_offered_via_network_or_as_jump() -> None:
+    trails, places = _network()
+    # Pond Path: not touching anything, its west end ~120 m east of Brook Trail's east end
+    pond = _line("p", "Pond Path", [(-70.9835 + i * 0.001, 44.0006, 300.0) for i in range(6)])
+    chain = SegmentChain(trails + [pond], places)
+    chain.start(trails[2])  # Return Path: Ridge top → trailhead (Brook Trail's start)
+    assert "Pond Path" not in {c.trail_name for c in chain.candidates()}
+
+    # Ridge Trail isn't an option from the trailhead; its lower part is reached via Brook Trail
+    ridge = trails[1]
+    top = ridge.coords_3d[2]
+    routed = chain.candidate_to(ridge, top[1], top[0])
+    assert routed is not None and routed.picked and routed.gap_m == 0
+    assert routed.trail_name == "Ridge Trail (via the ledges)" and routed.via_names == ["Brook Trail"]
+
+    chain.apply(routed)
+    assert [leg.trail.id for leg in chain.legs] == ["c", "a", "b"]
+    end = chain.legs[-1].coords()[-1]
+    assert abs(end[1] - top[1]) < 1e-9, "the routed option ends where the user clicked"
+
+    # From Brook Trail's east end, the unconnected Pond Path is close: offered as a jump
+    chain.start(trails[0])
+    p2 = pond.coords_3d[3]
+    jump = chain.candidate_to(pond, p2[1], p2[0])
+    assert jump is not None and 80 < jump.gap_m < 200 and jump.leg.trail.id == "p"
+    chain.apply(jump)
+    assert chain.legs[-1].trail.id == "p" and chain.legs[-1].end == 5
