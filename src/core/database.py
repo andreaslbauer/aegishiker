@@ -948,13 +948,19 @@ class Database:
         """Drop photos from a hike and remember them, so a rescan of AegisPhotoVoyager leaves them
         out. The photo files themselves are never touched."""
         with self._lock:
+            removed_keys = set()
             for pin in pins:
                 self._conn.execute("DELETE FROM hike_photo_pin WHERE id=? AND session_id=?", (pin.id, session_id))
                 for key in photo_keys(pin):
+                    removed_keys.add(key)
                     self._conn.execute(
                         "INSERT OR IGNORE INTO hike_photo_excluded (session_id, photo_key) VALUES (?, ?)",
                         (session_id, json.dumps(list(key))),
                     )
+            # Copies of the same photo saved for this hike (shown once, deduplicated) go too
+            for other in self.get_photo_pins(session_id):
+                if removed_keys.intersection(photo_keys(other)):
+                    self._conn.execute("DELETE FROM hike_photo_pin WHERE id=?", (other.id,))
             count = self._conn.execute(
                 "SELECT COUNT(*) FROM hike_photo_pin WHERE session_id=?", (session_id,)
             ).fetchone()[0]

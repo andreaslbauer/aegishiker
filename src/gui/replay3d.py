@@ -67,6 +67,7 @@ BASE_DURATION_S = 75.0  # whole route at 1x (photos excluded)
 # stop's photos, blend back out, turn back to the trail and speed up again.
 APPROACH_M = 300.0  # start slowing / turning toward a stop this far before it
 DEPART_M = 250.0  # speed back up / turn back to the trail over this distance after it
+EASE_SHARE = 0.06  # on short hikes both shrink to this share of the route, so it doesn't crawl throughout
 MIN_SPEED_FACTOR = 0.12  # crawl speed right at a stop (never a dead stop)
 BLEND_IN_S = 1.6  # photo grows from its spot and fades in while the scene blurs
 BLEND_OUT_S = 1.4
@@ -280,12 +281,15 @@ class Replay3DView(QWidget):
         self.timer.stop()
         self._loader.shutdown(wait=False, cancel_futures=True)
 
+    def _ease_m(self, metres: float) -> float:
+        return min(metres, max(40.0, self.path.length * EASE_SHARE))
+
     def _approach(self) -> float:
         """0 far from the next stop … 1 right at it (eased)."""
         if self.next_stop >= len(self.stops):
             return 0.0
         rem = self.stops[self.next_stop].along_m - self.dist
-        return 1.0 - smoothstep(rem / APPROACH_M) if rem >= 0 else 1.0
+        return 1.0 - smoothstep(rem / self._ease_m(APPROACH_M)) if rem >= 0 else 1.0
 
     def _departure(self) -> float:
         """1 right after leaving the previous stop … 0 once back up to speed (eased)."""
@@ -293,7 +297,7 @@ class Replay3DView(QWidget):
             return 0.0
         prev = self.stops[min(self.next_stop, len(self.stops)) - 1]
         gone = self.dist - prev.along_m
-        return 1.0 - smoothstep(gone / DEPART_M) if gone >= 0 else 0.0
+        return 1.0 - smoothstep(gone / self._ease_m(DEPART_M)) if gone >= 0 else 0.0
 
     def speed_factor(self) -> float:
         """Walking speed multiplier: eases down into a stop and back up after it (never zero)."""

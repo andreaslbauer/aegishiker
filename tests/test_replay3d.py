@@ -53,7 +53,7 @@ def _view(tmp_path: Path, n_photos: int = 1, spacing_m: float = 0.0, seconds_apa
 
 
 def test_replay_eases_into_stop_blends_photo_and_back_out(tmp_path: Path) -> None:
-    from src.gui.replay3d import BLEND_IN_S, BLEND_OUT_S, FIRST_HOLD_S, MIN_SPEED_FACTOR
+    from src.gui.replay3d import APPROACH_M, BLEND_IN_S, BLEND_OUT_S, DEPART_M, FIRST_HOLD_S, MIN_SPEED_FACTOR
 
     view, route = _view(tmp_path)
     dup = view.stops[0].pin.model_copy(update={"id": "dup"})
@@ -65,7 +65,7 @@ def test_replay_eases_into_stop_blends_photo_and_back_out(tmp_path: Path) -> Non
     stop_at = view.stops[0].along_m
     view.seek(0.0)
     assert view.speed_factor() == 1.0, "full speed far from any photo"
-    view.dist = stop_at - 100.0
+    view.dist = stop_at - view._ease_m(APPROACH_M) / 3  # (slow-down zones shrink on short hikes)
     near = view.speed_factor()
     assert MIN_SPEED_FACTOR <= near < 0.6, "slowing down while approaching the photo"
     cam_far = view._camera(800, 500)
@@ -86,7 +86,7 @@ def test_replay_eases_into_stop_blends_photo_and_back_out(tmp_path: Path) -> Non
         phases.append(view.phase)
     assert "hold" in phases and "blend_out" in phases and phases[-1] == "playing", phases
     assert view.next_stop == 1
-    view.dist = stop_at + 20.0
+    view.dist = stop_at + view._ease_m(DEPART_M) / 12
     assert view.speed_factor() < 0.6, "speeding back up gradually after the photo"
     view.dist = stop_at + 400.0
     assert view.speed_factor() == 1.0

@@ -104,13 +104,13 @@ class _TrailIndex:
         cand = {i for dx in (-1, 0, 1) for dy in (-1, 0, 1) for i in self.grid.get((cx + dx, cy + dy), ())}
         out = {}
         for i in cand:
-            d = _dist_to_line_m(lat, lon, self.trails[i].coords_3d)
+            d = dist_to_line_m(lat, lon, self.trails[i].coords_3d)
             if d <= tol_m:
                 out[i] = d
         return out
 
 
-def _dist_to_line_m(lat: float, lon: float, pts: Sequence[Sequence[float]]) -> float:
+def dist_to_line_m(lat: float, lon: float, pts: Sequence[Sequence[float]]) -> float:
     kx = 111_320.0 * math.cos(math.radians(lat))
     ky = 110_540.0
     best = math.inf

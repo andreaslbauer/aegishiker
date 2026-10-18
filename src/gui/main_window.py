@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
 
         # Cross-panel navigation signals
         self.explore_panel.compose_trail_requested.connect(self._compose_trail)
+        self.explore_panel.start_at_place_requested.connect(self._start_hike_at_place)
         self.brainstorm_panel.route_selected_for_composer.connect(self._switch_to_composer)
         self.library_panel.open_route_requested.connect(self._switch_to_composer)
         self.composer_panel.hike_logged_and_mapped.connect(self._switch_to_reexperience)
@@ -198,6 +199,11 @@ class MainWindow(QMainWindow):
     def _compose_trail(self, trail_id: str) -> None:
         """Explore → Composer: start a segment-by-segment hike on the chosen trail."""
         if self.composer_panel.start_hike_on_trail(trail_id):
+            self.tabs.setCurrentWidget(self.composer_panel)
+
+    def _start_hike_at_place(self, lat: float, lon: float, name: str) -> None:
+        """Explore → Composer: start a hike at a trailhead / parking lot."""
+        if self.composer_panel.start_hike_at_place(lat, lon, name):
             self.tabs.setCurrentWidget(self.composer_panel)
 
     def _switch_to_composer(self, _route_id: str) -> None:

@@ -203,6 +203,53 @@ class SegmentBuilder(QWidget):
         self.start_chain()
         return True
 
+    TRAILHEAD_REACH_M = 300.0  # trails this close to a chosen trailhead can start the hike
+
+    def start_at_place(self, lat: float, lon: float, name: str = "") -> bool:
+        """Start the hike at a trailhead / parking lot / place: on the nearest trail (asking when
+        several start there), from the point nearest the place."""
+        if not self.chain:
+            return False
+        hits = self.chain.trails_at(lat, lon, self.TRAILHEAD_REACH_M)
+        if not hits:
+            self.app_state.status_message.emit(
+                f"No trail within {format_distance(self.TRAILHEAD_REACH_M, self._unit())} of {name or 'that place'}."
+            )
+            return False
+        # Several different trails right at the place: let the user choose
+        nearest = hits[0][2]
+        close = []
+        for t, _rev, d in hits:
+            if d <= nearest + 80.0 and all(c.name != t.name for c in close):
+                close.append(t)
+        trail = close[0]
+        if len(close) > 1:
+            pick = self._choose([(f"Start on {t.name}", n) for n, t in enumerate(close)])
+            if pick is None:
+                return False
+            trail = close[pick]
+        if self.chain.legs and len(self.chain.legs) > 1:
+            answer = QMessageBox.question(
+                self, "Replace Hike?",
+                "Start a new hike here? The unsaved hike you are building will be discarded.",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+        vertex, reverse = self.chain.start_near(lat, lon, trail)
+        idx = self.start_combo.findData(trail.id)
+        if idx >= 0:
+            self.start_combo.setCurrentIndex(idx)
+        self.reverse_chk.setChecked(reverse)
+        self.chain.start(trail, reverse=reverse, from_vertex=vertex)
+        self._name_edited = False
+        self._refresh()
+        self._focus([(p[1], p[0]) for p in self.chain.legs[0].coords()] + [(lat, lon)])
+        where = f" at {name}" if name else ""
+        self.app_state.status_message.emit(
+            f"Hike started{where} on {trail.name}. Pick the next segment where you turned, or End Here."
+        )
+        return True
+
     def add_selected(self) -> None:
         row = self.cand_list.currentRow()
         if self.chain and 0 <= row < len(self._candidates):

@@ -36,9 +36,12 @@ from src.gui.charts.photo_preview import format_datetime, format_time
 from src.gui.widgets import Card, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import TrailPhotoPin
-from src.hiking.photo_matcher import dedupe_pins
-from src.hiking.hike_info import hike_date_label, hike_people, hike_title, hike_trail_names, people_label, real_people
+from src.hiking.photo_matcher import dedupe_pins, photo_keys
+from src.hiking.hike_info import hike_date_label, hike_title, hike_trail_names, people_label, real_people
+from src.hiking.hike_report import hike_companions, hike_details
+from src.gui.dialogs.hike_details_dialog import HikeDetailsDialog
 from src.gui.dialogs.hike_picker_dialog import HikePickerDialog
+from src.gui.dialogs.photo_review_dialog import PhotoReviewDialog
 from src.hiking.units import format_distance, format_elevation
 from src.gui.busy import busy, run_in_background
 
@@ -72,7 +75,12 @@ class ReexperiencePanel(QWidget):
         more.addAction("Open interactive map in browser", self.open_in_browser)
         more.addAction("Export interactive HTML map…", self.export_html_map)
         more_btn.setMenu(more)
+        self.site_btn = QPushButton("🌐  Create Website…")
+        self.site_btn.setToolTip("Make a website about this hike (summary, Play the Hike, photos, map), "
+                                 "optionally password protected, and publish it via FTP")
+        self.site_btn.clicked.connect(self.create_website)
         header.actions_layout.addWidget(more_btn)
+        header.actions_layout.addWidget(self.site_btn)
         header.actions_layout.addWidget(self.choose_btn)
         layout.addWidget(header)
 
@@ -84,13 +92,21 @@ class ReexperiencePanel(QWidget):
         self.hike_lbl.setWordWrap(True)
         self.hike_lbl.setTextFormat(Qt.TextFormat.RichText)
         hike_row.addWidget(self.hike_lbl, 1)
+        self.details_btn = QPushButton("Details…")
+        self.details_btn.setObjectName("FlatButton")
+        self.details_btn.setToolTip("Name, who came along, weather and notes")
+        self.details_btn.clicked.connect(self.edit_details)
+        self.review_btn = QPushButton("Review Photos…")
+        self.review_btn.setObjectName("FlatButton")
+        self.review_btn.setToolTip("Go through the hike's photos and leave out the ones you don't want")
+        self.review_btn.clicked.connect(self.review_photos)
         self.rename_btn = QPushButton("Rename…")
         self.rename_btn.setObjectName("FlatButton")
         self.rename_btn.clicked.connect(self.rename_hike)
         self.delete_btn = QPushButton("Delete…")
         self.delete_btn.setObjectName("DangerButton")
         self.delete_btn.clicked.connect(self.delete_hike)
-        for b in (self.rename_btn, self.delete_btn):
+        for b in (self.details_btn, self.review_btn, self.rename_btn, self.delete_btn):
             hike_row.addWidget(b, 0, Qt.AlignmentFlag.AlignTop)
         hike_card.body.addLayout(hike_row)
         layout.addWidget(hike_card)
@@ -183,17 +199,20 @@ class ReexperiencePanel(QWidget):
             self.hike_lbl.setText("<span style='color:#98B2A1'>No recorded hike yet — use “✓ I Hiked This Trail” "
                                   "in the Trail Composer, or sync a hike from your phone.</span>")
         else:
-            people = hike_people(self.photo_pins)
             trails = hike_trail_names(route, {t.id: t for t in self.app_state.db.list_trails(session.pack_id or "")})
             parts = [f"<span style='font-size:12pt; font-weight:700'>{html.escape(hike_title(session, route))}</span>",
                      f"<span style='color:#93AD9C'>{html.escape(hike_date_label(session))}</span>"]
             if trails and not (len(trails) == 1 and route is not None and trails[0] == route.name):
                 shown = trails if len(trails) <= 6 else trails[:5] + [f"+{len(trails) - 5} more"]
                 parts.append(f"<span style='color:#93AD9C'>Trails: {html.escape(' → '.join(shown))}</span>")
+            people = hike_companions(session, self.photo_pins)
             if people:
                 parts.append(f"<span style='color:#2ECC71'>👥 {html.escape(people_label(people, 8))}</span>")
+            weather = hike_details(session).get("weather")
+            if weather:
+                parts.append(f"<span style='color:#93AD9C'>⛅ {html.escape(weather)}</span>")
             self.hike_lbl.setText("<br>".join(parts))
-        for b in (self.rename_btn, self.delete_btn):
+        for b in (self.details_btn, self.review_btn, self.rename_btn, self.delete_btn, self.site_btn):
             b.setEnabled(session is not None)
 
     def choose_hike(self) -> None:
@@ -213,6 +232,61 @@ class ReexperiencePanel(QWidget):
         title, ok = QInputDialog.getText(self, "Rename Hike", "Hike name:", text=hike_title(session, route))
         if ok and title.strip():
             self.app_state.rename_session(session.id, title)
+
+    def _active(self):
+        session = self.app_state.get_active_session()
+        route = self.app_state.db.get_route(session.route_id) if session and session.route_id else None
+        return session, route
+
+    def edit_details(self) -> None:
+        session, _route = self._active()
+        if session is None:
+            return
+        dlg = HikeDetailsDialog(self.app_state, session, self)
+        dlg.exec()
+        dlg.deleteLater()
+
+    def review_photos(self) -> None:
+        session, route = self._active()
+        if session is None:
+            return
+        if not self.photo_pins:
+            QMessageBox.information(self, "Review Photos", "This hike has no photos yet — use More ▸ Rescan "
+                                                           "AegisPhotoVoyager photos to find them.")
+            return
+        unit = str(self.app_state.settings.get("unit_system", "metric"))
+        dlg = PhotoReviewDialog(self.photo_pins, unit, hike_title(session, route), self)
+        removed = dlg.removed_pins() if dlg.exec() else []
+        dlg.deleteLater()
+        if not removed:
+            return
+        with busy(self, "Updating the hike's photos…", title="Review Photos"):
+            self.app_state.db.remove_photos_from_session(session.id, removed)
+            session = self.app_state.db.get_session(session.id) or session
+            if route is not None:
+                dest = self.app_state.db.get_destination(route.destination_id)
+                session.interactive_map_data = build_interactive_map_data(
+                    route=route, session=session, photos=dedupe_pins(self.app_state.db.get_photo_pins(session.id)),
+                    destination_name=dest.name if dest else route.destination_id,
+                )
+                self.app_state.db.save_session(session)
+        self.app_state.status_message.emit(
+            f"Left {len(removed)} photo{'s' if len(removed) != 1 else ''} out of the hike (the files are untouched)."
+        )
+        self._load_active_session_view()
+
+    def create_website(self) -> None:
+        session, route = self._active()
+        if session is None or route is None or len(route.coords_3d) < 2:
+            QMessageBox.information(self, "Hike Website", "Choose a recorded hike with a route first.")
+            return
+        from src.gui.dialogs.hike_site_dialog import HikeSiteDialog
+
+        if self.play_timer.isActive():
+            self.toggle_playback()
+        dlg = HikeSiteDialog(self.app_state, session, route, self.photo_pins, self)
+        dlg.exec()
+        dlg.deleteLater()
 
     def delete_hike(self) -> None:
         session = self.app_state.get_active_session()
@@ -423,6 +497,9 @@ class ReexperiencePanel(QWidget):
             session_id=session.id if session else None,
             max_corridor_m=float(self.app_state.settings.get("photo_match_corridor_m", 250.0)),
         )
+        if session:  # photos the user removed from this hike stay out
+            excluded = self.app_state.db.excluded_photo_keys(session.id)
+            matched = [p for p in matched if not excluded.intersection(photo_keys(p))]
         with busy(self, "Rebuilding hike replay map…", title="Matching Photos"):
             for pin in matched:
                 self.app_state.db.save_photo_pin(pin)

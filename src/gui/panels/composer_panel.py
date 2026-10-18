@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSplitter,
     QToolButton,
@@ -224,10 +225,26 @@ class ComposerPanel(QWidget):
         self.segment_builder.set_pack(self.app_state.db.get_destination_pack(dest_id) if dest_id else None)
         return self.segment_builder.start_on_trail(trail_id)
 
+    def start_hike_at_place(self, lat: float, lon: float, name: str = "") -> bool:
+        """Start a segment-by-segment hike at a trailhead / place (from Explore Regions)."""
+        dest_id = self.app_state.active_destination_id
+        self.segment_builder.set_pack(self.app_state.db.get_destination_pack(dest_id) if dest_id else None)
+        return self.segment_builder.start_at_place(lat, lon, name)
+
     def _on_builder_saved(self, route_id: str) -> None:
         self._draft = None
         self.app_state.set_active_route(route_id)
         self._populate_route_combo()
+        route = self.app_state.get_active_route()
+        answer = QMessageBox.question(
+            self, "Hike Saved",
+            f"Saved “{route.name if route else 'the hike'}”.\n\nDid you hike it? Log it now as a completed hike "
+            "and find your photos from AegisPhotoVoyager along the way?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.open_i_hiked_this_wizard()
 
     def _populate_route_combo(self) -> None:
         self.route_combo.blockSignals(True)

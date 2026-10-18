@@ -109,3 +109,43 @@ def test_unchecked_days_are_skipped(
     with patch("src.gui.dialogs.i_hiked_this_dialog.QMessageBox.information") as info:
         dlg.finalize_hike()
     assert info.called and len(seeded_db.list_sessions()) == before
+
+
+def test_left_out_photos_and_details_are_saved_with_the_hike(
+    seeded_db: Database, test_settings: Settings, mock_voyager_db: Path
+) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.dialogs.i_hiked_this_dialog import IHikedThisDialog
+    from src.hiking.hike_report import hike_details
+    from src.hiking.photo_matcher import photo_keys
+    from src.hiking.routing import route_from_trail_segment
+
+    QApplication.instance() or QApplication([])
+    conn = sqlite3.connect(str(mock_voyager_db))  # a second photo the same day
+    conn.execute(
+        "INSERT INTO photos (id, name, full_path, date_taken, camera_model, lat, lon) VALUES (?,?,?,?,?,?,?)",
+        (505, "blurry.jpg", "/photos/blurry.jpg", 1760700000 + 900, "Pixel 9", 44.1405, -71.6446),
+    )
+    conn.commit()
+    conn.close()
+    test_settings.set("voyager_db_path", str(mock_voyager_db))
+    state = AppState(db=seeded_db, settings=test_settings)
+    trail = next(t for t in seeded_db.list_trails("white_mountains_nh") if t.id == "wmnf_franconia_ridge_loop")
+    dlg = IHikedThisDialog(state, route_from_trail_segment(trail))
+    assert len(dlg.matched_pins) >= 2
+    dropped = dlg.matched_pins[0]
+    dlg.left_out = {dropped.id}
+    dlg._fill_table()
+    dlg.details_form.companions.setText("Maria, Tom")
+    dlg.details_form.weather.setText("Overcast")
+    dlg.finalize_hike()
+
+    session = dlg.created_session
+    saved = seeded_db.list_photo_pins(session_id=session.id)
+    assert dropped.voyager_photo_id not in {p.voyager_photo_id for p in saved}
+    assert len(saved) == len(dlg.matched_pins) - 1
+    assert seeded_db.excluded_photo_keys(session.id).intersection(photo_keys(dropped)), "a rescan keeps it out"
+    details = hike_details(seeded_db.get_session(session.id))
+    assert details["companions"] == "Maria, Tom" and details["weather"] == "Overcast"

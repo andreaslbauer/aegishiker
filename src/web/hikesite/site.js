@@ -211,7 +211,7 @@
 
   class TopoMap {
     constructor(host, opts) {
-      this.opts = Object.assign({ interactive: true, photos: true, onHover: null, onPhoto: null }, opts || {});
+      this.opts = Object.assign({ interactive: true, photos: true, focusOnly: false, onHover: null, onPhoto: null }, opts || {});
       this.box = el("div", { class: "mapbox" });
       this.canvas = el("canvas");
       this.tip = el("div", { class: "tip" });
@@ -382,7 +382,7 @@
       if (ph && this.opts.onPhoto) this.opts.onPhoto(ph.i);
     }
     _photoRect(ph) {
-      const big = this.view.s > 0.12 && ph.thumbImg;
+      const big = this.view.s > 0.12 && ph.thumbImg && (!this.opts.focusOnly || ph.i === this.focus);
       const sz = big ? clamp(this.view.s * 120, 30, 62) : 12;
       const x = this.sx(ph.x), y = this.sy(ph.y);
       if (!big) return { x: x - sz / 2, y: y - sz / 2, w: sz, h: sz, big: false, ax: x, ay: y };
@@ -716,7 +716,7 @@
 
   // ── 3D replay (port of src/gui/replay3d.py) ───────────────────────────────
   const VIEW_RADIUS_M = 4200, FOG_START = 1800, FOG_END = 5200, BASE_DURATION_S = 75;
-  const APPROACH_M = 300, DEPART_M = 250, MIN_SPEED = 0.12;
+  const APPROACH_M = 300, DEPART_M = 250, EASE_SHARE = 0.06, MIN_SPEED = 0.12;
   const BLEND_IN_S = 1.6, BLEND_OUT_S = 1.4, FIRST_HOLD_S = 5.0, NEXT_HOLD_S = 2.5, XFADE_S = 0.8;
   const SKY_TOP = [88, 140, 196], SKY_HORIZON = [196, 214, 226];
   const lerpAngle = (a, b, t) => { const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return a + d * t; };
@@ -891,16 +891,17 @@
       this.skipBtn.disabled = !photo;
       this.slider.value = Math.round(this.dist / this.length * 1000);
     }
+    easeM(m) { return Math.min(m, Math.max(40, this.length * EASE_SHARE)); }
     approach() {
       if (this.nextStop >= this.stops.length) return 0;
       const rem = this.stops[this.nextStop].along - this.dist;
-      return rem >= 0 ? 1 - smoothstep(rem / APPROACH_M) : 1;
+      return rem >= 0 ? 1 - smoothstep(rem / this.easeM(APPROACH_M)) : 1;
     }
     departure() {
       if (this.nextStop === 0) return 0;
       const prev = this.stops[Math.min(this.nextStop, this.stops.length) - 1];
       const gone = this.dist - prev.along;
-      return gone >= 0 ? 1 - smoothstep(gone / DEPART_M) : 0;
+      return gone >= 0 ? 1 - smoothstep(gone / this.easeM(DEPART_M)) : 0;
     }
     speedFactor() { const slow = Math.max(this.approach(), this.departure()); return Math.max(MIN_SPEED, 1 - slow * (1 - MIN_SPEED)); }
     holdS(k) { return k === 0 ? FIRST_HOLD_S : NEXT_HOLD_S; }
@@ -1238,7 +1239,7 @@
       const mapHost = el("div");
       side.append(mapHost);
       if (mini) mini.destroy();
-      mini = new TopoMap(mapHost, { interactive: true, onPhoto: j => { pos = Math.max(0, list.findIndex(q => q.i === j)); show(); } });
+      mini = new TopoMap(mapHost, { interactive: true, focusOnly: true, onPhoto: j => { pos = Math.max(0, list.findIndex(q => q.i === j)); show(); } });
       mini.focus = p.i;
       mini.view.s = 0.5;
       mini.box.style.height = "230px";
@@ -1308,7 +1309,7 @@
     hero.append(el("div", { class: "inner" },
       el("div", { class: "eyebrow", text: [S.date_label ? S.date_label.split(" · ")[0] : "", span].filter(Boolean).join(" · ") }),
       el("h1", { text: S.title }),
-      el("div", { class: "where", text: [S.area, S.region].filter(Boolean).join(" — ") }),
+      el("div", { class: "where", text: [S.area, (S.region || "").split(" (")[0]].filter(Boolean).join(" — ") }),
       el("div", { class: "chips" },
         el("span", { class: "chip", text: fmt.dist(S.distance_m) }),
         el("span", { class: "chip", text: "↗ " + fmt.ele(S.gain_m) }),
@@ -1355,7 +1356,7 @@
           el("div", { class: "name" }, t.name, t.difficulty ? el("span", { class: "badge d-" + t.difficulty, text: t.difficulty }) : null),
           el("div", { class: "meta", text: [fmt.dist(t.distance_m), "↗ " + fmt.ele(t.gain_m) + "  ↘ " + fmt.ele(t.loss_m),
             t.from_place && t.to_place && t.from_place !== t.to_place ? t.from_place + " → " + t.to_place : (t.to_place || t.from_place || "")].filter(Boolean).join(" · ") }),
-          t.description ? el("div", { class: "desc", text: t.description.replace(/^.*?: [\d.]+ mi one way, .*?\)\.\s*/, "") }) : null));
+          t.description ? el("div", { class: "desc", text: t.description.replace(/^.*?: [\d.]+ mi one way, .*?\)\.\s*/, "").replace(/SAC T\d[^.]*\.\s*/g, "") }) : null));
       });
       left.append(el("div", { class: "card" }, el("h2", { text: "Trails taken" }), list));
     }

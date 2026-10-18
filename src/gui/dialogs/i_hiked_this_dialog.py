@@ -10,6 +10,7 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
     QDoubleSpinBox,
@@ -32,9 +33,12 @@ from PySide6.QtWidgets import (
 
 from src.core import paths
 from src.gui.app_state import AppState
+from src.gui.dialogs.hike_details_dialog import HikeDetailsForm
+from src.gui.dialogs.photo_review_dialog import PhotoReviewDialog
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import ComposedRoute, HikeSession, TrailPhotoPin
 from src.hiking.hike_days import PARTIAL_COVERAGE, HikeDay, build_day_session, group_pins_by_day
+from src.hiking.hike_report import set_hike_details
 from src.hiking.photo_matcher import photo_keys
 from src.hiking.units import format_distance
 from src.gui.busy import busy, run_in_background
@@ -51,12 +55,13 @@ class IHikedThisDialog(QDialog):
         self.app_state = app_state
         self.route = route
         self.matched_pins: List[TrailPhotoPin] = []
+        self.left_out: set = set()  # ids of matched photos the user left out
         self.day_groups: List[HikeDay] = []
         self.created_sessions: List[HikeSession] = []
         self.created_session: Optional[HikeSession] = None  # most recent of created_sessions
 
         self.setWindowTitle("I Hiked This Trail — Log Hike & Match Voyager Photos")
-        self.resize(820, 680)
+        self.resize(900, 780)
 
         layout = QVBoxLayout(self)
 
@@ -90,6 +95,8 @@ class IHikedThisDialog(QDialog):
         form.addRow("GPS Corridor Radius:", self.corridor_spin)
         form.addRow("Hike Notes:", self.notes_edit)
         layout.addLayout(form)
+        self.details_form = HikeDetailsForm(self.app_state, self._when_where)
+        layout.addWidget(self.details_form)
 
         # AegisPhotoVoyager DB discovery bar
         voyager_row = QHBoxLayout()
@@ -99,9 +106,13 @@ class IHikedThisDialog(QDialog):
         browse_btn.clicked.connect(self._browse_voyager_db)
         scan_btn = QPushButton("Scan AegisPhotoVoyager Photos")
         scan_btn.clicked.connect(self.scan_voyager_photos)
+        self.review_btn = QPushButton("Review Photos…")
+        self.review_btn.setToolTip("Look through the matched photos and leave out the ones that don't belong")
+        self.review_btn.clicked.connect(self.review_photos)
         voyager_row.addWidget(self.voyager_lbl, 1)
         voyager_row.addWidget(browse_btn)
         voyager_row.addWidget(scan_btn)
+        voyager_row.addWidget(self.review_btn)
         layout.addLayout(voyager_row)
 
         # Matched photo table
@@ -171,6 +182,10 @@ class IHikedThisDialog(QDialog):
             date_prefix=None,
         )
         self.matched_pins.sort(key=lambda p: (p.date_taken or 0, p.distance_along_m))
+        self.left_out = {pid for pid in self.left_out if any(p.id == pid for p in self.matched_pins)}
+        self._fill_table()
+
+    def _fill_table(self) -> None:
         self.photo_table.setRowCount(len(self.matched_pins))
         for idx, pin in enumerate(self.matched_pins):
             taken = datetime.fromtimestamp(pin.date_taken).strftime("%Y-%m-%d %H:%M") if pin.date_taken else "no date"
@@ -179,8 +194,43 @@ class IHikedThisDialog(QDialog):
             self.photo_table.setItem(idx, 2, QTableWidgetItem(f"{pin.distance_along_route_m / 1000.0:.2f} km"))
             self.photo_table.setItem(idx, 3, QTableWidgetItem(f"{pin.lat:.4f}, {pin.lon:.4f}"))
             meta = pin.ai_summary or ", ".join(pin.people_names + pin.tags) or pin.mood or "Geotagged match"
+            if pin.id in self.left_out:
+                meta = "✕ Left out — " + meta
             self.photo_table.setItem(idx, 4, QTableWidgetItem(meta))
+            if pin.id in self.left_out:
+                for c in range(5):
+                    self.photo_table.item(idx, c).setForeground(QColor("#7E8F84"))
+        self.review_btn.setEnabled(bool(self.matched_pins))
         self._populate_days()
+
+    def _kept_pins(self) -> List[TrailPhotoPin]:
+        return [p for p in self.matched_pins if p.id not in self.left_out]
+
+    def review_photos(self) -> None:
+        if not self.matched_pins:
+            return
+        dlg = PhotoReviewDialog(self.matched_pins, self._unit(), self.name_edit.text().strip(), self)
+        dlg.set_kept({p.id for p in self._kept_pins()})
+        if dlg.exec():
+            self.left_out = {p.id for p in dlg.removed_pins()}
+            self._fill_table()
+        dlg.deleteLater()
+
+    def _when_where(self):
+        """Trailhead and time of the hike, for the weather lookup."""
+        if not self.route.coords_3d:
+            return None
+        groups = self._selected_groups() if self.day_groups else []
+        dated = [g for g in groups if g.day is not None]
+        try:
+            fallback = date.fromisoformat(self.date_edit.text().strip())
+        except ValueError:
+            fallback = date.today()
+        g = dated[0] if dated else None
+        lon, lat = self.route.coords_3d[0][0], self.route.coords_3d[0][1]
+        start = g.first.replace(tzinfo=None) if g and g.first else None
+        end = g.last.replace(tzinfo=None) if g and g.last else None
+        return lat, lon, (g.day if g else fallback), start, end
 
     def _unit(self) -> str:
         return str(self.app_state.settings.get("unit_system", "metric"))
@@ -194,7 +244,7 @@ class IHikedThisDialog(QDialog):
         return keys
 
     def _populate_days(self) -> None:
-        self.day_groups = group_pins_by_day(self.matched_pins)
+        self.day_groups = group_pins_by_day(self._kept_pins())
         self.days_list.clear()
         unit = self._unit()
         saved = self._saved_photo_keys()
@@ -251,6 +301,9 @@ class IHikedThisDialog(QDialog):
             dest = self.app_state.db.get_destination(self.route.destination_id)
             dest_name = dest.name if dest else self.route.destination_id
             notes = self.notes_edit.toPlainText().strip()
+            details = self.details_form.details()
+            left_out = [p for p in self.matched_pins if p.id in self.left_out]
+            left_out_by_day = {g.day: g.pins for g in group_pins_by_day(left_out)}
 
             for group in groups:
                 day = group.day or fallback
@@ -266,9 +319,14 @@ class IHikedThisDialog(QDialog):
                     route=self.route, session=session, photos=group.pins, destination_name=dest_name,
                 )
                 session.interactive_map_data = map_data
+                set_hike_details(session, details)
                 self.app_state.db.save_session(session)
                 for pin in group.pins:
                     self.app_state.db.save_photo_pin(pin)
+                # Photos left out in the review stay out when the hike is rescanned later
+                removed = left_out_by_day.get(group.day) or (left_out if len(groups) == 1 else [])
+                if removed:
+                    self.app_state.db.remove_photos_from_session(session.id, removed)
                 export_interactive_hike_html(map_data, paths.get_hike_maps_dir() / f"{session.id}.html")
                 self.created_sessions.append(session)
                 b.step(f"Saved hike on {day:%b %d, %Y}")

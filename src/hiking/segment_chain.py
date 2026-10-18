@@ -151,11 +151,32 @@ class SegmentChain:
 
     # ── building ──────────────────────────────────────────────────────────
 
-    def start(self, trail: TrailSegment, reverse: bool = False) -> None:
+    def start(self, trail: TrailSegment, reverse: bool = False, from_vertex: Optional[int] = None) -> None:
+        """Start on `trail` at one end (or at `from_vertex`, e.g. a trailhead part-way along it),
+        walking toward its last vertex, or toward its first with `reverse`."""
         last = len(trail.coords_3d) - 1
+        begin = (last if reverse else 0) if from_vertex is None else max(0, min(last, from_vertex))
+        end = 0 if reverse else last
+        if begin == end:
+            end = last - end
         self._history.clear()
-        self.legs = [Leg(trail, last, 0) if reverse else Leg(trail, 0, last)]
+        self.legs = [Leg(trail, begin, end)]
         self.ended = False
+
+    def start_near(self, lat: float, lon: float, trail: TrailSegment) -> Tuple[Optional[int], bool]:
+        """Where to start `trail` for a hike from the point (a trailhead): (vertex or None for the
+        nearer end, reverse). Part-way along a trail, the longer stretch lies ahead."""
+        pts = trail.coords_3d
+        dists = [haversine_m(lat, lon, p[1], p[0]) for p in pts]
+        v = min(range(len(pts)), key=dists.__getitem__)
+        cum = [0.0]
+        for a, b in zip(pts, pts[1:]):
+            cum.append(cum[-1] + haversine_m(a[1], a[0], b[1], b[0]))
+        if cum[v] <= END_JUNCTION_M:
+            return None, False
+        if cum[-1] - cum[v] <= END_JUNCTION_M:
+            return None, True
+        return v, cum[v] > cum[-1] - cum[v]
 
     def apply(self, cand: Candidate) -> None:
         self._history.append(([replace(leg) for leg in self.legs], self.ended))
@@ -266,7 +287,7 @@ class SegmentChain:
                 for k in reps:
                     # Forks right after the start are "a different start" (use Undo) — but the end of
                     # a short segment (a 90 m climb up to a ridge trail) is where the hike goes on
-                    if cum[k] < FORK_MIN_ALONG_M and cum[-1] - cum[k] > JUNCTION_M:
+                    if cum[k] < FORK_MIN_ALONG_M and cum[-1] - cum[k] > END_JUNCTION_M:
                         continue
                     vi = by_k[k][0]
                     for target in (len(trail.coords_3d) - 1, 0):
