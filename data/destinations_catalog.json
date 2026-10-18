@@ -169,7 +169,7 @@
       ],
       "base_ele_m": 120.0,
       "max_ele_m": 380.0,
-      "trail_count": 77,
+      "trail_count": 74,
       "poi_count": 16,
       "bundled_file": "packs/fitchburg_state_forest.json"
     }
