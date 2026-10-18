@@ -13,6 +13,7 @@ import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
+from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.models import (
     ComposedRoute,
     ContourLine,
@@ -1001,6 +1002,22 @@ class Database:
                     session_id = s.id
                 pin.session_id = session_id
 
+            # The same photo saved again for this hike (e.g. "Rescan Voyager Photos") updates the
+            # existing pin instead of adding a duplicate
+            if pin.voyager_photo_id is not None or pin.date_taken:
+                existing = self._conn.execute(
+                    """
+                    SELECT id FROM hike_photo_pin
+                    WHERE session_id=? AND id<>? AND (
+                        (voyager_photo_id IS NOT NULL AND voyager_photo_id=?)
+                        OR (date_taken IS NOT NULL AND date_taken=? AND abs(lat-?)<1e-5 AND abs(lon-?)<1e-5)
+                    ) LIMIT 1
+                    """,
+                    (pin.session_id, pin.id, pin.voyager_photo_id, pin.date_taken, pin.lat, pin.lon),
+                ).fetchone()
+                if existing:
+                    pin.id = existing["id"]
+
             self._conn.execute(
                 """
                 INSERT OR REPLACE INTO hike_photo_pin (
@@ -1046,7 +1063,7 @@ class Database:
             out: List[HikePhotoPin] = []
             for s in sessions:
                 out.extend(self.get_photo_pins(s.id))
-            return out
+            return dedupe_pins(out)  # a photo can belong to several hikes of the same route
         return []
 
     def save_telemetry_points(self, points: List[TelemetryPoint]) -> None:

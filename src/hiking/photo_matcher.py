@@ -119,14 +119,40 @@ def match_photos_to_trail(
             matched.append(pin)
 
     # Sort primarily by distance along the trail, breaking ties by timestamp
+    matched = dedupe_pins(matched)
     matched.sort(key=lambda p: (p.distance_along_m, p.date_taken or 0))
     return matched
 
 
-def cluster_photo_pins_by_date(pins: List[HikePhotoPin]) -> Dict[str, List[HikePhotoPin]]:
-    """Group matched HikePhotoPin items by YYYY-MM-DD date string (most photos / newest first)."""
-    clusters: Dict[str, List[HikePhotoPin]] = {}
+def photo_keys(pin: HikePhotoPin) -> List[tuple]:
+    """Identities under which two pins are the same photo: the Voyager photo id, or the same
+    capture moment and spot (a duplicate import / edited copy), or file name + capture time."""
+    keys: List[tuple] = []
+    if pin.voyager_photo_id is not None:
+        keys.append(("vid", int(pin.voyager_photo_id)))
+    if pin.date_taken:
+        keys.append(("shot", int(pin.date_taken), round(pin.lat, 5), round(pin.lon, 5)))
+        if pin.filename:
+            keys.append(("file", pin.filename.lower(), int(pin.date_taken)))
+    return keys
+
+
+def dedupe_pins(pins: List[HikePhotoPin]) -> List[HikePhotoPin]:
+    """Drop duplicate photos (see photo_keys), keeping the richest copy of each: starred, with a
+    thumbnail, AI notes or people. Groups keep the order in which they first appear."""
+    def richness(p: HikePhotoPin) -> int:
+        return 4 * bool(p.is_starred) + 2 * bool(p.thumb_path) + bool(p.ai_summary) + bool(p.people)
+
+    chosen: List[HikePhotoPin] = []
+    group_of: Dict[tuple, int] = {}
     for pin in pins:
-        day = timestamp_to_date_str(pin.date_taken)
-        clusters.setdefault(day, []).append(pin)
-    return dict(sorted(clusters.items(), key=lambda kv: (kv[0] != "Unknown Date", kv[0]), reverse=True))
+        keys = photo_keys(pin)
+        g = next((group_of[k] for k in keys if k in group_of), None)
+        if g is None:
+            g = len(chosen)
+            chosen.append(pin)
+        elif richness(pin) > richness(chosen[g]):
+            chosen[g] = pin
+        for k in keys:
+            group_of.setdefault(k, g)
+    return chosen

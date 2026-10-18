@@ -28,9 +28,11 @@ from src.core import paths
 from src.gui.app_state import AppState
 from src.gui.charts.elevation_chart import ElevationChart
 from src.gui.charts.map_canvas import MapCanvas
+from src.gui.charts.photo_preview import format_datetime, format_time
 from src.gui.widgets import SectionHeader, StatCard
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import TrailPhotoPin
+from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.units import format_distance, format_elevation
 from src.gui.busy import busy, run_in_background
 
@@ -87,8 +89,12 @@ class ReexperiencePanel(QWidget):
 
         # Playback controls bar
         play_row = QHBoxLayout()
-        self.play_btn = QPushButton("▶ Play Hike Replay")
-        self.play_btn.setObjectName("PrimaryButton")
+        self.replay3d_btn = QPushButton("🎬 Play 3D Replay")
+        self.replay3d_btn.setObjectName("PrimaryButton")
+        self.replay3d_btn.setToolTip("Fly along the hike in 3D; photos zoom in to fill the screen where they were taken")
+        self.replay3d_btn.clicked.connect(self.open_3d_replay)
+        play_row.addWidget(self.replay3d_btn)
+        self.play_btn = QPushButton("▶ Animate on Map")
         self.play_btn.clicked.connect(self.toggle_playback)
         play_row.addWidget(self.play_btn)
 
@@ -103,6 +109,7 @@ class ReexperiencePanel(QWidget):
 
         left_split = QSplitter(Qt.Orientation.Vertical)
         self.map_canvas = MapCanvas()
+        self.map_canvas.show_photo_thumbnails = True  # photos on the map; hover for a larger view
         self.map_canvas.photo_clicked.connect(self._on_photo_pin_clicked)
         self.elev_chart = ElevationChart()
         self.elev_chart.hover_distance_changed.connect(self._set_replay_distance)
@@ -134,7 +141,14 @@ class ReexperiencePanel(QWidget):
         main_split.addWidget(left_split)
         main_split.addWidget(right_frame)
         main_split.setStretchFactor(0, 7)
-        main_split.setStretchFactor(1, 4)
+        main_split.setStretchFactor(1, 3)
+        # Explicit sizes: from size hints alone the map side started collapsed to zero width
+        main_split.setChildrenCollapsible(False)
+        left_split.setChildrenCollapsible(False)
+        self.map_canvas.setMinimumWidth(320)
+        right_frame.setMinimumWidth(240)
+        main_split.setSizes([1000, 420])
+        left_split.setSizes([620, 260])
         layout.addWidget(main_split, 1)
 
         self.app_state.session_changed.connect(lambda _: self.refresh_all())
@@ -177,6 +191,8 @@ class ReexperiencePanel(QWidget):
             self.photo_pins = self.app_state.db.list_photo_pins(route_id=route.id)
         else:
             self.photo_pins = []
+        self.photo_pins = dedupe_pins(self.photo_pins)  # also cleans up pins saved twice before
+        self.photo_pins.sort(key=lambda p: (p.date_taken or 0, p.distance_along_route_m))  # timeline order
 
         trails = self.app_state.db.list_trails(route.destination_id if route else self.app_state.active_destination_id)
         pois = self.app_state.db.list_pois(route.destination_id if route else self.app_state.active_destination_id)
@@ -185,8 +201,16 @@ class ReexperiencePanel(QWidget):
         self.map_canvas.sync_basemap(
             self.app_state.db, route.destination_id if route else self.app_state.active_destination_id
         )
-        self.map_canvas.set_scene_data(trails=trails, pois=pois, route=route, photo_pins=self.photo_pins)
+        # Only the hiked route is drawn in trail colours; the basemap still shows every path
+        self.map_canvas.set_scene_data(
+            trails=[] if route else trails, pois=pois, route=route, photo_pins=self.photo_pins
+        )
         if route:
+            # Fit the map to the hike and its photos (deferred until this tab is on screen)
+            self.map_canvas.fit_when_shown(
+                list(route.coordinates) + [(p.lat, p.lon) for p in self.photo_pins],
+                margin_px=95.0 if self.photo_pins else 50.0,  # room for thumbnails at the edges
+            )
             self._max_dist_m = max(1.0, route.distance_m)
             self.elev_chart.set_profile(route.elevation_profile, photo_pins=self.photo_pins, unit_system=unit)
             self.dist_card.set_value(format_distance(route.distance_m, unit))
@@ -195,8 +219,10 @@ class ReexperiencePanel(QWidget):
 
         self.photo_list.clear()
         for pin in self.photo_pins:
+            when = format_time(pin)
             item = QListWidgetItem(
-                f"📸 {pin.caption} — {format_distance(pin.distance_along_route_m, unit)}"
+                f"📸 {when + ' · ' if when else ''}{pin.caption or pin.filename} — "
+                f"{format_distance(pin.distance_along_route_m, unit)}"
             )
             item.setData(Qt.ItemDataRole.UserRole, pin.id)
             self.photo_list.addItem(item)
@@ -210,6 +236,9 @@ class ReexperiencePanel(QWidget):
 
     def _display_photo_pin(self, pin: TrailPhotoPin) -> None:
         unit = str(self.app_state.settings.get("unit_system", "metric"))
+        if self.map_canvas.selected_photo_id != pin.id:
+            self.map_canvas.selected_photo_id = pin.id
+            self.map_canvas.update()
         img_candidate = pin.thumbnail_path or pin.file_path
         if img_candidate and Path(img_candidate).exists():
             pix = QPixmap(img_candidate)
@@ -228,7 +257,7 @@ class ReexperiencePanel(QWidget):
         ai_str = f"\nAI Summary: {pin.ai_summary}" if pin.ai_summary else ""
         self.photo_meta_lbl.setText(
             f"Trail Mark: {format_distance(pin.distance_along_route_m, unit)} • "
-            f"Elev: {format_elevation(pin.ele_m, unit)} • Taken: {pin.taken_at[:19]}"
+            f"Elev: {format_elevation(pin.ele_m, unit)} • Taken: {format_datetime(pin)}"
             f"{people_str}{mood_str}{ai_str}"
         )
 
@@ -264,10 +293,30 @@ class ReexperiencePanel(QWidget):
             if abs(nearest.distance_along_route_m - dist_m) <= max(150.0, self._max_dist_m * 0.04):
                 self._display_photo_pin(nearest)
 
+    def _replay_route(self):
+        session = self.app_state.get_active_session()
+        route = self.app_state.db.get_route(session.route_id) if session and session.route_id else None
+        return route or self.app_state.get_active_route()
+
+    def open_3d_replay(self) -> None:
+        route = self._replay_route()
+        if not route or len(route.coords_3d) < 2:
+            self.app_state.status_message.emit("Select a recorded hike with a route to replay.")
+            return
+        if self.play_timer.isActive():
+            self.toggle_playback()
+        with busy(self, "Building 3D terrain for the replay…", title="3D Replay"):
+            from src.gui.replay3d import Replay3DDialog
+
+            pack = self.app_state.db.get_destination_pack(route.destination_id)
+            unit = str(self.app_state.settings.get("unit_system", "metric"))
+            dlg = Replay3DDialog(route, pack, self.photo_pins, "metric" if unit == "metric" else "us", self)
+        dlg.exec()
+
     def toggle_playback(self) -> None:
         if self.play_timer.isActive():
             self.play_timer.stop()
-            self.play_btn.setText("▶ Play Hike Replay")
+            self.play_btn.setText("▶ Animate on Map")
         else:
             if self.scrubber.value() >= 1000:
                 self.scrubber.setValue(0)

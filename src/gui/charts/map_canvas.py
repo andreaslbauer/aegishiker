@@ -4,7 +4,7 @@ waypoints, photo markers, and animated hike replay cursor.
 """
 import math
 from typing import Dict, List, Optional, Tuple
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import QToolTip, QWidget
 from src.hiking.geo import haversine_m
 from src.hiking.models import ComposedRoute, DestinationPack, MapFeature, POI, TelemetryPoint, TrailPhotoPin, TrailSegment
 from .base_chart import BaseChartWidget
+from .photo_preview import PhotoPreviewPopup, format_time, photo_pixmap
 
 M_PER_DEG_LAT = 110540.0
 FT_PER_M = 3.28084
@@ -115,6 +116,12 @@ class MapCanvas(BaseChartWidget):
         self.highlight_distance_m: Optional[float] = None
         self.preview_coords: List[Tuple[float, float]] = []  # (lat, lon) of a candidate segment
         self.candidate_paths: List[List[Tuple[float, float]]] = []  # pickable next segments
+        # Photo thumbnails pinned on the map (Re-experience); otherwise small "P" markers
+        self.show_photo_thumbnails = False
+        self.selected_photo_id: Optional[str] = None
+        self._photo_hits: List[Tuple[QRectF, TrailPhotoPin]] = []  # screen rects from the last paint
+        self._preview: Optional[PhotoPreviewPopup] = None
+        self._pending_fit: Optional[List[Tuple[float, ...]]] = None
         self.units: str = "us"
         self.zoom: float = 1.0
         self.pan_offset = QPointF(0.0, 0.0)
@@ -286,6 +293,28 @@ class MapCanvas(BaseChartWidget):
                 self._hover_lines.append(((min(lats), min(lons), max(lats), max(lons)), f))
         # Draw order for points: low-priority kinds first so peaks/huts end up on top
         self._point_features.sort(key=lambda f: -POINT_DETAIL.get(f.kind, 2))
+
+    def fit_when_shown(self, coords: List[Tuple[float, ...]], margin_px: float = 50.0) -> None:
+        """zoom_to_coordinates now if the map is on screen, else as soon as it is shown with its
+        real size (a map in a hidden tab has a stale size)."""
+        self._fit_margin = margin_px
+        if self.isVisible() and self.width() > 100 and self.height() > 100:
+            self._pending_fit = None
+            self.zoom_to_coordinates(coords, margin_px)
+        else:
+            self._pending_fit = list(coords)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        if event is not None:
+            super().resizeEvent(event)
+        if self._pending_fit and self.isVisible() and self.width() > 100 and self.height() > 100:
+            coords, self._pending_fit = self._pending_fit, None
+            self.zoom_to_coordinates(coords, getattr(self, "_fit_margin", 50.0))
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        super().showEvent(event)
+        if self._pending_fit:
+            QTimer.singleShot(0, lambda: self.resizeEvent(None) if self._pending_fit else None)
 
     def zoom_to_coordinates(self, coords: List[Tuple[float, ...]], margin_px: float = 50.0) -> None:
         """Zoom and pan so the given (lat, lon, ...) points fill the view with a margin."""
@@ -725,6 +754,10 @@ class MapCanvas(BaseChartWidget):
         painter.drawPath(path)
 
     def _draw_photo_pins(self, painter: QPainter) -> None:
+        self._photo_hits = []
+        if self.show_photo_thumbnails:
+            self._draw_photo_thumbnails(painter)
+            return
         for pin in self.photo_pins:
             pt = self.project(pin.lat, pin.lon)
             painter.setPen(QPen(QColor("#FFFFFF"), 1.5))
@@ -732,6 +765,82 @@ class MapCanvas(BaseChartWidget):
             painter.drawEllipse(pt, 6.5, 6.5)
             painter.setFont(QFont("Sans Serif", 7, QFont.Weight.Bold))
             painter.drawText(QRectF(pt.x() - 6, pt.y() - 6, 12, 12), Qt.AlignmentFlag.AlignCenter, "P")
+            self._photo_hits.append((QRectF(pt.x() - 8, pt.y() - 8, 16, 16), pin))
+
+    THUMB = 58  # px, longest side of a map thumbnail
+
+    def _draw_photo_thumbnails(self, painter: QPainter) -> None:
+        """Thumbnails on stems above their spot with the time taken; where they would overlap,
+        try other sides, else fall back to a dot (hover still previews it)."""
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        time_font = QFont("Sans Serif", 7, QFont.Weight.Bold)
+        fm = QFontMetricsF(time_font)
+        placed: List[QRectF] = []
+        dots: List[Tuple[QPointF, TrailPhotoPin]] = []
+        bounds = QRectF(self.rect()).adjusted(4, 4, -4, -4)
+        # Selected photo first so it always gets a thumbnail, then in time order
+        order = sorted(self.photo_pins, key=lambda p: (p.id != self.selected_photo_id, p.date_taken or 0))
+        for pin in order:
+            pt = self.project(pin.lat, pin.lon)
+            if not self._visible(pt, 80):
+                continue
+            pix = photo_pixmap(pin, self.THUMB)
+            w, h = (pix.width(), pix.height()) if pix is not None else (self.THUMB, int(self.THUMB * 0.75))
+            label = format_time(pin)
+            box_h = h + 6 + (fm.height() + 2 if label else 0)
+            box_w = max(w + 6, fm.horizontalAdvance(label) + 8)
+            box = None
+            for dx, dy in ((0, -1), (1, -1), (-1, -1), (1, 0), (-1, 0), (0, 1)):
+                cx = pt.x() + dx * (box_w / 2 + 14)
+                cy = pt.y() + dy * (box_h / 2 + 22) if dy else pt.y()
+                cand = QRectF(cx - box_w / 2, cy - box_h / 2, box_w, box_h)
+                if not bounds.contains(cand):
+                    continue  # would be cut off by the map edge: try another side
+                if not any(cand.adjusted(-3, -3, 3, 3).intersects(o) for o in placed):
+                    box = cand
+                    break
+            if box is None:
+                dots.append((pt, pin))
+                continue
+            placed.append(box)
+            selected = pin.id == self.selected_photo_id
+            accent = QColor("#F4D03F") if selected else QColor("#F39C12")
+            # stem from the photo's spot to its card
+            painter.setPen(QPen(accent, 1.6))
+            painter.drawLine(pt, QPointF(box.center().x(), box.bottom() if box.center().y() < pt.y() else box.top()))
+            painter.setBrush(QColor(11, 22, 16, 235))
+            painter.setPen(QPen(accent, 2.4 if selected else 1.4))
+            painter.drawRoundedRect(box, 4, 4)
+            img_rect = QRectF(box.center().x() - w / 2, box.top() + 3, w, h)
+            if pix is not None:
+                painter.drawPixmap(img_rect.toRect(), pix)
+            else:
+                painter.setPen(QColor("#98B2A1"))
+                painter.setFont(QFont("Sans Serif", 14))
+                painter.drawText(img_rect, Qt.AlignmentFlag.AlignCenter, "📷")
+            if label:
+                painter.setFont(time_font)
+                painter.setPen(QColor("#F4D03F"))
+                painter.drawText(QRectF(box.left(), img_rect.bottom() + 1, box.width(), fm.height() + 2),
+                                 Qt.AlignmentFlag.AlignCenter, label)
+            painter.setPen(QPen(QColor("#FFFFFF"), 1.2))
+            painter.setBrush(accent)
+            painter.drawEllipse(pt, 4.0, 4.0)
+            self._photo_hits.append((box, pin))
+            self._photo_hits.append((QRectF(pt.x() - 6, pt.y() - 6, 12, 12), pin))
+        for pt, pin in dots:
+            painter.setPen(QPen(QColor("#FFFFFF"), 1.2))
+            painter.setBrush(QColor("#F39C12"))
+            painter.drawEllipse(pt, 5.0, 5.0)
+            self._photo_hits.append((QRectF(pt.x() - 7, pt.y() - 7, 14, 14), pin))
+        painter.restore()
+
+    def _photo_at(self, pos: QPointF) -> Optional[TrailPhotoPin]:
+        for rect, pin in reversed(self._photo_hits):  # last drawn = on top
+            if rect.contains(pos):
+                return pin
+        return None
 
     def _draw_waypoints(self, painter: QPainter) -> None:
         for idx, (lat, lon) in enumerate(self.waypoints):
@@ -870,6 +979,15 @@ class MapCanvas(BaseChartWidget):
             return
         lat, lon = self.unproject(pos)
         self.hover_geo.emit(lat, lon)
+        photo = self._photo_at(pos)
+        if photo is not None:
+            QToolTip.hideText()
+            if self._preview is None:
+                self._preview = PhotoPreviewPopup(self)
+            self._preview.show_pin(photo, event.globalPosition().toPoint())
+            return
+        if self._preview is not None:
+            self._preview.hide_preview()
         f = self._feature_at(pos) if (self._point_features or self._hover_lines) else None
         if f is not None:
             QToolTip.showText(event.globalPosition().toPoint(), self._tooltip_for(f), self)
@@ -884,14 +1002,18 @@ class MapCanvas(BaseChartWidget):
         if was_drag or event.button() != Qt.MouseButton.LeftButton:
             return
         pos = event.position()
-        # Check if user clicked a photo pin first
-        for pin in self.photo_pins:
-            pt = self.project(pin.lat, pin.lon)
-            if (pt - pos).manhattanLength() <= 12:
-                self.photo_clicked.emit(pin.id)
-                return
+        # Check if user clicked a photo (thumbnail or marker) first
+        photo = self._photo_at(pos)
+        if photo is not None:
+            self.photo_clicked.emit(photo.id)
+            return
         lat, lon = self.unproject(pos)
         self.waypoint_clicked.emit(lat, lon)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        if self._preview is not None:
+            self._preview.hide_preview()
+        super().leaveEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         delta = event.angleDelta().y()

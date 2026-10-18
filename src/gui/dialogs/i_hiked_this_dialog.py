@@ -35,6 +35,7 @@ from src.gui.app_state import AppState
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import ComposedRoute, HikeSession, TrailPhotoPin
 from src.hiking.hike_days import PARTIAL_COVERAGE, HikeDay, build_day_session, group_pins_by_day
+from src.hiking.photo_matcher import photo_keys
 from src.hiking.units import format_distance
 from src.gui.busy import busy, run_in_background
 
@@ -184,11 +185,21 @@ class IHikedThisDialog(QDialog):
     def _unit(self) -> str:
         return str(self.app_state.settings.get("unit_system", "metric"))
 
+    def _saved_photo_keys(self) -> set:
+        """Identities of photos already attached to any saved hike."""
+        keys: set = set()
+        for session in self.app_state.db.list_sessions():
+            for pin in self.app_state.db.get_photo_pins(session.id):
+                keys.update(photo_keys(pin))
+        return keys
+
     def _populate_days(self) -> None:
         self.day_groups = group_pins_by_day(self.matched_pins)
         self.days_list.clear()
         unit = self._unit()
+        saved = self._saved_photo_keys()
         for group in self.day_groups:
+            already = sum(1 for p in group.pins if any(k in saved for k in photo_keys(p)))
             if group.day is None:
                 label = f"Photos without a date ({len(group.pins)}) → hike on the date entered above"
             else:
@@ -200,9 +211,15 @@ class IHikedThisDialog(QDialog):
                     f" · photos along {format_distance(lo, unit)}–{format_distance(hi, unit)}"
                     + (" (part of the route)" if len(group.pins) >= 2 and cov < PARTIAL_COVERAGE else "")
                 )
+            all_saved = bool(group.pins) and already == len(group.pins)
+            if all_saved:
+                label += " — already saved as a hike"
+            elif already:
+                label += f" — {already} of these photos are already in a saved hike"
             item = QListWidgetItem(label, self.days_list)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)
+            # Don't log the same day twice by default
+            item.setCheckState(Qt.CheckState.Unchecked if all_saved else Qt.CheckState.Checked)
         dated = sum(1 for g in self.day_groups if g.day is not None)
         if dated > 1:
             self.days_lbl.setText(f"<b>Photos from {dated} different days</b> — each checked day is saved as its own hike:")
