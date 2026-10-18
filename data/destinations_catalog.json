@@ -156,21 +156,21 @@
     },
     {
       "id": "fitchburg_state_forest",
-      "name": "Fitchburg & Leominster State Forests",
-      "state_or_region": "Massachusetts (Fitchburg, Townsend, Westminster & Princeton \u2014 with Pearl Hill, Willard Brook & Crow Hills)",
-      "agency": "MA DCR, USGS 3DEP & OpenStreetMap Contributors",
+      "name": "Fitchburg, Leominster & Princeton",
+      "state_or_region": "Massachusetts (Fitchburg, Townsend, Westminster, Leominster & Princeton \u2014 with Pearl Hill, Willard Brook, Crow Hills & Wachusett Mountain)",
+      "agency": "MA DCR, Mass Audubon, USGS 3DEP & OpenStreetMap Contributors",
       "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
-      "summary": "Rolling hemlock and pine woods, brooks and ponds north of Fitchburg: Pearl Hill, Table Rock, Trap Falls and a dense web of shared hiking and mountain-bike trails, linked by the Midstate Trail to Leominster State Forest and the Crow Hill Ledges.",
+      "summary": "Rolling hemlock and pine woods, brooks and ponds north of Fitchburg: Pearl Hill, Table Rock, Trap Falls and a dense web of shared hiking and mountain-bike trails, linked by the Midstate Trail to Leominster State Forest, the Crow Hill Ledges and the town of Princeton, with Wachusett Mountain and Wachusett Meadow.",
       "bbox": [
-        -71.878,
-        42.472,
+        -71.97,
+        42.39,
         -71.73,
         42.678
       ],
       "base_ele_m": 120.0,
-      "max_ele_m": 380.0,
-      "trail_count": 74,
-      "poi_count": 16,
+      "max_ele_m": 620.0,
+      "trail_count": 161,
+      "poi_count": 24,
       "bundled_file": "packs/fitchburg_state_forest.json"
     },
     {

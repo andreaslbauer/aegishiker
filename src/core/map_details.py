@@ -381,6 +381,8 @@ def fetch_osm_elements(
         f"[out:json][timeout:{int(timeout) - 10}];"
         f"({_LINE_AREA_QUERY.format(b=b)});out tags geom({b}) qt;"
         f"({_POINT_QUERY.format(b=b)});out tags center qt;"
+        # Long-distance routes (e.g. a pack trail spec's `osm_route`): members with clipped geometry
+        f"relation[\"route\"~\"^(hiking|foot)$\"]({b});out body geom({b}) qt;"
     )
     last_err: Optional[Exception] = None
     for attempt in range(retries + 1):
@@ -948,21 +950,39 @@ def _way_names(tags: Dict[str, str]) -> List[str]:
     return [n.strip() for n in str(tags.get("name", "")).split("/") if n.strip()]
 
 
-def _named_way_graph(elements: Sequence[Dict[str, Any]], osm_names: Sequence[str]) -> Dict[Tuple[float, float], Dict[Tuple[float, float], float]]:
+def _named_way_graph(
+    elements: Sequence[Dict[str, Any]], osm_names: Sequence[str], way_ids: Sequence[int] = (), routes: Sequence[str] = (),
+) -> Tuple[Dict[Tuple[float, float], Dict[Tuple[float, float], float]], List[Dict[str, str]]]:
+    """Graph of the paths/tracks named `osm_names`, plus the ways listed in `way_ids` and every member
+    way of the route relations named in `routes` (road walks included). Also returns the ways' tags."""
     graph: Dict[Tuple[float, float], Dict[Tuple[float, float], float]] = defaultdict(dict)
-    wanted = set(osm_names)
+    wanted, ids, route_names = set(osm_names), set(way_ids), set(routes)
+    ways = {el.get("id"): el for el in elements if el.get("type") == "way"}
+    lines: List[List[Optional[Dict[str, Any]]]] = []
+    tag_sets: List[Dict[str, str]] = []
     for el in elements:
         tags = el.get("tags") or {}
-        if el.get("type") != "way" or _classify(tags) not in ("path", "track"):
+        if el.get("type") == "relation" and route_names and tags.get("name") in route_names:
+            for m in el.get("members") or []:
+                if m.get("type") == "way" and any(m.get("geometry") or []):
+                    lines.append(m["geometry"])
+                    tag_sets.append((ways.get(m.get("ref")) or {}).get("tags") or {})
             continue
-        if not wanted & set(_way_names(tags)):
+        if el.get("type") != "way":
             continue
-        pts = [(round(float(g["lon"]), 7), round(float(g["lat"]), 7)) for g in (el.get("geometry") or []) if g]
-        for a, b in zip(pts, pts[1:]):
-            d = haversine_m(a[1], a[0], b[1], b[0])
-            graph[a][b] = d
-            graph[b][a] = d
-    return graph
+        if el.get("id") in ids or (_classify(tags) in ("path", "track") and wanted & set(_way_names(tags))):
+            lines.append(el.get("geometry") or [])
+            tag_sets.append(tags)
+    for geom in lines:
+        for a, b in zip(geom, geom[1:]):
+            if not a or not b:  # vertices clipped off by the bbox come back as null
+                continue
+            pa = (round(float(a["lon"]), 7), round(float(a["lat"]), 7))
+            pb = (round(float(b["lon"]), 7), round(float(b["lat"]), 7))
+            d = haversine_m(pa[1], pa[0], pb[1], pb[0])
+            graph[pa][pb] = d
+            graph[pb][pa] = d
+    return graph, tag_sets
 
 
 def _farthest(graph, start) -> Tuple[Tuple[float, float], Dict, Dict]:
@@ -999,6 +1019,25 @@ def _trail_line(graph) -> List[Tuple[float, float]]:
                 path.append(prev[path[-1]])
             best, best_len = path, dist_b[b]
     return best
+
+
+def _path_between(graph, start: Sequence[float], end: Sequence[float]) -> List[Tuple[float, float]]:
+    """Shortest stretch of the graph between the vertices nearest two [lat, lon] points (one section
+    of a long trail); empty if they are not connected."""
+    if not graph:
+        return []
+
+    def nearest(p: Sequence[float]) -> Tuple[float, float]:
+        return min(graph, key=lambda n: haversine_m(p[0], p[1], n[1], n[0]))
+
+    a, b = nearest(start), nearest(end)
+    _, dist, prev = _farthest(graph, a)
+    if b not in dist:
+        return []
+    path = [b]
+    while path[-1] != a:
+        path.append(prev[path[-1]])
+    return path[::-1]
 
 
 def _near_features(features: List[MapFeature], kinds: set, max_m: float) -> Callable[[float, float], List[MapFeature]]:
@@ -1125,6 +1164,11 @@ def build_named_osm_trails(
     Geometry is the longest connected end-to-end stretch of ways with that name, oriented to
     climb (lower end first). Difficulty, surface, water access, endpoints and landmarks are
     derived from OSM tags, the terrain and the pack's map features.
+
+    Optional spec keys: `osm_route` (build from the members of the route relation with that name
+    instead of name-matched ways), `osm_ways` (extra way ids, e.g. unnamed connectors) and
+    `between` ([[lat, lon], [lat, lon]]: only the stretch between these points, one section of a
+    long trail).
     """
     pack.trails = [t for t in pack.trails if CURATED_TAG not in t.tags]
     specs = expand_trail_specs(pack.id, elements, specs)
@@ -1132,24 +1176,15 @@ def build_named_osm_trails(
     water_near = _near_features(feats, {"stream", "river", "spring", "drinking_water", "water"}, 60.0)
     sights_near = _near_features(feats, {"peak", "hut", "shelter", "waterfall", "viewpoint", "campsite"}, 120.0)
     ends_near = _near_features(feats, {"trailhead", "parking", "peak", "hut", "shelter"}, 350.0)
-    sac_by_name: Dict[str, set] = defaultdict(set)
-    surface_by_name: Dict[str, set] = defaultdict(set)
-    dogs_no: set = set()
-    for el in elements:
-        tags = el.get("tags") or {}
-        for nm in _way_names(tags):
-            if tags.get("sac_scale"):
-                sac_by_name[nm].add(tags["sac_scale"])
-            if tags.get("surface"):
-                surface_by_name[nm].add(tags["surface"])
-            if tags.get("dog") == "no":
-                dogs_no.add(nm)
 
     built, missing = 0, []
     for spec in specs:
         osm_name = spec["osm_name"]
-        osm_names = spec.get("osm_names", [osm_name])
-        line = _trail_line(_named_way_graph(elements, osm_names))
+        route = spec.get("osm_route")
+        graph, way_tags = _named_way_graph(
+            elements, [] if route else spec.get("osm_names", [osm_name]), spec.get("osm_ways", ()), [route] if route else (),
+        )
+        line = _path_between(graph, *spec["between"]) if spec.get("between") else _trail_line(graph)
         if len(line) < 2 or sum(
             haversine_m(a[1], a[0], b[1], b[0]) for a, b in zip(line, line[1:])
         ) < spec.get("min_length_m", min_length_m):
@@ -1162,11 +1197,11 @@ def build_named_osm_trails(
         trail = TrailSegment(id=spec["id"], pack_id=pack.id, name=spec.get("name", osm_name), code=spec.get("code", ""))
         _apply_profile(trail, coords)
 
-        sac = set().union(*(sac_by_name.get(n, set()) for n in osm_names))
+        sac = {t["sac_scale"] for t in way_tags if t.get("sac_scale")}
         trail.difficulty = TrailDifficulty(
             _classify_difficulty(trail.elevation_gain_m, trail.distance_m, trail.max_grade_pct, sac)
         )
-        surfaces = set().union(*(surface_by_name.get(n, set()) for n in osm_names))
+        surfaces = {t["surface"] for t in way_tags if t.get("surface")}
         if sac & {"demanding_mountain_hiking", "alpine_hiking", "demanding_alpine_hiking"}:
             trail.surface = "scramble"
         elif trail.max_ele_m >= spec.get("alpine_above_m", 1450):  # White Mountains treeline ~4,800 ft
@@ -1177,7 +1212,7 @@ def build_named_osm_trails(
             trail.surface = "packed_dirt"
         else:
             trail.surface = "rocky"
-        trail.dogs_allowed = not (set(osm_names) & dogs_no) and not spec.get("no_dogs", False)
+        trail.dogs_allowed = not any(t.get("dog") == "no" for t in way_tags) and not spec.get("no_dogs", False)
         trail.water_available = any(water_near(c[0], c[1]) for c in coords[::3])
         trail.condition_status = TrailCondition.OPEN
         trail.condition_note = "Geometry from OpenStreetMap; check current WMNF/AMC trail reports."

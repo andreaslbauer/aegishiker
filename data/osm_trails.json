@@ -457,32 +457,271 @@
     }
   },
   "fitchburg_state_forest": {
-    "all_named": true,
-    "exclude_regex": "\\bRoad\\b|\\bRd\\.?$|\\bStreet\\b|\\bAvenue\\b|\\bTurnpike\\b|^(no name|No Name|need name)$|^(Blue|Green)$|^Bypass$|^Hole\\b",
-    "aliases": {
-      "Friends Trail (Yellow) Dow": "Friends (Yellow) Downhill"
-    },
-    "rename": {
-      "Stone Bridge Loop (red0": "Stone Bridge Loop (red)"
-    },
-    "code_prefix": "FSF",
-    "tags": [
-      "fitchburg",
-      "leominster",
-      "multi_use"
-    ],
-    "defaults": {
-      "min_length_m": 150,
-      "alpine_above_m": 5000,
-      "note": "Shared with mountain bikers: keep right and listen for riders."
-    },
-    "overrides": {
-      "Crow Hill Trail": {
-        "difficulty": "hard",
-        "note": "Steep, rocky climb along the base and over the top of the Crow Hill Ledges; watch for climbers and loose rock."
+    "trails": [
+      {
+        "id": "fitchburg_state_forest_midstate_trail_ashburnham",
+        "osm_name": "Midstate Trail",
+        "osm_names": [
+          "Midstate Trail",
+          "Mid State Trail"
+        ],
+        "osm_route": "Midstate Trail",
+        "between": [
+          [
+            42.678,
+            -71.8993
+          ],
+          [
+            42.5776,
+            -71.9028
+          ]
+        ],
+        "name": "Midstate Trail (Ashburnham\u2013Westminster)",
+        "code": "FSF-MST1",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "midstate_trail",
+          "long_distance"
+        ],
+        "min_length_m": 500,
+        "note": "Section of the Midstate Trail (yellow triangles), a 95-mile footpath from Rhode Island to New Hampshire; includes short road walks."
       },
-      "Midstate Trail": {
-        "note": "Long-distance trail (Rhode Island to New Hampshire) linking Leominster and Fitchburg State Forests."
+      {
+        "id": "fitchburg_state_forest_midstate_trail_westminster",
+        "osm_name": "Midstate Trail",
+        "osm_names": [
+          "Midstate Trail",
+          "Mid State Trail"
+        ],
+        "osm_route": "Midstate Trail",
+        "between": [
+          [
+            42.5776,
+            -71.9028
+          ],
+          [
+            42.5373,
+            -71.8713
+          ]
+        ],
+        "name": "Midstate Trail (Westminster)",
+        "code": "FSF-MST2",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "midstate_trail",
+          "long_distance"
+        ],
+        "min_length_m": 500,
+        "note": "Section of the Midstate Trail (yellow triangles), a 95-mile footpath from Rhode Island to New Hampshire; includes short road walks."
+      },
+      {
+        "id": "fitchburg_state_forest_midstate_trail",
+        "osm_name": "Midstate Trail",
+        "osm_names": [
+          "Midstate Trail",
+          "Mid State Trail"
+        ],
+        "osm_route": "Midstate Trail",
+        "between": [
+          [
+            42.5373,
+            -71.8713
+          ],
+          [
+            42.5074,
+            -71.8709
+          ]
+        ],
+        "name": "Midstate Trail (Leominster State Forest)",
+        "code": "FSF-MT",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "midstate_trail",
+          "long_distance"
+        ],
+        "min_length_m": 500,
+        "note": "Section of the Midstate Trail (yellow triangles), a 95-mile footpath from Rhode Island to New Hampshire; includes short road walks. Crosses the top of the Crow Hills."
+      },
+      {
+        "id": "fitchburg_state_forest_midstate_trail_wachusett",
+        "osm_name": "Midstate Trail",
+        "osm_names": [
+          "Midstate Trail",
+          "Mid State Trail"
+        ],
+        "osm_route": "Midstate Trail",
+        "between": [
+          [
+            42.5074,
+            -71.8709
+          ],
+          [
+            42.4553,
+            -71.9085
+          ]
+        ],
+        "name": "Midstate Trail (Wachusett Mountain)",
+        "code": "FSF-MST4",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "midstate_trail",
+          "long_distance"
+        ],
+        "min_length_m": 500,
+        "note": "Section of the Midstate Trail (yellow triangles), a 95-mile footpath from Rhode Island to New Hampshire; includes short road walks. Climbs over the 2,006 ft summit of Wachusett Mountain with the Harrington Trail."
+      },
+      {
+        "id": "fitchburg_state_forest_midstate_trail_princeton",
+        "osm_name": "Midstate Trail",
+        "osm_names": [
+          "Midstate Trail",
+          "Mid State Trail"
+        ],
+        "osm_route": "Midstate Trail",
+        "between": [
+          [
+            42.4553,
+            -71.9085
+          ],
+          [
+            42.4269,
+            -71.9702
+          ]
+        ],
+        "name": "Midstate Trail (Princeton South)",
+        "code": "FSF-MST5",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "midstate_trail",
+          "long_distance"
+        ],
+        "min_length_m": 500,
+        "note": "Section of the Midstate Trail (yellow triangles), a 95-mile footpath from Rhode Island to New Hampshire; includes short road walks."
+      },
+      {
+        "id": "fitchburg_state_forest_crow_hill_trail",
+        "osm_name": "Crow Hill Trail",
+        "osm_names": [
+          "Crow Hill Trail",
+          "Crow Hill Trail Access"
+        ],
+        "name": "Crow Hill Trail",
+        "code": "FSF-CHT",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "crow_hill",
+          "cliffs",
+          "views"
+        ],
+        "difficulty": "hard",
+        "note": "Rocky trail along the base of the Crow Hill Ledges from the Route 31 lot, with two scrambles up to the ridgetop Midstate Trail; watch for climbers and loose rock.",
+        "surface": "rocky"
+      },
+      {
+        "id": "fitchburg_state_forest_crow_hill_ledges_north",
+        "osm_name": "Crow Hill Ledges North Climb",
+        "osm_ways": [
+          77306224
+        ],
+        "name": "Crow Hill Ledges North Climb",
+        "code": "FSF-CHN",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "crow_hill",
+          "cliffs",
+          "views",
+          "scramble"
+        ],
+        "difficulty": "hard",
+        "surface": "scramble",
+        "min_length_m": 50,
+        "note": "Steep, rocky scramble up the Crow Hill Ledges between the cliff-base Crow Hill Trail and the Midstate Trail on the ridge; watch for climbers and loose rock."
+      },
+      {
+        "id": "fitchburg_state_forest_crow_hill_ledges_south",
+        "osm_name": "Crow Hill Ledges South Climb",
+        "osm_ways": [
+          77306216,
+          1277931966
+        ],
+        "name": "Crow Hill Ledges South Climb",
+        "code": "FSF-CHS",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "crow_hill",
+          "cliffs",
+          "views",
+          "scramble"
+        ],
+        "difficulty": "hard",
+        "surface": "scramble",
+        "min_length_m": 50,
+        "note": "Steep, rocky scramble up the Crow Hill Ledges between the cliff-base Crow Hill Trail and the Midstate Trail on the ridge; watch for climbers and loose rock."
+      },
+      {
+        "id": "fitchburg_state_forest_crow_hill_ledges_loop",
+        "osm_name": "Crow Hill Ledges South Loop",
+        "osm_ways": [
+          844436260
+        ],
+        "name": "Crow Hill Ledges South Loop",
+        "code": "FSF-CHL",
+        "tags": [
+          "fitchburg",
+          "leominster",
+          "princeton",
+          "crow_hill",
+          "cliffs"
+        ],
+        "difficulty": "moderate",
+        "note": "Woods road looping off the south end of the Crow Hill Trail below the ledges."
+      }
+    ],
+    "auto": {
+      "all_named": true,
+      "exclude_regex": "\\bRoad\\b|\\bRd\\.?$|\\bStreet\\b|\\bAvenue\\b|\\bTurnpike\\b|^(no name|No Name|need name)$|^(Blue|Green)$|^Bypass$|^Hole\\b|Mid ?[Ss]a?tate|^Midsate|^Trail$",
+      "aliases": {
+        "Friends Trail (Yellow) Dow": "Friends (Yellow) Downhill",
+        "Harrington": "Harrington Trail"
+      },
+      "rename": {
+        "Stone Bridge Loop (red0": "Stone Bridge Loop (red)",
+        "Hiuckory Trail": "Hickory Trail",
+        "Medow Loop": "Meadow Loop",
+        "Cobb Brook Tail": "Cobb Brook Trail"
+      },
+      "code_prefix": "FSF",
+      "tags": [
+        "fitchburg",
+        "leominster",
+        "princeton",
+        "multi_use"
+      ],
+      "defaults": {
+        "min_length_m": 150,
+        "alpine_above_m": 5000,
+        "note": "Shared with mountain bikers: keep right and listen for riders."
+      },
+      "overrides": {
+        "Harrington Trail": {
+          "note": "Steepest route up Wachusett Mountain, shared in part with the Midstate Trail; rocky ledges near the top."
+        }
       }
     }
   },

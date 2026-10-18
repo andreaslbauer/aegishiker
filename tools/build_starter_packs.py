@@ -802,8 +802,9 @@ def build_mount_monadnock() -> DestinationPack:
 
 def build_fitchburg_state_forest() -> DestinationPack:
     """Fitchburg State Forest (MA) with the adjoining Pearl Hill State Park, Willard Brook State Forest
-    and Table Rock Conservation Area, plus Leominster State Forest (Crow Hills) to the south, linked by
-    the Midstate Trail. Trails come from OpenStreetMap (data/osm_trails.json)."""
+    and Table Rock Conservation Area, plus Leominster State Forest (Crow Hills) and the town of Princeton
+    (Wachusett Mountain) to the south, linked by the Midstate Trail. Trails come from OpenStreetMap
+    (data/osm_trails.json)."""
     pid = "fitchburg_state_forest"
     pois = [
         POI(id="poi_fsf_center", pack_id=pid, name="Fitchburg State Forest", kind="junction", lat=42.62592, lon=-71.77174, ele_m=171.0, note="Centre of the state forest (Fitchburg / Lunenburg / Townsend)"),
@@ -823,17 +824,28 @@ def build_fitchburg_state_forest() -> DestinationPack:
         POI(id="poi_lsf_crow_pond", pack_id=pid, name="Crow Hill Pond", kind="water", lat=42.5170, lon=-71.8553, ele_m=285.0, note="Swimming beach (Lower Crow Hill Pond)"),
         POI(id="poi_lsf_office", pack_id=pid, name="Leominster State Forest Headquarters", kind="ranger", lat=42.5331, lon=-71.8554, ele_m=300.0, note="DCR office, Route 31, Princeton / Westminster"),
         POI(id="poi_lsf_rocky_pond", pack_id=pid, name="Rocky Pond", kind="water", lat=42.5150, lon=-71.8470, ele_m=290.0),
+        # Princeton & Wachusett Mountain
+        POI(id="poi_pri_wachusett", pack_id=pid, name="Mount Wachusett (2,006 ft)", kind="peak", lat=42.48906, lon=-71.88684, ele_m=609.0, note="High point of the area and of Massachusetts east of the Connecticut River; Midstate Trail crosses the summit"),
+        POI(id="poi_pri_visitor_center", pack_id=pid, name="Wachusett Mountain Visitor Center", kind="ranger", lat=42.49146, lon=-71.87957, ele_m=380.0, note="DCR Wachusett Mountain State Reservation, Mountain Rd, Princeton"),
+        POI(id="poi_pri_harlow", pack_id=pid, name="Harlow Outlook", kind="viewpoint", lat=42.49204, lon=-71.88337, ele_m=540.0),
+        POI(id="poi_pri_echo_lake", pack_id=pid, name="Echo Lake", kind="water", lat=42.47771, lon=-71.8886, ele_m=455.0),
+        POI(id="poi_pri_little_wachusett", pack_id=pid, name="Little Wachusett", kind="peak", lat=42.46342, lon=-71.8898, ele_m=476.0),
+        POI(id="poi_pri_redemption_rock", pack_id=pid, name="Redemption Rock Trailhead", kind="trailhead", lat=42.5036, lon=-71.8852, ele_m=370.0, note="Midstate Trail crossing of Route 140 at Redemption Rock"),
+        POI(id="poi_pri_wachusett_meadow", pack_id=pid, name="Wachusett Meadows Wildlife Sanctuary", kind="trailhead", lat=42.45989, lon=-71.90899, ele_m=340.0, note="Mass Audubon sanctuary on Goodnow Rd; Midstate Trail passes through (fee for non-members)"),
+        POI(id="poi_pri_center", pack_id=pid, name="Princeton Center", kind="junction", lat=42.44841, lon=-71.87681, ele_m=346.0),
     ]
     return DestinationPack(
         id=pid,
-        name="Fitchburg & Leominster State Forests",
-        state_or_region="Massachusetts (Fitchburg, Townsend, Westminster & Princeton — with Pearl Hill, Willard Brook & Crow Hills)",
-        agency="MA DCR, USGS 3DEP & OpenStreetMap Contributors",
+        name="Fitchburg, Leominster & Princeton",
+        pack_version="1.1",  # 1.1: south to Princeton / Wachusett, Midstate Trail sections, Crow Hill Ledges climbs
+        state_or_region="Massachusetts (Fitchburg, Townsend, Westminster, Leominster & Princeton — with Pearl Hill, Willard Brook, Crow Hills & Wachusett Mountain)",
+        agency="MA DCR, Mass Audubon, USGS 3DEP & OpenStreetMap Contributors",
         summary="Rolling hemlock and pine woods, brooks and ponds north of Fitchburg: Pearl Hill, Table Rock, "
                 "Trap Falls and a dense web of shared hiking and mountain-bike trails, linked by the Midstate Trail "
-                "to Leominster State Forest and the Crow Hill Ledges.",
-        min_lat=42.472, max_lat=42.678, min_lon=-71.878, max_lon=-71.730,
-        base_ele_m=120.0, max_ele_m=380.0,
+                "to Leominster State Forest, the Crow Hill Ledges and the town of Princeton, with Wachusett Mountain "
+                "and Wachusett Meadow.",
+        min_lat=42.390, max_lat=42.678, min_lon=-71.970, max_lon=-71.730,
+        base_ele_m=120.0, max_ele_m=620.0,
         emergency_contact="911",
         trails=[], pois=pois,
     )
