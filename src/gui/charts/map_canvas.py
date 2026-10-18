@@ -43,6 +43,7 @@ LINE_STYLES: Dict[str, Tuple[str, float, Optional[Qt.PenStyle]]] = {
     "cliff": ("#90C9BBA0", 1.1, None),
     "aerialway": ("#B9B9C8", 1.2, Qt.PenStyle.DashDotLine),
     "water_edge": ("#4C9BD6", 1.0, None),
+    "reserve": ("#A064C080", 1.3, Qt.PenStyle.DashDotLine),
 }
 AREA_STYLES: Dict[str, Tuple[str, str]] = {  # kind -> (fill rgba hex, outline rgba hex)
     "water": ("#C8235F86", "#E04C9BD6"),
@@ -50,6 +51,9 @@ AREA_STYLES: Dict[str, Tuple[str, str]] = {  # kind -> (fill rgba hex, outline r
     "bare_rock": ("#38A8A090", "#00000000"),
     "scree": ("#30B0A890", "#00000000"),
     "glacier": ("#70DCEBF5", "#A0FFFFFF"),
+    "forest": ("#3A2F7A44", "#00000000"),
+    "open": ("#34B8AE6A", "#00000000"),
+    "reserve": ("#00000000", "#A064C080"),  # boundary only
 }
 HARD_SAC = ("SAC T3", "SAC T4", "SAC T5", "SAC T6")
 
@@ -58,6 +62,7 @@ POINT_DETAIL = {
     "peak": 0, "hut": 0, "shelter": 1, "campsite": 1, "spring": 1, "drinking_water": 1,
     "trailhead": 1, "parking": 1, "ranger_station": 1, "emergency_phone": 1, "waterfall": 1,
     "viewpoint": 2, "saddle": 2, "toilets": 2, "guidepost": 2, "cave": 2,
+    "picnic": 1, "gate": 2, "rock": 2, "historic": 2,
 }
 KIND_LABELS = {
     "peak": "Summit", "saddle": "Saddle / col", "spring": "Spring", "drinking_water": "Drinking water",
@@ -65,6 +70,8 @@ KIND_LABELS = {
     "waterfall": "Waterfall", "parking": "Parking", "trailhead": "Trailhead", "toilets": "Toilets",
     "ranger_station": "Ranger station", "guidepost": "Signpost / junction", "emergency_phone": "Emergency phone",
     "cave": "Cave", "path": "Trail", "track": "Track / fire road", "cliff": "Cliff",
+    "picnic": "Picnic site", "gate": "Gate / barrier", "rock": "Rock / boulder", "historic": "Historic site",
+    "reserve": "Reserve boundary",
 }
 
 
@@ -457,11 +464,16 @@ class MapCanvas(BaseChartWidget):
             return
         painter.save()
         painter.setTransform(xf)
-        for kind in ("wetland", "scree", "bare_rock", "glacier", "water"):
+        for kind in ("forest", "open", "wetland", "scree", "bare_rock", "glacier", "water", "reserve"):
             path = self._area_paths.get(kind)
             if path is None:
                 continue
             fill, edge = AREA_STYLES[kind]
+            if kind == "reserve":
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(self._cosmetic(edge, 1.3, Qt.PenStyle.DashDotLine))
+                painter.drawPath(path)
+                continue
             painter.setBrush(QBrush(QColor(fill)))
             painter.setPen(self._cosmetic(edge, 0.8) if QColor(edge).alpha() else Qt.PenStyle.NoPen)
             painter.drawPath(path)
@@ -492,7 +504,7 @@ class MapCanvas(BaseChartWidget):
         painter.save()
         painter.setTransform(xf)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        order = ["water_edge", "stream", "river", "cliff", "road_minor", "road_major", "track", "aerialway", "path", "path_hard"]
+        order = ["reserve", "water_edge", "stream", "river", "cliff", "road_minor", "road_major", "track", "aerialway", "path", "path_hard"]
         for key in order:
             path = self._line_paths.get(key)
             if path is None:
@@ -623,6 +635,26 @@ class MapCanvas(BaseChartWidget):
         elif kind == "guidepost":
             painter.setBrush(QColor("#D4AC6E"))
             painter.drawRect(QRectF(x - 2.5, y - 2.5, 5, 5))
+        elif kind == "picnic":
+            painter.setPen(QPen(QColor("#E8C07A"), 1.4))
+            painter.drawLine(QPointF(x - 5, y - 2), QPointF(x + 5, y - 2))
+            painter.drawLine(QPointF(x - 3, y - 2), QPointF(x - 4.5, y + 4))
+            painter.drawLine(QPointF(x + 3, y - 2), QPointF(x + 4.5, y + 4))
+            painter.drawLine(QPointF(x - 5, y + 1.5), QPointF(x + 5, y + 1.5))
+        elif kind == "gate":
+            painter.setPen(QPen(QColor("#0B1610"), 3.0))
+            painter.drawLine(QPointF(x - 4.5, y), QPointF(x + 4.5, y))
+            painter.setPen(QPen(QColor("#D9C9A0"), 1.6))
+            painter.drawLine(QPointF(x - 4.5, y), QPointF(x + 4.5, y))
+        elif kind == "rock":
+            painter.setBrush(QColor("#A9A49A"))
+            painter.drawPolygon(QPolygonF([
+                QPointF(x - 4.5, y + 3), QPointF(x - 3, y - 2), QPointF(x, y - 4),
+                QPointF(x + 3.5, y - 2.5), QPointF(x + 4.5, y + 3),
+            ]))
+        elif kind == "historic":
+            painter.setBrush(QColor("#B08D57"))
+            painter.drawPolygon(QPolygonF([QPointF(x, y - 4.5), QPointF(x + 4.5, y), QPointF(x, y + 4.5), QPointF(x - 4.5, y)]))
         elif kind == "cave":
             painter.setBrush(QColor("#1C1C1C"))
             painter.setPen(QPen(QColor("#E8E0CF"), 1.0))

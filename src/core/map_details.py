@@ -332,6 +332,14 @@ _LINE_AREA_QUERY = """
   way["natural"~"^(water|cliff|bare_rock|scree|wetland|glacier)$"]({b});
   way["aerialway"~"^(cable_car|gondola|chair_lift)$"]({b});
   relation["natural"="water"]({b});
+  way["natural"~"^(wood|scrub|heath|grassland)$"]({b});
+  way["landuse"~"^(forest|meadow|grass|farmland|orchard|conservation)$"]({b});
+  relation["natural"="wood"]({b});
+  relation["landuse"="forest"]({b});
+  way["leisure"="nature_reserve"]({b});
+  relation["leisure"="nature_reserve"]({b});
+  way["boundary"="protected_area"]({b});
+  relation["boundary"="protected_area"]({b});
 """
 
 _POINT_QUERY = """
@@ -345,6 +353,12 @@ _POINT_QUERY = """
   way["amenity"~"^(shelter|parking|ranger_station|toilets)$"]({b});
   way["tourism"~"^(alpine_hut|wilderness_hut|camp_site|viewpoint)$"]({b});
   way["highway"="trailhead"]({b});
+  node["barrier"="gate"]({b});
+  node["natural"~"^(rock|stone)$"]({b});
+  way["natural"="rock"]({b});
+  node["leisure"="picnic_table"]({b});
+  nwr["tourism"="picnic_site"]({b});
+  node["historic"]({b});
 """
 
 _SAC_LABELS = {
@@ -422,6 +436,23 @@ def _classify(tags: Dict[str, str]) -> Optional[str]:
     nat = tags.get("natural", "")
     if nat in ("water", "cliff", "bare_rock", "scree", "wetland", "glacier", "peak", "saddle", "spring"):
         return nat
+    if nat in ("rock", "stone"):
+        return "rock"
+    # Land cover and protected land (New England woods are mapped this way rather than with
+    # alpine features): forest vs open ground, and reserves / conservation land
+    if tags.get("leisure") == "nature_reserve" or tags.get("boundary") == "protected_area" \
+            or tags.get("landuse") == "conservation":
+        return "reserve"
+    if nat == "wood" or tags.get("landuse") == "forest":
+        return "forest"
+    if nat in ("scrub", "heath", "grassland") or tags.get("landuse") in ("meadow", "grass", "farmland", "orchard"):
+        return "open"
+    if tags.get("barrier") == "gate":
+        return "gate"
+    if tags.get("leisure") == "picnic_table" or tags.get("tourism") == "picnic_site":
+        return "picnic"
+    if tags.get("historic"):
+        return "historic"
     if nat == "volcano":
         return "peak"
     if nat == "cave_entrance":
@@ -487,6 +518,16 @@ def _info(kind: str, tags: Dict[str, str]) -> str:
         bits.append(f"height {tags['height']} m")
     if kind == "aerialway":
         bits.append(tags.get("aerialway", "").replace("_", " "))
+    if kind == "historic":
+        bits.append(tags["historic"].replace("_", " "))
+        if tags.get("description"):
+            bits.append(tags["description"])
+    if kind == "reserve" and tags.get("operator"):
+        bits.append(tags["operator"])
+    if kind == "reserve" and tags.get("access") in ("no", "private"):
+        bits.append("no public access")
+    if kind == "gate" and tags.get("access") in ("no", "private"):
+        bits.append("closed to the public")
     return "; ".join(b for b in bits if b)[:160]
 
 
@@ -555,10 +596,11 @@ def build_features(elements: Sequence[Dict[str, Any]], mid_lat: float, simplify_
             pts = [(float(g["lon"]), float(g["lat"])) for g in geom]
             if len(pts) < 2:
                 continue
-            is_area = kind in ("water", "bare_rock", "scree", "wetland", "glacier") and pts[0] == pts[-1]
-            if kind in ("water", "bare_rock", "scree", "wetland", "glacier") and not is_area:
-                # Area way cut by the bbox: keep only water, as a shoreline
-                if kind != "water":
+            area_kinds = ("water", "bare_rock", "scree", "wetland", "glacier", "forest", "open", "reserve")
+            is_area = kind in area_kinds and pts[0] == pts[-1]
+            if kind in area_kinds and not is_area:
+                # Area way cut by the bbox: keep water as a shoreline and reserves as a boundary line
+                if kind not in ("water", "reserve"):
                     continue
             coords = finish(pts)
             if len(coords) >= 2:

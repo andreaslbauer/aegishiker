@@ -21,7 +21,7 @@ from src.core.map_details import enrich_pack  # noqa: E402
 from src.hiking.models import DestinationPack  # noqa: E402
 
 PACKS_DIR = REPO_ROOT / "data" / "packs"
-DETAIL_VERSION_SUFFIX = "-map3"
+DETAIL_VERSION_SUFFIX = "-map4"
 TRAIL_SPECS = REPO_ROOT / "data" / "osm_trails.json"
 CATALOG = REPO_ROOT / "data" / "destinations_catalog.json"
 
