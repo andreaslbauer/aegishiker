@@ -30,7 +30,9 @@
     {"id": "wmnf_osm_webster_jackson", "osm_name": "Webster-Jackson Trail", "code": "WMNF-WJ", "tags": ["summit", "4000_footer", "crawford_notch"]},
     {"id": "wmnf_osm_arethusa_falls", "osm_name": "Arethusa Falls Trail", "code": "WMNF-AF", "tags": ["waterfall", "family"]},
     {"id": "wmnf_osm_zeacliff", "osm_name": "Zeacliff Trail", "code": "WMNF-ZC", "tags": ["views", "steep"]},
-    {"id": "wmnf_osm_nelson_crag", "osm_name": "Nelson Crag Trail", "code": "WMNF-NC", "tags": ["alpine", "mount_washington", "quiet"]}
+    {"id": "wmnf_osm_nelson_crag", "osm_name": "Nelson Crag Trail", "code": "WMNF-NC", "tags": ["alpine", "mount_washington", "quiet"]},
+    {"id": "wmnf_osm_howker_ridge", "osm_name": "Howker Ridge Trail", "code": "WMNF-HK", "tags": ["presidentials", "mount_madison", "alpine", "quiet"], "note": "Long, rugged ridge to Mount Madison over the Howks; above treeline on the upper ridge."},
+    {"id": "wmnf_osm_flume_slide", "osm_name": "Flume Slide Trail", "code": "WMNF-FS", "tags": ["slide", "steep", "franconia_notch"], "note": "Very steep, often wet ledges on the old slide: much easier going up than down."}
   ],
   "mount_monadnock": {
     "all_named": true,

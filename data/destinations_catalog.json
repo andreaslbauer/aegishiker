@@ -8,16 +8,16 @@
       "state_or_region": "New Hampshire (White Mountain National Forest)",
       "agency": "USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
       "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
-      "summary": "Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts across Franconia Ridge and the Presidential Range (Mt. Washington).",
+      "summary": "Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts across Franconia Ridge and the Presidential Range (Mt. Washington to Mt. Madison).",
       "bbox": [
         -71.71,
-        44.125,
+        44.095,
         -71.24,
-        44.285
+        44.385
       ],
       "base_ele_m": 520.0,
       "max_ele_m": 1917.0,
-      "trail_count": 37,
+      "trail_count": 39,
       "poi_count": 9,
       "bundled_file": "packs/white_mountains_nh.json"
     },
