@@ -156,6 +156,12 @@ class ExplorePanel(QWidget):
         dest_id = self.dest_combo.currentData()
         if dest_id:
             self.app_state.set_active_destination(str(dest_id))
+            dest = self.app_state.get_active_destination()
+            if dest:
+                self.map_canvas.fit_when_shown([
+                    (dest.min_lat, dest.min_lon),
+                    (dest.max_lat, dest.max_lon),
+                ])
 
     def refresh_trails(self) -> None:
         dest = self.app_state.get_active_destination()

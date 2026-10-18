@@ -33,3 +33,30 @@ def test_compose_button_preselects_starting_trail(seeded_db: Database, tmp_path:
     assert len(seeded_db.list_routes()) == routes_before, "no throwaway route is saved"
     win.hide()
     win.deleteLater()
+
+
+def test_selecting_region_fits_map_to_destination(seeded_db: Database, tmp_path: Path, monkeypatch) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.main_window import MainWindow
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    win = MainWindow(app_state=state)
+    win.show()
+    explore = win.explore_panel
+    destination = next(d for d in seeded_db.list_destinations() if d.id != state.active_destination_id)
+    fitted = []
+    monkeypatch.setattr(explore.map_canvas, "fit_when_shown", lambda coords: fitted.append(coords))
+
+    explore.dest_combo.setCurrentIndex(explore.dest_combo.findData(destination.id))
+    app.processEvents()
+
+    assert state.active_destination_id == destination.id
+    assert fitted == [[
+        (destination.min_lat, destination.min_lon),
+        (destination.max_lat, destination.max_lon),
+    ]]
+    win.hide()
+    win.deleteLater()
