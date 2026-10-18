@@ -22,7 +22,7 @@ JUNCTION_M = 25.0  # trail vertices this close are treated as the same junction
 END_JUNCTION_M = 75.0
 MIN_LEG_M = 40.0  # ignore stubs shorter than this
 CLOSE_LOOP_M = 60.0  # back within this distance of the start = loop complete
-FORK_MIN_ALONG_M = 60.0  # forks right where the segment began are "a different start": use Undo
+FORK_MIN_ALONG_M = END_JUNCTION_M + 25.0  # forks right where the segment began are "a different start": use Undo
 _CELL_DEG = 0.0005  # ~40-55 m grid cells for the vertex index
 
 Place = Tuple[str, float, float]  # (name, lon, lat)
