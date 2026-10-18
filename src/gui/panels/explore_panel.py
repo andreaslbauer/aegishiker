@@ -199,11 +199,11 @@ class ExplorePanel(QWidget):
         self.map_canvas.excluded_conditions = {c.value for c in excluded}
         self.map_canvas.units = "metric" if unit == "metric" else "us"
         self.map_canvas.sync_basemap(self.app_state.db, self.app_state.active_destination_id)
-        self.map_canvas.set_scene_data(
-            trails=raw_trails,
-            pois=pois,
-            route=self.app_state.get_active_route(),
-        )
+        # A route from another region would stretch the map's extent across both regions
+        route = self.app_state.get_active_route()
+        if route is not None and route.pack_id != self.app_state.active_destination_id:
+            route = None
+        self.map_canvas.set_scene_data(trails=raw_trails, pois=pois, route=route)
 
     def _fit_name_rows(self) -> None:
         """Size rows so long trail names wrap onto extra lines instead of being cut off.

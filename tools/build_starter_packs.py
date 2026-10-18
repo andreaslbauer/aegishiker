@@ -801,7 +801,8 @@ def build_mount_monadnock() -> DestinationPack:
 
 def build_fitchburg_state_forest() -> DestinationPack:
     """Fitchburg State Forest (MA) with the adjoining Pearl Hill State Park, Willard Brook State Forest
-    and Table Rock Conservation Area. Trails come from OpenStreetMap (data/osm_trails.json)."""
+    and Table Rock Conservation Area, plus Leominster State Forest (Crow Hills) to the south, linked by
+    the Midstate Trail. Trails come from OpenStreetMap (data/osm_trails.json)."""
     pid = "fitchburg_state_forest"
     pois = [
         POI(id="poi_fsf_center", pack_id=pid, name="Fitchburg State Forest", kind="junction", lat=42.62592, lon=-71.77174, ele_m=171.0, note="Centre of the state forest (Fitchburg / Lunenburg / Townsend)"),
@@ -814,16 +815,24 @@ def build_fitchburg_state_forest() -> DestinationPack:
         POI(id="poi_fsf_damon_camp", pack_id=pid, name="Damon Pond Campground", kind="camp", lat=42.66036, lon=-71.78972, ele_m=150.0, note="Willard Brook State Forest campground"),
         POI(id="poi_fsf_willard_hq", pack_id=pid, name="Willard Brook Headquarters", kind="ranger", lat=42.67344, lon=-71.7733, ele_m=130.0, note="DCR headquarters, Route 119, Townsend"),
         POI(id="poi_fsf_trap_falls", pack_id=pid, name="Trap Falls Parking", kind="trailhead", lat=42.67221, lon=-71.77579, ele_m=135.0, note="Trap Falls on Willard Brook, a short walk from the lot"),
+        # Leominster State Forest
+        POI(id="poi_lsf_crow_hills", pack_id=pid, name="Crow Hills", kind="peak", lat=42.5263, lon=-71.8607, ele_m=360.0, note="Twin rocky summits above Crow Hill Pond, Leominster State Forest"),
+        POI(id="poi_lsf_crow_ledges", pack_id=pid, name="Crow Hill Ledges", kind="viewpoint", lat=42.5193, lon=-71.8593, ele_m=330.0, note="Cliffs with views east; popular rock-climbing area. Steep scramble on the Crow Hill Trail"),
+        POI(id="poi_lsf_crow_parking", pack_id=pid, name="Crow Hill Pond Parking", kind="trailhead", lat=42.5186, lon=-71.8565, ele_m=290.0, note="Route 31 lot for Crow Hill Ledges and Crow Hill Pond"),
+        POI(id="poi_lsf_crow_pond", pack_id=pid, name="Crow Hill Pond", kind="water", lat=42.5170, lon=-71.8553, ele_m=285.0, note="Swimming beach (Lower Crow Hill Pond)"),
+        POI(id="poi_lsf_office", pack_id=pid, name="Leominster State Forest Headquarters", kind="ranger", lat=42.5331, lon=-71.8554, ele_m=300.0, note="DCR office, Route 31, Princeton / Westminster"),
+        POI(id="poi_lsf_rocky_pond", pack_id=pid, name="Rocky Pond", kind="water", lat=42.5150, lon=-71.8470, ele_m=290.0),
     ]
     return DestinationPack(
         id=pid,
-        name="Fitchburg State Forest",
-        state_or_region="Massachusetts (Fitchburg, Lunenburg & Townsend — with Pearl Hill State Park & Willard Brook)",
+        name="Fitchburg & Leominster State Forests",
+        state_or_region="Massachusetts (Fitchburg, Townsend, Westminster & Princeton — with Pearl Hill, Willard Brook & Crow Hills)",
         agency="MA DCR, USGS 3DEP & OpenStreetMap Contributors",
         summary="Rolling hemlock and pine woods, brooks and ponds north of Fitchburg: Pearl Hill, Table Rock, "
-                "Trap Falls and a dense web of shared hiking and mountain-bike trails.",
-        min_lat=42.600, max_lat=42.678, min_lon=-71.800, max_lon=-71.730,
-        base_ele_m=120.0, max_ele_m=310.0,
+                "Trap Falls and a dense web of shared hiking and mountain-bike trails, linked by the Midstate Trail "
+                "to Leominster State Forest and the Crow Hill Ledges.",
+        min_lat=42.472, max_lat=42.678, min_lon=-71.878, max_lon=-71.730,
+        base_ele_m=120.0, max_ele_m=380.0,
         emergency_contact="911",
         trails=[], pois=pois,
     )
