@@ -1,8 +1,9 @@
 """Destination Pack Explorer & Trail Network Browser panel."""
 from typing import Optional
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QStringListModel, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QCompleter,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -57,6 +58,13 @@ class ExplorePanel(QWidget):
         self.search_edit.setPlaceholderText("🔍  Search trails, peaks, waterfalls, shelters…")
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self.refresh_trails)
+        # Type-ahead: suggest the region's trail names as you type; picking one selects that trail
+        self.trail_completer = QCompleter(QStringListModel(self), self)
+        self.trail_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.trail_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.trail_completer.setMaxVisibleItems(12)
+        self.trail_completer.activated[str].connect(self._on_trail_suggestion)
+        self.search_edit.setCompleter(self.trail_completer)
         top_bar.addWidget(self.search_edit, 2)
         filters.body.addLayout(top_bar)
         chip_row = QHBoxLayout()
@@ -153,7 +161,18 @@ class ExplorePanel(QWidget):
                 active_idx = idx
         self.dest_combo.setCurrentIndex(active_idx)
         self.dest_combo.blockSignals(False)
+        names = sorted({t.name for t in self.app_state.get_active_trails()}, key=str.casefold)
+        self.trail_completer.model().setStringList(names)
         self.refresh_trails()
+
+    def _on_trail_suggestion(self, name: str) -> None:
+        """A type-ahead suggestion was picked: show and select that trail (zooms the map to it)."""
+        self.search_edit.setText(name)
+        for row, seg in enumerate(getattr(self, "_filtered_trails", [])):
+            if seg.name == name:
+                self.trail_table.selectRow(row)
+                self.trail_table.scrollToItem(self.trail_table.item(row, 0))
+                break
 
     def _on_dest_combo_changed(self) -> None:
         dest_id = self.dest_combo.currentData()

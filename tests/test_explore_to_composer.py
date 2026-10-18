@@ -95,3 +95,27 @@ def test_clicking_builder_trail_zooms_map(seeded_db: Database, tmp_path: Path) -
     assert visible_span() != after_cand, "clicking a leg of the hike zooms to that leg"
     win.hide()
     win.deleteLater()
+
+
+def test_trail_search_type_ahead(seeded_db: Database, tmp_path: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.panels.explore_panel import ExplorePanel
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    state.set_active_destination("white_mountains_nh")
+    explore = ExplorePanel(app_state=state)
+    completer = explore.trail_completer
+
+    completer.setCompletionPrefix("crawf")  # matches anywhere in the name, any case
+    suggestions = [completer.completionModel().index(i, 0).data() for i in range(completer.completionCount())]
+    assert "Crawford Path" in suggestions
+
+    explore._on_trail_suggestion("Crawford Path")
+    app.processEvents()
+    assert explore.search_edit.text() == "Crawford Path"
+    assert explore._selected_segment().name == "Crawford Path"
+    assert explore.trail_table.selectionModel().selectedRows(), "the picked trail is selected"
+    explore.deleteLater()
