@@ -7,7 +7,7 @@ or with 'End Here'. The growing hike is shown live on the Composer's map, stats 
 from typing import List, Optional
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QResizeEvent
+from PySide6.QtGui import QCursor, QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -207,43 +208,64 @@ class SegmentBuilder(QWidget):
     # ── map picking ──────────────────────────────────────────────────────
 
     def pick_at(self, lat: float, lon: float, tol_m: float) -> bool:
-        """Handle a map click. Returns True when it picked something (or should not trace)."""
+        """Handle a map click. Returns True when the click belongs to the builder (no tracing)."""
         if not self.pick_chk.isChecked() or not self.chain:
             return False
         if self.has_draft():
             if self.chain.complete:
                 self.app_state.status_message.emit("The hike is complete: save it, or Undo to keep building.")
                 return True
-            idx = self.chain.candidate_index_at(self._candidates, lat, lon, tol_m)
-            if idx is None:
+            hits = self.chain.candidates_at(self._candidates, lat, lon, tol_m)
+            if not hits:
                 self.app_state.status_message.emit("Click one of the dashed yellow trail options to add it.")
                 return True
-            self.cand_list.setCurrentRow(idx)
-            self.add_selected()
+            idx = hits[0] if len(hits) == 1 else self._choose(
+                [(self._candidate_text(self._candidates[h], self._unit()).split("\n")[0], h) for h in hits]
+            )
+            if idx is not None:
+                self.cand_list.setCurrentRow(idx)
+                self.add_selected()
             return True
-        hit = self.chain.trail_at(lat, lon, tol_m)
-        if hit is None:
+        trails = self.chain.trails_at(lat, lon, tol_m)
+        if not trails:
             self.app_state.status_message.emit("Click on a trail to start the hike there.")
             return True
-        trail, reverse = hit
-        self.start_combo.setCurrentIndex(self.start_combo.findData(trail.id))
-        self.reverse_chk.setChecked(reverse)
-        self.start_chain()
+        pick = 0 if len(trails) == 1 else self._choose(
+            [(f"Start on {t.name}", n) for n, (t, _rev, _d) in enumerate(trails)]
+        )
+        if pick is not None:
+            trail, reverse, _d = trails[pick]
+            self.start_combo.setCurrentIndex(self.start_combo.findData(trail.id))
+            self.reverse_chk.setChecked(reverse)
+            self.start_chain()
         return True
 
+    def _choose(self, options: List[tuple]) -> Optional[int]:
+        """Several trails share the clicked spot: let the user say which one is meant."""
+        menu = QMenu(self)
+        menu.addSection("Several trails here:")
+        actions = {menu.addAction(label): value for label, value in options}
+        chosen = menu.exec(QCursor.pos())
+        return actions.get(chosen) if chosen else None
+
     def hover_at(self, lat: float, lon: float, tol_m: float) -> None:
-        """Preview the trail or option under the cursor."""
+        """Preview the trail or option under the cursor and say what a click would do."""
         if not self.pick_chk.isChecked() or not self.chain:
             return
         if self.has_draft():
             if self.chain.complete:
                 return
-            idx = self.chain.candidate_index_at(self._candidates, lat, lon, tol_m)
-            if idx is not None and idx != self.cand_list.currentRow():
-                self.cand_list.setCurrentRow(idx)
-            return
-        hit = self.chain.trail_at(lat, lon, tol_m)
-        self.preview_changed.emit([(p[1], p[0]) for p in hit[0].coords_3d] if hit else None)
+            hits = self.chain.candidates_at(self._candidates, lat, lon, tol_m)
+            if hits and hits[0] != self.cand_list.currentRow():
+                self.cand_list.setCurrentRow(hits[0])
+            msg = (f"Click to add: {self._candidates[hits[0]].trail_name}" + (f" (+{len(hits) - 1} more here)" if len(hits) > 1 else "")) if hits else ""
+        else:
+            trails = self.chain.trails_at(lat, lon, tol_m)
+            self.preview_changed.emit([(p[1], p[0]) for p in trails[0][0].coords_3d] if trails else None)
+            msg = (f"Click to start on {trails[0][0].name}" + (f" (+{len(trails) - 1} more here)" if len(trails) > 1 else "")) if trails else ""
+        if msg != getattr(self, "_hover_msg", ""):
+            self._hover_msg = msg
+            self.app_state.status_message.emit(msg)
 
     def _on_name_edited(self, _text: str) -> None:
         self._name_edited = True

@@ -494,7 +494,8 @@ class MapCanvas(BaseChartWidget):
                 color.setAlpha(65)
                 pen = self._cosmetic(color, 1.5, Qt.PenStyle.DashLine)
             else:
-                color.setAlpha(200)
+                # While picking next segments, fade the network so the options stand out
+                color.setAlpha(70 if self.candidate_paths else 200)
                 pen = self._cosmetic(color, 3.0)
             painter.setPen(pen)
             path = QPainterPath()
@@ -682,13 +683,15 @@ class MapCanvas(BaseChartWidget):
             painter.save()
             painter.setTransform(xf)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(self._cosmetic(QColor(244, 208, 63, 150), 2.2, Qt.PenStyle.DashLine))
+            options = QPainterPath()
             for pts in self.candidate_paths:
-                path = QPainterPath()
-                path.moveTo(self._w(pts[0][1], pts[0][0]))
+                options.moveTo(self._w(pts[0][1], pts[0][0]))
                 for lat, lon in pts[1:]:
-                    path.lineTo(self._w(lon, lat))
-                painter.drawPath(path)
+                    options.lineTo(self._w(lon, lat))
+            painter.setPen(self._cosmetic(QColor(11, 22, 16, 170), 5.0))
+            painter.drawPath(options)
+            painter.setPen(self._cosmetic(QColor(244, 208, 63, 220), 2.6, Qt.PenStyle.DashLine))
+            painter.drawPath(options)
             painter.restore()
         if len(self.preview_coords) < 2:
             return

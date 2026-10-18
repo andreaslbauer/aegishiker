@@ -261,32 +261,29 @@ class SegmentChain:
             best = min(best, math.hypot(ax + t * dx, ay + t * dy))
         return best
 
-    def trail_at(self, lat: float, lon: float, tol_m: float) -> Optional[Tuple[TrailSegment, bool]]:
-        """Nearest trail within `tol_m` and whether to walk it reversed (start at the end nearer
-        the click)."""
-        best, best_d = None, tol_m
+    def trails_at(self, lat: float, lon: float, tol_m: float) -> List[Tuple[TrailSegment, bool, float]]:
+        """Trails within `tol_m` of the point, nearest first, as (trail, reverse, distance).
+        `reverse` starts the trail at the end nearer the click. Trails sharing a stretch of path
+        are all returned so the caller can ask which one is meant."""
+        hits = []
         for t in self.trails:
             if len(t.coords_3d) < 2 or not (t.min_lat - 0.01 <= lat <= t.max_lat + 0.01 and t.min_lon - 0.01 <= lon <= t.max_lon + 0.01):
                 continue
             d = self._dist_to_line_m(lat, lon, t.coords_3d)
-            if d < best_d:
-                best, best_d = t, d
-        if best is None:
-            return None
-        first, last = best.coords_3d[0], best.coords_3d[-1]
-        reverse = haversine_m(lat, lon, last[1], last[0]) < haversine_m(lat, lon, first[1], first[0])
-        return best, reverse
+            if d <= tol_m:
+                first, last = t.coords_3d[0], t.coords_3d[-1]
+                reverse = haversine_m(lat, lon, last[1], last[0]) < haversine_m(lat, lon, first[1], first[0])
+                hits.append((t, reverse, d))
+        return sorted(hits, key=lambda h: h[2])
 
-    def candidate_index_at(self, cands: Sequence[Candidate], lat: float, lon: float, tol_m: float) -> Optional[int]:
-        """Candidate whose segment passes closest to the point (within `tol_m`). Where options
-        overlap, the earlier one in the list (closer to the end of the current segment) wins."""
-        best, best_d = None, tol_m
+    def candidates_at(self, cands: Sequence[Candidate], lat: float, lon: float, tol_m: float) -> List[int]:
+        """Indices of candidates whose segment passes within `tol_m` of the point, nearest first."""
+        hits = []
         for i, c in enumerate(cands):
-            pts = c.leg.coords()
-            d = self._dist_to_line_m(lat, lon, pts)
-            if d < best_d:
-                best, best_d = i, d
-        return best
+            d = self._dist_to_line_m(lat, lon, c.leg.coords())
+            if d <= tol_m:
+                hits.append((d, i))
+        return [i for _d, i in sorted(hits)]
 
     # ── result ────────────────────────────────────────────────────────────
 
