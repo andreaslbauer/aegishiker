@@ -40,11 +40,13 @@ class LibraryPanel(QWidget):
         layout.addWidget(header)
 
         card = Card("Saved routes", margins=(14, 14, 14, 14))
-        self.route_table = QTableWidget(0, 5)
-        self.route_table.setHorizontalHeaderLabels(["Route", "Region", "Distance", "Ascent", "Est. Time"])
+        self.route_table = QTableWidget(0, 7)
+        self.route_table.setHorizontalHeaderLabels(
+            ["Route", "Region", "Distance", "Ascent", "Est. Time", "Hiked", "Last Hiked"]
+        )
         hdr = self.route_table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for c in range(1, 5):
+        for c in range(1, 7):
             hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.route_table.verticalHeader().setVisible(False)
@@ -77,10 +79,14 @@ class LibraryPanel(QWidget):
 
         self.app_state.route_changed.connect(lambda _: self.refresh_all())
         self.app_state.destination_changed.connect(lambda _: self.refresh_all())
+        # A hike was recorded (it becomes the active session), renamed or deleted
+        self.app_state.session_changed.connect(lambda _: self.refresh_all())
+        self.app_state.sessions_changed.connect(self.refresh_all)
         self.refresh_all()
 
     def refresh_all(self) -> None:
         self._routes = self.app_state.db.list_routes()
+        hike_stats = self.app_state.db.route_hike_stats()
         unit = str(self.app_state.settings.get("unit_system", "metric"))
         self.route_table.setRowCount(len(self._routes))
         for idx, r in enumerate(self._routes):
@@ -91,6 +97,9 @@ class LibraryPanel(QWidget):
             self.route_table.setItem(idx, 2, QTableWidgetItem(format_distance(r.distance_m, unit)))
             self.route_table.setItem(idx, 3, QTableWidgetItem(f"+{format_elevation(r.elevation_gain_m, unit)}"))
             self.route_table.setItem(idx, 4, QTableWidgetItem(format_duration_min(r.estimated_duration_min)))
+            times, last = hike_stats.get(r.id, (0, ""))
+            self.route_table.setItem(idx, 5, QTableWidgetItem(f"{times}×" if times else "—"))
+            self.route_table.setItem(idx, 6, QTableWidgetItem(last[:10] if last else "Never"))
 
     def _delete_selected_routes(self) -> None:
         rows = sorted({i.row() for i in self.route_table.selectionModel().selectedRows()})

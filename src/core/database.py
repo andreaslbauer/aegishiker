@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 import sqlite3
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.models import (
@@ -865,6 +865,19 @@ class Database:
                     "SELECT * FROM hike_session ORDER BY started_at DESC"
                 ).fetchall()
             return [self._row_to_session(r) for r in rows]
+
+    def route_hike_stats(self) -> Dict[str, Tuple[int, str]]:
+        """route_id -> (times hiked, started_at of the latest hike), counting recorded hikes only
+        (not planned or still-tracking sessions)."""
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT route_id, COUNT(*), MAX(started_at) FROM hike_session
+                WHERE route_id IS NOT NULL AND status NOT IN ('planned', 'tracking')
+                GROUP BY route_id
+                """
+            ).fetchall()
+            return {r[0]: (r[1], r[2] or "") for r in rows}
 
     def get_telemetry(self, session_id: str) -> List[TelemetryPoint]:
         with self._lock:

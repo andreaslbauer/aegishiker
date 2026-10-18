@@ -110,3 +110,24 @@ def test_reexperience_fills_missing_people(seeded_db: Database, test_settings: S
     assert panel.photo_pins[0].people == ["Alice"]
     assert seeded_db.get_photo_pins(s.id)[0].people == ["Alice"], "persisted"
     assert "Alice" in panel.hike_lbl.text()
+
+
+def test_library_shows_times_hiked_and_last_hiked(seeded_db: Database, test_settings: Settings) -> None:
+    _qt()
+    from src.gui.panels.library_panel import LibraryPanel
+
+    hiked = seeded_db.save_route(ComposedRoute(name="Hiked twice", pack_id="white_mountains_nh"))
+    never = seeded_db.save_route(ComposedRoute(name="Never hiked", pack_id="white_mountains_nh"))
+    _session(seeded_db, "First", "2025-06-01T08:00:00", route=hiked)
+    _session(seeded_db, "Second", "2026-09-14T07:30:00", route=hiked)
+    planned = HikeSession(title="Plan", started_at="2026-12-01T08:00:00", route_id=hiked.id, status="planned")
+    seeded_db.save_session(planned)
+
+    assert seeded_db.route_hike_stats()[hiked.id] == (2, "2026-09-14T07:30:00")
+    assert never.id not in seeded_db.route_hike_stats()
+
+    panel = LibraryPanel(AppState(db=seeded_db, settings=test_settings))
+    rows = {panel.route_table.item(r, 0).text(): r for r in range(panel.route_table.rowCount())}
+    cell = lambda name, col: panel.route_table.item(rows[name], col).text()  # noqa: E731
+    assert (cell("Hiked twice", 5), cell("Hiked twice", 6)) == ("2×", "2026-09-14")
+    assert (cell("Never hiked", 5), cell("Never hiked", 6)) == ("—", "Never")
