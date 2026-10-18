@@ -1,7 +1,6 @@
 """Reusable custom PySide6 widgets for AegisHiker."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -80,6 +79,7 @@ class StatCard(QFrame):
         self.sub_lbl = QLabel(subtitle)
         self.sub_lbl.setObjectName("StatSub")
         # Long values (trail and region names) wrap instead of widening the whole window
+        self.title_lbl.setWordWrap(True)
         self.value_lbl.setWordWrap(True)
         self.sub_lbl.setWordWrap(True)
 
@@ -139,14 +139,6 @@ def add_form_row(form: QFormLayout, text: str, field) -> QLabel:
         label.setMinimumHeight(field.sizeHint().height())  # centre the label on its field
     form.addRow(label, field)
     return label
-
-
-def shrink_combos(root: QWidget, min_chars: int = 12) -> None:
-    """Let every combo box under `root` shrink below its longest entry (the popup still shows
-    full names); by default a combo's minimum width is that of its longest item."""
-    for combo in root.findChildren(QComboBox):
-        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        combo.setMinimumContentsLength(min_chars)
 
 
 def stat_row(*cards: QWidget) -> QHBoxLayout:

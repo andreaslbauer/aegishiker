@@ -48,6 +48,9 @@ class ExplorePanel(QWidget):
         top_bar = QHBoxLayout()
         top_bar.setSpacing(12)
         self.dest_combo = QComboBox()
+        # Entries are "name — region description"; don't let the longest one set the window's minimum width
+        self.dest_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.dest_combo.setMinimumContentsLength(24)
         self.dest_combo.currentIndexChanged.connect(self._on_dest_combo_changed)
         top_bar.addWidget(self.dest_combo, 3)
         self.search_edit = QLineEdit()

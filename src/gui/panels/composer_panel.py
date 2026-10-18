@@ -119,6 +119,8 @@ class ComposerPanel(QWidget):
         pace_title.setObjectName("StatTitle")
         pace_card.body.addWidget(pace_title)
         self.pace_combo = QComboBox()
+        self.pace_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.pace_combo.setMinimumContentsLength(8)
         for model_name in ["naismith", "langmuir", "tobler"]:
             self.pace_combo.addItem(f"{model_name.capitalize()} rule", model_name)
         self.pace_combo.currentIndexChanged.connect(self._recalculate_pace)
