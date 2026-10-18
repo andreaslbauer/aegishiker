@@ -39,13 +39,11 @@ def test_selecting_region_fits_map_to_destination(seeded_db: Database, tmp_path:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
-    from src.gui.main_window import MainWindow
+    from src.gui.panels.explore_panel import ExplorePanel
 
     app = QApplication.instance() or QApplication([])
     state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
-    win = MainWindow(app_state=state)
-    win.show()
-    explore = win.explore_panel
+    explore = ExplorePanel(app_state=state)
     destination = next(d for d in seeded_db.list_destinations() if d.id != state.active_destination_id)
     fitted = []
     monkeypatch.setattr(explore.map_canvas, "fit_when_shown", lambda coords: fitted.append(coords))
@@ -58,5 +56,4 @@ def test_selecting_region_fits_map_to_destination(seeded_db: Database, tmp_path:
         (destination.min_lat, destination.min_lon),
         (destination.max_lat, destination.max_lon),
     ]]
-    win.hide()
-    win.deleteLater()
+    explore.deleteLater()
