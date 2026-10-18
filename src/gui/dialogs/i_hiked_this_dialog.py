@@ -2,13 +2,15 @@
 1) Confirms region & traced trail route
 2) Persists a completed HikeSession record
 3) Discovers AegisPhotoVoyager DB and matches geotagged photos along the trail corridor
-4) Generates and persists an interactive hike replay map (JSON + standalone HTML)
+4) Splits the photos by the day they were taken: each day becomes its own hike (the trail may
+   have been hiked several times)
+5) Generates and persists an interactive hike replay map per hike (JSON + standalone HTML)
 """
 from datetime import date, datetime
 from typing import List, Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QDoubleSpinBox,
     QFileDialog,
@@ -17,6 +19,9 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -29,6 +34,7 @@ from src.core import paths
 from src.gui.app_state import AppState
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import ComposedRoute, HikeSession, TrailPhotoPin
+from src.hiking.hike_days import HikeDay, build_day_session, group_pins_by_day
 from src.hiking.units import format_distance
 from src.gui.busy import busy, run_in_background
 
@@ -44,10 +50,12 @@ class IHikedThisDialog(QDialog):
         self.app_state = app_state
         self.route = route
         self.matched_pins: List[TrailPhotoPin] = []
-        self.created_session: Optional[HikeSession] = None
+        self.day_groups: List[HikeDay] = []
+        self.created_sessions: List[HikeSession] = []
+        self.created_session: Optional[HikeSession] = None  # most recent of created_sessions
 
         self.setWindowTitle("I Hiked This Trail — Log Hike & Match Voyager Photos")
-        self.resize(740, 560)
+        self.resize(820, 680)
 
         layout = QVBoxLayout(self)
 
@@ -64,8 +72,7 @@ class IHikedThisDialog(QDialog):
         form = QFormLayout()
         self.name_edit = QLineEdit(route.name or "Traced Trail Hike")
         self.date_edit = QLineEdit(date.today().isoformat())
-        self.filter_date_chk = QCheckBox("Only match photos taken on this date (uncheck to match any date along corridor)")
-        self.filter_date_chk.setChecked(False)
+        self.date_edit.setToolTip("Used for the hike when no photo with a date is matched")
 
         self.corridor_spin = QDoubleSpinBox()
         self.corridor_spin.setRange(25.0, 2500.0)
@@ -78,8 +85,7 @@ class IHikedThisDialog(QDialog):
         self.notes_edit.setMaximumHeight(75)
 
         form.addRow("Hike Title:", self.name_edit)
-        form.addRow("Date Hiked (YYYY-MM-DD):", self.date_edit)
-        form.addRow("Date Filter:", self.filter_date_chk)
+        form.addRow("Date Hiked (if no dated photos):", self.date_edit)
         form.addRow("GPS Corridor Radius:", self.corridor_spin)
         form.addRow("Hike Notes:", self.notes_edit)
         layout.addLayout(form)
@@ -98,17 +104,25 @@ class IHikedThisDialog(QDialog):
         layout.addLayout(voyager_row)
 
         # Matched photo table
-        self.photo_table = QTableWidget(0, 4)
-        self.photo_table.setHorizontalHeaderLabels(["Caption / File", "Trail Mark", "Coordinates", "Voyager AI / Tags"])
+        self.photo_table = QTableWidget(0, 5)
+        self.photo_table.setHorizontalHeaderLabels(["Taken", "Caption / File", "Trail Mark", "Coordinates", "Voyager AI / Tags"])
         self.photo_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.photo_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.photo_table, 1)
+
+        # One hike per day the photos were taken
+        self.days_lbl = QLabel()
+        layout.addWidget(self.days_lbl)
+        self.days_list = QListWidget()
+        self.days_list.setMaximumHeight(110)
+        layout.addWidget(self.days_list)
 
         # Bottom action buttons
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
-        self.save_btn = QPushButton("Save Completed Hike & Generate Interactive Map")
+        self.save_btn = QPushButton("Save Completed Hike(s) & Generate Interactive Maps")
         self.save_btn.setObjectName("PrimaryButton")
         self.save_btn.clicked.connect(self.finalize_hike)
         btn_row.addWidget(cancel_btn)
@@ -144,7 +158,6 @@ class IHikedThisDialog(QDialog):
             self.scan_voyager_photos()
 
     def scan_voyager_photos(self) -> None:
-        date_prefix = self.date_edit.text().strip() if self.filter_date_chk.isChecked() else None
         corridor_m = float(self.corridor_spin.value())
         self.matched_pins = run_in_background(
             self,
@@ -154,60 +167,102 @@ class IHikedThisDialog(QDialog):
             route=self.route,
             session_id=None,
             max_corridor_m=corridor_m,
-            date_prefix=date_prefix or None,
+            date_prefix=None,
         )
+        self.matched_pins.sort(key=lambda p: (p.date_taken or 0, p.distance_along_m))
         self.photo_table.setRowCount(len(self.matched_pins))
         for idx, pin in enumerate(self.matched_pins):
-            self.photo_table.setItem(idx, 0, QTableWidgetItem(pin.caption))
-            self.photo_table.setItem(idx, 1, QTableWidgetItem(f"{pin.distance_along_route_m / 1000.0:.2f} km"))
-            self.photo_table.setItem(idx, 2, QTableWidgetItem(f"{pin.lat:.4f}, {pin.lon:.4f}"))
+            taken = datetime.fromtimestamp(pin.date_taken).strftime("%Y-%m-%d %H:%M") if pin.date_taken else "no date"
+            self.photo_table.setItem(idx, 0, QTableWidgetItem(taken))
+            self.photo_table.setItem(idx, 1, QTableWidgetItem(pin.caption))
+            self.photo_table.setItem(idx, 2, QTableWidgetItem(f"{pin.distance_along_route_m / 1000.0:.2f} km"))
+            self.photo_table.setItem(idx, 3, QTableWidgetItem(f"{pin.lat:.4f}, {pin.lon:.4f}"))
             meta = pin.ai_summary or ", ".join(pin.people_names + pin.tags) or pin.mood or "Geotagged match"
-            self.photo_table.setItem(idx, 3, QTableWidgetItem(meta))
+            self.photo_table.setItem(idx, 4, QTableWidgetItem(meta))
+        self._populate_days()
+
+    def _unit(self) -> str:
+        return str(self.app_state.settings.get("unit_system", "metric"))
+
+    def _populate_days(self) -> None:
+        self.day_groups = group_pins_by_day(self.matched_pins)
+        self.days_list.clear()
+        unit = self._unit()
+        for group in self.day_groups:
+            if group.day is None:
+                label = f"Photos without a date ({len(group.pins)}) → hike on the date entered above"
+            else:
+                span = f"{group.first:%H:%M}–{group.last:%H:%M}" if group.first and group.last else ""
+                lo, hi = group.along_range_m
+                cov = group.coverage(self.route.distance_m)
+                label = (
+                    f"{group.day:%a %b %d, %Y} · {len(group.pins)} photo{'s' if len(group.pins) != 1 else ''} · {span}"
+                    f" · photos along {format_distance(lo, unit)}–{format_distance(hi, unit)}"
+                    + (" (part of the route)" if len(group.pins) >= 2 and cov < 0.8 else "")
+                )
+            item = QListWidgetItem(label, self.days_list)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)
+        dated = sum(1 for g in self.day_groups if g.day is not None)
+        if dated > 1:
+            self.days_lbl.setText(f"<b>Photos from {dated} different days</b> — each checked day is saved as its own hike:")
+        elif dated == 1:
+            self.days_lbl.setText("<b>Hike date from the photos:</b>")
+        else:
+            self.days_lbl.setText("No dated photos matched — the hike is saved on the date entered above.")
+        self.days_list.setVisible(bool(self.day_groups))
+
+    def _selected_groups(self) -> List[HikeDay]:
+        return [
+            g for i, g in enumerate(self.day_groups)
+            if self.days_list.item(i) and self.days_list.item(i).checkState() == Qt.CheckState.Checked
+        ]
 
     def finalize_hike(self) -> None:
-        with busy(self, "Saving hike and building replay map…", title="Saving Hike"):
+        groups = self._selected_groups() if self.day_groups else [HikeDay(day=None)]
+        if not groups:
+            QMessageBox.information(self, "No Hike Selected", "Check at least one day to save as a hike.")
+            return
+        try:
+            fallback = date.fromisoformat(self.date_edit.text().strip())
+        except ValueError:
+            fallback = date.today()
+        unit = self._unit()
+        with busy(self, "Saving hike(s) and building replay maps…", title="Saving Hike", steps=len(groups)) as b:
             self.route.name = self.name_edit.text().strip() or self.route.name
             self.app_state.db.upsert_route(self.route)
-
             dest = self.app_state.db.get_destination(self.route.destination_id)
             dest_name = dest.name if dest else self.route.destination_id
+            notes = self.notes_edit.toPlainText().strip()
 
-            hiked_date = self.date_edit.text().strip() or datetime.now().date().isoformat()
-            session = HikeSession(
-                route_id=self.route.id,
-                destination_id=self.route.destination_id,
-                started_at=f"{hiked_date}T08:00:00",
-                ended_at=f"{hiked_date}T13:00:00",
-                status="traced_hiked",
-                actual_distance_m=self.route.distance_m,
-                actual_elevation_gain_m=self.route.elevation_gain_m,
-                actual_duration_min=self.route.estimated_duration_min,
-                notes=self.notes_edit.toPlainText().strip(),
-            )
+            for group in groups:
+                day = group.day or fallback
+                session = build_day_session(
+                    self.route, group, title=f"{self.route.name} — {day:%b %d, %Y}", notes=notes,
+                    fallback_day=fallback, units_fmt=lambda m: format_distance(m, unit),
+                )
+                session.stats.photo_count = len(group.pins)
+                for pin in group.pins:
+                    pin.session_id = session.id
+                    pin.route_id = self.route.id
+                map_data = build_interactive_map_data(
+                    route=self.route, session=session, photos=group.pins, destination_name=dest_name,
+                )
+                session.interactive_map_data = map_data
+                self.app_state.db.save_session(session)
+                for pin in group.pins:
+                    self.app_state.db.save_photo_pin(pin)
+                export_interactive_hike_html(map_data, paths.get_hike_maps_dir() / f"{session.id}.html")
+                self.created_sessions.append(session)
+                b.step(f"Saved hike on {day:%b %d, %Y}")
 
-            for pin in self.matched_pins:
-                pin.session_id = session.id
-                pin.route_id = self.route.id
-            map_data = build_interactive_map_data(
-                route=self.route,
-                session=session,
-                photos=self.matched_pins,
-                destination_name=dest_name,
-            )
-            session.interactive_map_data = map_data
-            self.app_state.db.save_session(session)
-
-            for pin in self.matched_pins:
-                self.app_state.db.save_photo_pin(pin)
-
-            html_out = paths.get_hike_maps_dir() / f"{session.id}.html"
-            export_interactive_hike_html(map_data, html_out)
-
-            self.created_session = session
+            self.created_sessions.sort(key=lambda x: x.started_at)
+            self.created_session = self.created_sessions[-1]
             self.app_state.set_active_route(self.route.id)
-            self.app_state.set_active_session(session.id)
+            self.app_state.set_active_session(self.created_session.id)
+            n_photos = sum(len(g.pins) for g in groups)
             self.app_state.status_message.emit(
-                f"Saved completed hike '{self.route.name}' with {len(self.matched_pins)} matched photos!"
+                f"Saved {len(self.created_sessions)} hike{'s' if len(self.created_sessions) != 1 else ''} of "
+                f"'{self.route.name}' with {n_photos} matched photos!"
             )
         self.accept()
-
