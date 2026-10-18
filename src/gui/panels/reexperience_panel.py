@@ -147,6 +147,7 @@ class ReexperiencePanel(QWidget):
 
         self.thumb_lbl = QLabel("Select or scrub to a photo pin along the trail")
         self.thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.thumb_lbl.setWordWrap(True)
         self.thumb_lbl.setMinimumHeight(150)
         self.thumb_lbl.setStyleSheet("background-color: #0B1610; border: 1px solid #223829; border-radius: 10px;")
         right_col.addWidget(self.thumb_lbl)

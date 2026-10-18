@@ -44,6 +44,7 @@ class PhoneSyncPanel(QWidget):
         qr_col = qr_frame.body
         self.qr_lbl = QLabel("Start the LAN companion server to generate a pairing QR code")
         self.qr_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr_lbl.setWordWrap(True)
         self.qr_lbl.setMinimumSize(240, 240)
         qr_col.addWidget(self.qr_lbl)
 
