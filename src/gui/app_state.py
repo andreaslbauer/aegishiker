@@ -51,31 +51,47 @@ class AppState(QObject):
         self.active_route_id: Optional[str] = None
         self.active_session_id: Optional[str] = None
 
+        # Restore last session's region / route / hike when they still exist
         destinations = self.db.list_destinations()
         if destinations:
-            # Prefer New Hampshire White Mountains or first available pack
-            nh = next((d for d in destinations if d.id == "white_mountains_nh"), destinations[0])
-            self.active_destination_id = nh.id
-            self.trail_server.active_destination_id = nh.id
+            last_pack = str(self.settings.get("active_pack_id", "") or "")
+            chosen = (
+                next((d for d in destinations if d.id == last_pack), None)
+                or next((d for d in destinations if d.id == "white_mountains_nh"), None)
+                or destinations[0]
+            )
+            self.active_destination_id = chosen.id
+            self.trail_server.active_destination_id = chosen.id
 
         routes = self.db.list_routes(self.active_destination_id)
         if routes:
-            self.active_route_id = routes[0].id
-            self.trail_server.active_route_id = routes[0].id
+            last_route = str(self.settings.get("last_route_id", "") or "")
+            route = next((r for r in routes if r.id == last_route), routes[0])
+            self.active_route_id = route.id
+            self.trail_server.active_route_id = route.id
 
         sessions = self.db.list_sessions()
         if sessions:
-            self.active_session_id = sessions[0].id
+            last_session = str(self.settings.get("last_session_id", "") or "")
+            self.active_session_id = next((x.id for x in sessions if x.id == last_session), sessions[0].id)
+
+    def _remember(self, key: str, value: str) -> None:
+        """Persist a selection right away so it survives a crash as well as a normal quit."""
+        if self.settings.get(key) != value:
+            self.settings.set(key, value)
+            self.settings.save()
 
     def set_active_destination(self, destination_id: str) -> None:
         if not destination_id:
             return
         self.active_destination_id = destination_id
         self.trail_server.active_destination_id = destination_id
+        self._remember("active_pack_id", destination_id)
         routes = self.db.list_routes(destination_id)
         if routes:
             self.active_route_id = routes[0].id
             self.trail_server.active_route_id = routes[0].id
+            self._remember("last_route_id", routes[0].id)
         dest = self.db.get_destination(destination_id)
         with busy(None, f"Loading {dest.name if dest else destination_id}…", title="Loading Region", steps=2) as b:
             self.destination_changed.emit(destination_id)
@@ -89,12 +105,14 @@ class AppState(QObject):
             return
         self.active_route_id = route_id
         self.trail_server.active_route_id = route_id
+        self._remember("last_route_id", route_id)
         self.route_changed.emit(route_id)
 
     def set_active_session(self, session_id: str) -> None:
         if not session_id:
             return
         self.active_session_id = session_id
+        self._remember("last_session_id", session_id)
         self.session_changed.emit(session_id)
 
     def get_active_destination(self) -> Optional[Destination]:

@@ -162,6 +162,16 @@ class ComposerPanel(QWidget):
         self.app_state.settings_changed.connect(self.refresh_from_active_route)
         self.refresh_all()
 
+    def ui_state(self) -> dict:
+        return {"pace_model": self.pace_combo.currentData(), "pack_weight_kg": self.pack_spin.value()}
+
+    def restore_ui_state(self, state: dict) -> None:
+        idx = self.pace_combo.findData(state.get("pace_model"))
+        if idx >= 0:
+            self.pace_combo.setCurrentIndex(idx)
+        if isinstance(state.get("pack_weight_kg"), (int, float)):
+            self.pack_spin.setValue(float(state["pack_weight_kg"]))
+
     def refresh_all(self) -> None:
         self.region_combo.blockSignals(True)
         self.region_combo.clear()

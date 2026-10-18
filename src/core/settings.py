@@ -48,6 +48,11 @@ DEFAULTS: Dict[str, Any] = {
     "lan_server_port": 0,
     "ollama_model": DEFAULT_MODEL,
     "emergency_contact": "",
+    # Window & UI state restored on the next launch (written by the GUI)
+    "window_geometry": "",              # base64 QMainWindow.saveGeometry()
+    "window_state": "",                 # base64 QMainWindow.saveState() (docks, toolbars)
+    "active_tab": 0,
+    "ui_state": {},                     # splitter positions and per-panel selections
 }
 
 CHOICES: Dict[str, tuple] = {

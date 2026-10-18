@@ -1,8 +1,9 @@
 """Main application window for AegisHiker."""
 from typing import Optional
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QCloseEvent, QIcon
+from PySide6.QtCore import QByteArray, Qt, QTimer
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QShowEvent
 from PySide6.QtWidgets import (
+    QSplitter,
     QFileDialog,
     QLabel,
     QMainWindow,
@@ -69,6 +70,7 @@ class MainWindow(QMainWindow):
 
         # AI Trail Guide Dock
         self.chat_dock = ChatDock(self.app_state, self)
+        self.chat_dock.setObjectName("TrailGuideDock")  # needed for saveState/restoreState
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
 
         # Cross-panel navigation signals
@@ -79,6 +81,7 @@ class MainWindow(QMainWindow):
 
         self._build_menus()
         self._build_status_bar()
+        self._restore_ui_state()
 
     def _switch_to_composer(self, _route_id: str) -> None:
         self.tabs.setCurrentWidget(self.composer_panel)
@@ -163,7 +166,60 @@ class MainWindow(QMainWindow):
             )
         self.status_lbl.setText(f"Exported PDF to {path}")
 
+    # ── Window / UI state persisted between launches ──────────────────────────
+
+    def _splitters(self):
+        """Every splitter keyed by its panel and position (stable across launches)."""
+        for panel in (self.explore_panel, self.composer_panel, self.reexperience_panel, self.telemetry_panel):
+            for idx, splitter in enumerate(panel.findChildren(QSplitter)):
+                yield f"{type(panel).__name__}.{idx}", splitter
+
+    def _panels_with_state(self):
+        return {"explore": self.explore_panel, "composer": self.composer_panel}
+
+    def _restore_ui_state(self) -> None:
+        s = self.app_state.settings
+        geometry = str(s.get("window_geometry", "") or "")
+        if geometry:
+            # Qt moves the window back onto a visible screen if the monitor setup changed
+            self.restoreGeometry(QByteArray.fromBase64(geometry.encode("ascii")))
+        state = str(s.get("window_state", "") or "")
+        if state:
+            self.restoreState(QByteArray.fromBase64(state.encode("ascii")))
+        tab = int(s.get("active_tab", 0) or 0)
+        if 0 <= tab < self.tabs.count():
+            self.tabs.setCurrentIndex(tab)
+        ui = s.get("ui_state") or {}
+        self._pending_splitters = dict(ui.get("splitters") or {})  # applied once laid out (showEvent)
+        for key, panel in self._panels_with_state().items():
+            if isinstance(ui.get(key), dict):
+                panel.restore_ui_state(ui[key])
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if getattr(self, "_pending_splitters", None):
+            # Splitters only keep restored positions once the window has its real size
+            QTimer.singleShot(0, self._restore_splitters)
+
+    def _restore_splitters(self) -> None:
+        pending, self._pending_splitters = self._pending_splitters, {}
+        for key, splitter in self._splitters():
+            if pending.get(key):
+                splitter.restoreState(QByteArray.fromBase64(str(pending[key]).encode("ascii")))
+
+    def _save_ui_state(self) -> None:
+        s = self.app_state.settings
+        s.set("window_geometry", bytes(self.saveGeometry().toBase64()).decode("ascii"))
+        s.set("window_state", bytes(self.saveState().toBase64()).decode("ascii"))
+        s.set("active_tab", self.tabs.currentIndex())
+        ui = {"splitters": {key: bytes(sp.saveState().toBase64()).decode("ascii") for key, sp in self._splitters()}}
+        for key, panel in self._panels_with_state().items():
+            ui[key] = panel.ui_state()
+        s.set("ui_state", ui)
+        s.save()
+
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._save_ui_state()
         self.app_state.close()
         super().closeEvent(event)
 

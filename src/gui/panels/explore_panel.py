@@ -121,6 +121,20 @@ class ExplorePanel(QWidget):
         self.app_state.settings_changed.connect(self.refresh_all)
         self.refresh_all()
 
+    def ui_state(self) -> dict:
+        return {"avoid_conditions": [c.value for c, pill in self.cond_toggles.items() if pill.isChecked()]}
+
+    def restore_ui_state(self, state: dict) -> None:
+        avoid = state.get("avoid_conditions")
+        if not isinstance(avoid, list):
+            return
+        for cond, pill in self.cond_toggles.items():
+            pill.blockSignals(True)
+            pill.setChecked(cond.value in avoid)
+            pill.blockSignals(False)
+            pill._update_style()
+        self.refresh_trails()
+
     def refresh_all(self) -> None:
         self.dest_combo.blockSignals(True)
         self.dest_combo.clear()
