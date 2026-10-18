@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -167,6 +168,24 @@ class SegmentBuilder(QWidget):
         self.chain.start(trail, reverse=self.reverse_chk.isChecked())
         self._name_edited = False
         self._refresh()
+
+    def start_on_trail(self, trail_id: str) -> bool:
+        """Preselect a starting trail (e.g. from Explore Regions) and start the hike on it.
+        Asks before replacing an unsaved multi-segment hike. Returns False if cancelled/unknown."""
+        idx = self.start_combo.findData(trail_id)
+        if idx < 0:
+            return False
+        if self.chain and len(self.chain.legs) > 1:
+            answer = QMessageBox.question(
+                self, "Replace Hike?",
+                "Start a new hike on this trail? The unsaved hike you are building will be discarded.",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+        self.start_combo.setCurrentIndex(idx)
+        self.reverse_chk.setChecked(False)
+        self.start_chain()
+        return True
 
     def add_selected(self) -> None:
         row = self.cand_list.currentRow()

@@ -27,7 +27,7 @@ from src.hiking.units import format_distance, format_elevation
 
 
 class ExplorePanel(QWidget):
-    open_in_composer_requested = Signal(str)  # route_id
+    compose_trail_requested = Signal(str)  # trail_id: start a hike on this trail in the Composer
 
     def __init__(self, app_state: AppState, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -242,12 +242,8 @@ class ExplorePanel(QWidget):
 
     def _compose_selected_trail(self) -> None:
         seg = self._selected_segment()
-        if not seg:
-            return
-        route = route_from_trail_segment(seg)
-        self.app_state.db.upsert_route(route)
-        self.app_state.set_active_route(route.id)
-        self.open_in_composer_requested.emit(route.id)
+        if seg:
+            self.compose_trail_requested.emit(seg.id)
 
     def _open_download_dialog(self) -> None:
         dlg = RegionDownloadDialog(self.app_state, self)

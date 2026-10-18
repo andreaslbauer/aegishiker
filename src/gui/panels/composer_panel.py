@@ -206,6 +206,12 @@ class ComposerPanel(QWidget):
             if not had_draft or offscreen:
                 self.map_canvas.zoom_to_coordinates(route.coordinates)
 
+    def start_hike_on_trail(self, trail_id: str) -> bool:
+        """Preselect `trail_id` as the starting trail and start the hike there."""
+        dest_id = self.app_state.active_destination_id
+        self.segment_builder.set_pack(self.app_state.db.get_destination_pack(dest_id) if dest_id else None)
+        return self.segment_builder.start_on_trail(trail_id)
+
     def _on_builder_saved(self, route_id: str) -> None:
         self._draft = None
         self.app_state.set_active_route(route_id)

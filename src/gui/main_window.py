@@ -74,7 +74,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
 
         # Cross-panel navigation signals
-        self.explore_panel.open_in_composer_requested.connect(self._switch_to_composer)
+        self.explore_panel.compose_trail_requested.connect(self._compose_trail)
         self.brainstorm_panel.route_selected_for_composer.connect(self._switch_to_composer)
         self.library_panel.open_route_requested.connect(self._switch_to_composer)
         self.composer_panel.hike_logged_and_mapped.connect(self._switch_to_reexperience)
@@ -82,6 +82,11 @@ class MainWindow(QMainWindow):
         self._build_menus()
         self._build_status_bar()
         self._restore_ui_state()
+
+    def _compose_trail(self, trail_id: str) -> None:
+        """Explore → Composer: start a segment-by-segment hike on the chosen trail."""
+        if self.composer_panel.start_hike_on_trail(trail_id):
+            self.tabs.setCurrentWidget(self.composer_panel)
 
     def _switch_to_composer(self, _route_id: str) -> None:
         self.tabs.setCurrentWidget(self.composer_panel)

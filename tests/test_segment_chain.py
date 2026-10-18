@@ -66,3 +66,45 @@ def test_reverse_start_walks_trail_backwards() -> None:
     chain.start(trails[1], reverse=True)
     pts = chain.coords()
     assert pts[0][1] > pts[-1][1], "starts at the north end of Ridge Trail"
+
+
+def test_map_hit_testing_for_trails_and_options() -> None:
+    trails, places = _network()
+    chain = SegmentChain(trails, places)
+    # A click 10 m south of Brook Trail near its east end: starts there, walking it backwards
+    hits = chain.trails_at(43.99991, -70.9862, tol_m=20.0)
+    assert [t.id for t, _rev, _d in hits] == ["a"] and hits[0][1] is True
+    assert chain.trails_at(43.99, -70.9862, tol_m=20.0) == []
+
+    chain.start(trails[0])
+    cands = chain.candidates()
+    # A click on Ridge Trail well north of the fork selects that option
+    idx = chain.candidates_at(cands, 44.006, -70.991, tol_m=20.0)
+    assert idx and cands[idx[0]].leg.trail.id == "b"
+
+
+def test_trail_ending_near_another_connects_without_duplicates() -> None:
+    trails, places = _network()
+    # Ledge Spur ends ~50 m short of Brook Trail's east end (mapped paths stop apart on open rock)
+    spur = _line("d", "Ledge Spur", [(-70.9853 + i * 0.001, 44.00045 + i * 0.001, 420 + i * 20) for i in range(6)])
+    chain = SegmentChain(trails + [spur], places)
+    chain.start(trails[0])
+    names = [c.trail_name for c in chain.candidates()]
+    assert "Ledge Spur" in names
+    assert len(names) == len(set((c.trail_name, c.leg.end, c.turnaround) for c in chain.candidates())), names
+
+
+def test_monadnock_summit_connects_pumpelly_to_smith_summit() -> None:
+    """Regression: on Monadnock's bare summit the mapped trails end ~50 m apart."""
+    from pathlib import Path
+
+    from src.hiking.models import DestinationPack
+
+    pack_file = Path(__file__).resolve().parent.parent / "data" / "packs" / "mount_monadnock.json"
+    pack = DestinationPack.model_validate_json(pack_file.read_text(encoding="utf-8"))
+    by_name = {t.name: t for t in pack.trails}
+    chain = SegmentChain(pack.trails, [])
+    chain.start(by_name["Pumpelly Trail"])  # Dublin side up to the summit
+    names = [c.trail_name for c in chain.candidates()]
+    assert {"Smith Summit Trail", "Dublin Trail", "White Dot Trail", "White Arrow Trail"} <= set(names)
+    assert names.count("Smith Summit Trail") == 1

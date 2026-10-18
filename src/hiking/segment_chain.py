@@ -17,6 +17,9 @@ from .models import ComposedRoute, TrailSegment
 from .routing import recompute_composed_route
 
 JUNCTION_M = 25.0  # trail vertices this close are treated as the same junction
+# A trail's *end* this close to another trail also connects: on open summits and at trailheads the
+# mapped trails often stop tens of metres apart (Monadnock's summit: Pumpelly / Smith Summit / Dublin)
+END_JUNCTION_M = 75.0
 MIN_LEG_M = 40.0  # ignore stubs shorter than this
 CLOSE_LOOP_M = 60.0  # back within this distance of the start = loop complete
 FORK_MIN_ALONG_M = 60.0  # forks right where the segment began are "a different start": use Undo
@@ -74,6 +77,12 @@ class SegmentChain:
 
     def __post_init__(self) -> None:
         self._grid: Dict[Tuple[int, int], List[Tuple[int, int]]] = defaultdict(list)
+        # (min_lat, min_lon, max_lat, max_lon) from geometry: stored trail bboxes may be unset
+        self._bounds = [
+            (min(p[1] for p in t.coords_3d), min(p[0] for p in t.coords_3d),
+             max(p[1] for p in t.coords_3d), max(p[0] for p in t.coords_3d)) if t.coords_3d else (0.0, 0.0, 0.0, 0.0)
+            for t in self.trails
+        ]
         for ti, t in enumerate(self.trails):
             for vi, p in enumerate(t.coords_3d):
                 self._grid[(int(p[0] / _CELL_DEG), int(p[1] / _CELL_DEG))].append((ti, vi))
@@ -141,14 +150,17 @@ class SegmentChain:
         return best
 
     def _near_vertices(self, lon: float, lat: float) -> List[Tuple[int, int, float]]:
+        """Other trails' vertices that connect here: any vertex within JUNCTION_M, or a trail's
+        first/last vertex within END_JUNCTION_M."""
         cx, cy = int(lon / _CELL_DEG), int(lat / _CELL_DEG)
         out = []
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
+        for dx in (-2, -1, 0, 1, 2):  # 5x5 cells of ~40-55 m cover END_JUNCTION_M
+            for dy in (-2, -1, 0, 1, 2):
                 for ti, vi in self._grid.get((cx + dx, cy + dy), ()):
                     p = self.trails[ti].coords_3d[vi]
                     d = haversine_m(lat, lon, p[1], p[0])
-                    if d <= JUNCTION_M:
+                    is_end = vi == 0 or vi == len(self.trails[ti].coords_3d) - 1
+                    if d <= JUNCTION_M or (is_end and d <= END_JUNCTION_M):
                         out.append((ti, vi, d))
         return out
 
@@ -174,7 +186,7 @@ class SegmentChain:
                     touches[ti][k] = (vi, d)
 
         out: List[Candidate] = []
-        seen: set = set()
+        raw: List[Tuple[float, Candidate]] = []  # (junction distance, candidate)
         for ti, by_k in touches.items():
             trail = self.trails[ti]
             ks = sorted(by_k)
@@ -199,10 +211,20 @@ class SegmentChain:
                         if self._runs_along(leg, leg_pts):
                             continue  # just shadows the segment we're already on
                         cand = self._make(leg, k, cum)
-                        key = (trail.id, target, round(cum[k] / 30.0))
-                        if cand and key not in seen:
-                            seen.add(key)
-                            out.append(cand)
+                        if cand:
+                            raw.append((by_k[k][1], cand))
+
+        # The same option is often reachable from several nearby points of the current segment
+        # (a trail end within END_JUNCTION_M touches it at many vertices): keep the closest one.
+        for _d, cand in sorted(raw, key=lambda r: r[0]):
+            start = cand.leg.trail.coords_3d[cand.leg.start]
+            duplicate = any(
+                o.leg.trail.id == cand.leg.trail.id and o.leg.end == cand.leg.end
+                and haversine_m(start[1], start[0], o.leg.trail.coords_3d[o.leg.start][1], o.leg.trail.coords_3d[o.leg.start][0]) <= 60.0
+                for o in out
+            )
+            if not duplicate:
+                out.append(cand)
 
         # Out-and-back: turn around at the end of the current segment
         back_target = 0 if last.step > 0 else len(last.trail.coords_3d) - 1
@@ -266,8 +288,8 @@ class SegmentChain:
         `reverse` starts the trail at the end nearer the click. Trails sharing a stretch of path
         are all returned so the caller can ask which one is meant."""
         hits = []
-        for t in self.trails:
-            if len(t.coords_3d) < 2 or not (t.min_lat - 0.01 <= lat <= t.max_lat + 0.01 and t.min_lon - 0.01 <= lon <= t.max_lon + 0.01):
+        for t, (lo_lat, lo_lon, hi_lat, hi_lon) in zip(self.trails, self._bounds):
+            if len(t.coords_3d) < 2 or not (lo_lat - 0.01 <= lat <= hi_lat + 0.01 and lo_lon - 0.01 <= lon <= hi_lon + 0.01):
                 continue
             d = self._dist_to_line_m(lat, lon, t.coords_3d)
             if d <= tol_m:
