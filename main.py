@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """AegisHiker — Local AI Trail Planner, Route Composer, Field GPS Companion & Hike Replay Studio."""
 import argparse
+import faulthandler
+import gc
 import json
 import logging
 import os
@@ -18,6 +20,8 @@ if sys.platform == "linux":
             m for m in gtk_modules.split(",") if m.strip() not in ("canberra-gtk-module", "atk-bridge")
         )
 
+import shiboken6
+from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QApplication
 
 from src.core.about import APP_NAME, get_version
@@ -226,6 +230,8 @@ def main() -> int:
         return 0
 
     setup_logging(args.debug)
+    # A native crash (Qt / image codecs) prints the Python stack of every thread to stderr
+    faulthandler.enable(all_threads=True)
 
     app = QApplication([sys.argv[0]] + qt_args)
     app.setOrganizationName("Aegis")
@@ -251,7 +257,26 @@ def main() -> int:
     win.raise_()
     win.activateWindow()
     logger.info("%s v%s started.", APP_NAME, get_version())
-    return app.exec()
+    exit_code = app.exec()
+    shutdown_qt(app)
+    return exit_code
+
+
+def shutdown_qt(app: QApplication) -> None:
+    """Destroy every window while Python and Qt are both still fully alive.
+
+    Returning straight from app.exec() left PySide's end-of-interpreter cleanup
+    (destroyQCoreApplication) to delete the remaining widgets in arbitrary order, which crashed
+    on quit (SIGSEGV in ~QObject, heap corruption in ~QBackingStore).
+    """
+    for widget in app.topLevelWidgets():
+        if shiboken6.isValid(widget):
+            widget.hide()
+            widget.deleteLater()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+    gc.collect()
+    app.shutdown()
 
 
 if __name__ == "__main__":

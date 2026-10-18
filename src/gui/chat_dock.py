@@ -80,7 +80,9 @@ class ChatDock(QDockWidget):
         current_route = self.app_state.get_active_route()
         if proposal and proposed_route and current_route:
             dlg = ProposalDialog(proposal, current_route, proposed_route, self)
-            if dlg.exec():
+            accepted = dlg.exec()
+            dlg.deleteLater()
+            if accepted:
                 self.app_state.db.upsert_route(proposed_route)
                 self.app_state.set_active_route(proposed_route.id)
                 self.transcript.append(

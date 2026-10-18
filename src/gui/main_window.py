@@ -83,6 +83,11 @@ class MainWindow(QMainWindow):
         self._build_status_bar()
         self._restore_ui_state()
 
+    @staticmethod
+    def _run_dialog(dlg) -> None:
+        dlg.exec()
+        dlg.deleteLater()
+
     def _compose_trail(self, trail_id: str) -> None:
         """Explore → Composer: start a segment-by-segment hike on the chosen trail."""
         if self.composer_panel.start_hike_on_trail(trail_id):
@@ -100,7 +105,7 @@ class MainWindow(QMainWindow):
 
         file_menu = menubar.addMenu("&File")
         dl_act = QAction("Download Custom Offline Region...", self)
-        dl_act.triggered.connect(lambda: RegionDownloadDialog(self.app_state, self).exec())
+        dl_act.triggered.connect(lambda: self._run_dialog(RegionDownloadDialog(self.app_state, self)))
         file_menu.addAction(dl_act)
 
         i_hiked_act = QAction("✓ I Hiked This Trail...", self)
@@ -123,11 +128,11 @@ class MainWindow(QMainWindow):
 
         help_menu = menubar.addMenu("&Help")
         guide_act = QAction("User Guide & Leave No Trace...", self)
-        guide_act.triggered.connect(lambda: HelpDialog("getting_started", self).exec())
+        guide_act.triggered.connect(lambda: self._run_dialog(HelpDialog("getting_started", self)))
         help_menu.addAction(guide_act)
 
         about_act = QAction(f"About {APP_NAME}...", self)
-        about_act.triggered.connect(lambda: AboutDialog(self).exec())
+        about_act.triggered.connect(lambda: self._run_dialog(AboutDialog(self)))
         help_menu.addAction(about_act)
 
     def _build_status_bar(self) -> None:

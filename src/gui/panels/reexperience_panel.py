@@ -192,8 +192,10 @@ class ReexperiencePanel(QWidget):
 
     def choose_hike(self) -> None:
         dlg = HikePickerDialog(self.app_state, self)
-        if dlg.exec() and dlg.selected_session_id:
-            self.app_state.set_active_session(dlg.selected_session_id)
+        chosen = dlg.selected_session_id if dlg.exec() else None
+        dlg.deleteLater()
+        if chosen:
+            self.app_state.set_active_session(chosen)
         else:
             self.refresh_all()  # hikes may have been renamed or deleted in the dialog
 
@@ -372,6 +374,7 @@ class ReexperiencePanel(QWidget):
             unit = str(self.app_state.settings.get("unit_system", "metric"))
             dlg = Replay3DDialog(route, pack, self.photo_pins, "metric" if unit == "metric" else "us", self)
         dlg.exec()
+        dlg.deleteLater()  # frees the terrain mesh and photos now, not when the app quits
 
     def toggle_playback(self) -> None:
         if self.play_timer.isActive():

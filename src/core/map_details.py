@@ -36,7 +36,7 @@ TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}
 USER_AGENT = "AegisHiker/1.0 (offline hiking planner; map pack builder)"
 ATTRIBUTION = "© OpenStreetMap contributors (ODbL) · Terrain: USGS 3DEP / AWS Terrain Tiles"
 
-MAX_MOSAIC_PX = 1600  # longest side of the contouring grid (~25-35 m cells for typical packs)
+MAX_MOSAIC_PX = 2200  # longest side of the contouring grid (~25-35 m cells for typical packs)
 MAX_STORED_DEM = 560  # longest side of the DEM kept in the pack for hillshading/lookup
 
 Bbox = Tuple[float, float, float, float]  # (min_lat, min_lon, max_lat, max_lon)
@@ -997,42 +997,73 @@ def _slug(text: str) -> str:
 
 
 def expand_trail_specs(pack_id: str, elements: Sequence[Dict[str, Any]], specs: Any) -> List[Dict[str, Any]]:
-    """A spec list is used as is. A dict with "all_named": true expands to one spec per distinct
-    named path/track in the downloaded area, minus `exclude_regex`, with `aliases`
-    (variant OSM name → canonical name), `rename` (canonical → display name) and per-name
-    `defaults` / per-name `overrides` (difficulty, surface, note, tags, no_dogs, alpine_above_m)."""
+    """Trail specs for a pack. Three forms:
+
+    * a list: hand-picked trails, used as is;
+    * {"all_named": true, ...}: one spec per distinct named path/track in the downloaded area
+      (see _expand_all_named for the options);
+    * {"trails": [...], "auto": {...}}: the hand-picked list plus every other named trail found by
+      the "auto" rules (typically limited with "within" to a newly added strip of the region).
+    """
     if not isinstance(specs, dict):
         return list(specs or [])
-    exclude = re.compile(specs["exclude_regex"]) if specs.get("exclude_regex") else None
-    aliases: Dict[str, str] = specs.get("aliases", {})
+    if "trails" in specs:
+        base = list(specs["trails"])
+        if not specs.get("auto"):
+            return base
+        taken = {n for s in base for n in [s["osm_name"], *s.get("osm_names", [])]}
+        used_codes = {s.get("code", "") for s in base}
+        return base + _expand_all_named(pack_id, elements, specs["auto"], skip=taken, used_codes=used_codes)
+    return _expand_all_named(pack_id, elements, specs)
+
+
+def _expand_all_named(
+    pack_id: str, elements: Sequence[Dict[str, Any]], cfg: Dict[str, Any],
+    skip: Optional[set] = None, used_codes: Optional[set] = None,
+) -> List[Dict[str, Any]]:
+    """One spec per distinct named path/track, minus `exclude_regex` and `skip`. Options:
+    `within` [min_lat, min_lon, max_lat, max_lon] (a way must have a vertex inside), `aliases`
+    (variant OSM name → canonical name), `rename` (canonical → display name), `code_prefix`,
+    `tags`, `defaults` / per-name `overrides` (difficulty, surface, note, tags, no_dogs,
+    alpine_above_m, min_length_m)."""
+    exclude = re.compile(cfg["exclude_regex"]) if cfg.get("exclude_regex") else None
+    aliases: Dict[str, str] = cfg.get("aliases", {})
+    within = cfg.get("within")
+    skip = skip or set()
     names: Dict[str, set] = defaultdict(set)
     for el in elements:
         tags = el.get("tags") or {}
         if el.get("type") != "way" or _classify(tags) not in ("path", "track"):
             continue
+        if within and not any(
+            within[0] <= g["lat"] <= within[2] and within[1] <= g["lon"] <= within[3]
+            for g in (el.get("geometry") or []) if g
+        ):
+            continue
         for nm in _way_names(tags):
             canonical = aliases.get(nm, nm)
-            if not (exclude and exclude.search(canonical)):
-                names[canonical].add(nm)
-    prefix = specs.get("code_prefix", pack_id[:3].upper())
+            if canonical in skip or nm in skip or (exclude and exclude.search(canonical)):
+                continue
+            names[canonical].add(nm)
+    prefix = cfg.get("code_prefix", pack_id[:3].upper())
     out = []
-    used_codes: set = set()
+    used = set(used_codes or ())
     for canonical in sorted(names):
         code = prefix + "-" + "".join(w[0] for w in re.findall(r"[A-Za-z]+", canonical)).upper()[:4]
         base, n = code, 2
-        while code in used_codes:
+        while code in used:
             code, n = f"{base}{n}", n + 1
-        used_codes.add(code)
+        used.add(code)
         spec: Dict[str, Any] = {
             "id": f"{pack_id}_{_slug(canonical)}",
             "osm_name": canonical,
             "osm_names": sorted(names[canonical]),
-            "name": specs.get("rename", {}).get(canonical, canonical),
+            "name": cfg.get("rename", {}).get(canonical, canonical),
             "code": code,
-            "tags": list(specs.get("tags", [])),
+            "tags": list(cfg.get("tags", [])),
         }
-        spec.update(specs.get("defaults", {}))
-        spec.update(specs.get("overrides", {}).get(canonical, {}))
+        spec.update(cfg.get("defaults", {}))
+        spec.update(cfg.get("overrides", {}).get(canonical, {}))
         out.append(spec)
     return out
 
@@ -1076,7 +1107,7 @@ def build_named_osm_trails(
         line = _trail_line(_named_way_graph(elements, osm_names))
         if len(line) < 2 or sum(
             haversine_m(a[1], a[0], b[1], b[0]) for a, b in zip(line, line[1:])
-        ) < min_length_m:
+        ) < spec.get("min_length_m", min_length_m):
             missing.append(osm_name)
             continue
         if ele_at(line[0][1], line[0][0]) > ele_at(line[-1][1], line[-1][0]):

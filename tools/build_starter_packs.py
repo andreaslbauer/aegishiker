@@ -354,8 +354,9 @@ def build_white_mountains_nh() -> DestinationPack:
     ]
 
     # South to the Flume Slide Trail (Franconia Notch), north to Randolph for the Howker Ridge
-    # Trail and the Northern Presidentials
-    min_lat, max_lat, min_lon, max_lon = 44.095, 44.385, -71.710, -71.240
+    # Trail and the Northern Presidentials, east to the Maine border (Wildcats, Carters, Baldfaces,
+    # Evans Notch)
+    min_lat, max_lat, min_lon, max_lon = 44.095, 44.385, -71.710, -71.000
     dem, contours = _generate_dem_and_contours(
         min_lat,
         max_lat,
@@ -370,8 +371,8 @@ def build_white_mountains_nh() -> DestinationPack:
         name="New Hampshire White Mountains",
         state_or_region="New Hampshire (White Mountain National Forest)",
         agency="USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
-        summary="Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts across Franconia Ridge and the Presidential Range (Mt. Washington to Mt. Madison).",
-        pack_version="1.1",  # 1.1: area extended to the Flume Slide Trail and Randolph / Howker Ridge
+        summary="Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border.",
+        pack_version="1.2",  # 1.1: Flume Slide / Howker Ridge; 1.2: east to the Maine border
         min_lat=min_lat,
         max_lat=max_lat,
         min_lon=min_lon,

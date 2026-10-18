@@ -1,39 +1,76 @@
 {
   "_comment": "Named OpenStreetMap trails added to packs by tools/fetch_map_details.py. Each entry is assembled from all OSM ways carrying `osm_name` (longest connected stretch), elevated from the pack terrain, and classified automatically.",
-  "white_mountains_nh": [
-    {"id": "wmnf_osm_crawford_path", "osm_name": "Crawford Path", "code": "WMNF-CP", "tags": ["presidentials", "alpine", "historic"]},
-    {"id": "wmnf_osm_ethan_pond", "osm_name": "Ethan Pond Trail", "code": "WMNF-EP", "tags": ["appalachian_trail", "pond"]},
-    {"id": "wmnf_osm_webster_cliff", "osm_name": "Webster Cliff Trail", "code": "WMNF-WC", "tags": ["appalachian_trail", "views", "cliffs"]},
-    {"id": "wmnf_osm_twinway", "osm_name": "Twinway", "code": "WMNF-TW", "tags": ["appalachian_trail", "ridge", "hut"]},
-    {"id": "wmnf_osm_garfield_ridge", "osm_name": "Garfield Ridge Trail", "code": "WMNF-GR", "tags": ["appalachian_trail", "ridge"]},
-    {"id": "wmnf_osm_mount_garfield", "osm_name": "Mount Garfield Trail", "code": "WMNF-MG", "tags": ["summit", "4000_footer"]},
-    {"id": "wmnf_osm_isolation", "osm_name": "Isolation Trail", "code": "WMNF-IS", "tags": ["wilderness", "remote"]},
-    {"id": "wmnf_osm_north_twin", "osm_name": "North Twin Trail", "code": "WMNF-NT", "tags": ["summit", "4000_footer", "river_crossing"]},
-    {"id": "wmnf_osm_skookumchuck", "osm_name": "Skookumchuck Trail", "code": "WMNF-SK", "tags": ["ridge", "quiet"]},
-    {"id": "wmnf_osm_gale_river", "osm_name": "Gale River Trail", "code": "WMNF-GV", "tags": ["river", "hut"]},
-    {"id": "wmnf_osm_a_z", "osm_name": "A-Z Trail", "code": "WMNF-AZ", "tags": ["connector", "notch"]},
-    {"id": "wmnf_osm_jewell", "osm_name": "Jewell Trail", "code": "WMNF-JW", "tags": ["presidentials", "alpine", "views"]},
-    {"id": "wmnf_osm_willey_range", "osm_name": "Willey Range Trail", "code": "WMNF-WR", "tags": ["summit", "4000_footer", "ladders"]},
-    {"id": "wmnf_osm_edmands_path", "osm_name": "Edmands Path", "code": "WMNF-ED", "tags": ["presidentials", "graded", "historic"]},
-    {"id": "wmnf_osm_avalon", "osm_name": "Avalon Trail", "code": "WMNF-AV", "tags": ["crawford_notch", "views"]},
-    {"id": "wmnf_osm_zealand", "osm_name": "Zealand Trail", "code": "WMNF-ZL", "tags": ["family", "beaver_ponds", "hut"]},
-    {"id": "wmnf_osm_lend_a_hand", "osm_name": "Lend-a-Hand Trail", "code": "WMNF-LH", "tags": ["summit", "4000_footer"]},
-    {"id": "wmnf_osm_twin_brook", "osm_name": "Twin Brook Trail", "code": "WMNF-TB", "tags": ["connector", "quiet"]},
-    {"id": "wmnf_osm_arethusa_ripley", "osm_name": "Arethusa-Ripley Falls Trail", "code": "WMNF-AR", "tags": ["waterfall", "crawford_notch"]},
-    {"id": "wmnf_osm_mount_eisenhower", "osm_name": "Mount Eisenhower Trail", "code": "WMNF-ME", "tags": ["presidentials", "alpine"]},
-    {"id": "wmnf_osm_hale_brook", "osm_name": "Hale Brook Trail", "code": "WMNF-HB", "tags": ["summit", "4000_footer", "family"]},
-    {"id": "wmnf_osm_huntington_ravine", "osm_name": "Huntington Ravine Trail", "code": "WMNF-HR", "tags": ["scramble", "ravine", "mount_washington"], "difficulty": "expert", "surface": "scramble", "note": "Steepest regular trail in the White Mountains: a Class 3 headwall scramble. Not recommended for descent or in wet or icy conditions."},
-    {"id": "wmnf_osm_frankenstein_cliff", "osm_name": "Frankenstein Cliff Trail", "code": "WMNF-FC", "tags": ["views", "cliffs", "crawford_notch"]},
-    {"id": "wmnf_osm_glen_boulder", "osm_name": "Glen Boulder Trail", "code": "WMNF-GB", "tags": ["alpine", "views", "pinkham_notch"]},
-    {"id": "wmnf_osm_mount_willard", "osm_name": "Mount Willard Trail", "code": "WMNF-MW", "tags": ["family", "views", "crawford_notch"]},
-    {"id": "wmnf_osm_hi_cannon", "osm_name": "Hi-Cannon Trail", "code": "WMNF-HC", "tags": ["ladder", "views", "franconia_notch"]},
-    {"id": "wmnf_osm_webster_jackson", "osm_name": "Webster-Jackson Trail", "code": "WMNF-WJ", "tags": ["summit", "4000_footer", "crawford_notch"]},
-    {"id": "wmnf_osm_arethusa_falls", "osm_name": "Arethusa Falls Trail", "code": "WMNF-AF", "tags": ["waterfall", "family"]},
-    {"id": "wmnf_osm_zeacliff", "osm_name": "Zeacliff Trail", "code": "WMNF-ZC", "tags": ["views", "steep"]},
-    {"id": "wmnf_osm_nelson_crag", "osm_name": "Nelson Crag Trail", "code": "WMNF-NC", "tags": ["alpine", "mount_washington", "quiet"]},
-    {"id": "wmnf_osm_howker_ridge", "osm_name": "Howker Ridge Trail", "code": "WMNF-HK", "tags": ["presidentials", "mount_madison", "alpine", "quiet"], "note": "Long, rugged ridge to Mount Madison over the Howks; above treeline on the upper ridge."},
-    {"id": "wmnf_osm_flume_slide", "osm_name": "Flume Slide Trail", "code": "WMNF-FS", "tags": ["slide", "steep", "franconia_notch"], "note": "Very steep, often wet ledges on the old slide: much easier going up than down."}
-  ],
+  "white_mountains_nh": {
+    "trails": [
+      {"id": "wmnf_osm_crawford_path", "osm_name": "Crawford Path", "code": "WMNF-CP", "tags": ["presidentials", "alpine", "historic"]},
+      {"id": "wmnf_osm_ethan_pond", "osm_name": "Ethan Pond Trail", "code": "WMNF-EP", "tags": ["appalachian_trail", "pond"]},
+      {"id": "wmnf_osm_webster_cliff", "osm_name": "Webster Cliff Trail", "code": "WMNF-WC", "tags": ["appalachian_trail", "views", "cliffs"]},
+      {"id": "wmnf_osm_twinway", "osm_name": "Twinway", "code": "WMNF-TW", "tags": ["appalachian_trail", "ridge", "hut"]},
+      {"id": "wmnf_osm_garfield_ridge", "osm_name": "Garfield Ridge Trail", "code": "WMNF-GR", "tags": ["appalachian_trail", "ridge"]},
+      {"id": "wmnf_osm_mount_garfield", "osm_name": "Mount Garfield Trail", "code": "WMNF-MG", "tags": ["summit", "4000_footer"]},
+      {"id": "wmnf_osm_isolation", "osm_name": "Isolation Trail", "code": "WMNF-IS", "tags": ["wilderness", "remote"]},
+      {"id": "wmnf_osm_north_twin", "osm_name": "North Twin Trail", "code": "WMNF-NT", "tags": ["summit", "4000_footer", "river_crossing"]},
+      {"id": "wmnf_osm_skookumchuck", "osm_name": "Skookumchuck Trail", "code": "WMNF-SK", "tags": ["ridge", "quiet"]},
+      {"id": "wmnf_osm_gale_river", "osm_name": "Gale River Trail", "code": "WMNF-GV", "tags": ["river", "hut"]},
+      {"id": "wmnf_osm_a_z", "osm_name": "A-Z Trail", "code": "WMNF-AZ", "tags": ["connector", "notch"]},
+      {"id": "wmnf_osm_jewell", "osm_name": "Jewell Trail", "code": "WMNF-JW", "tags": ["presidentials", "alpine", "views"]},
+      {"id": "wmnf_osm_willey_range", "osm_name": "Willey Range Trail", "code": "WMNF-WR", "tags": ["summit", "4000_footer", "ladders"]},
+      {"id": "wmnf_osm_edmands_path", "osm_name": "Edmands Path", "code": "WMNF-ED", "tags": ["presidentials", "graded", "historic"]},
+      {"id": "wmnf_osm_avalon", "osm_name": "Avalon Trail", "code": "WMNF-AV", "tags": ["crawford_notch", "views"]},
+      {"id": "wmnf_osm_zealand", "osm_name": "Zealand Trail", "code": "WMNF-ZL", "tags": ["family", "beaver_ponds", "hut"]},
+      {"id": "wmnf_osm_lend_a_hand", "osm_name": "Lend-a-Hand Trail", "code": "WMNF-LH", "tags": ["summit", "4000_footer"]},
+      {"id": "wmnf_osm_twin_brook", "osm_name": "Twin Brook Trail", "code": "WMNF-TB", "tags": ["connector", "quiet"]},
+      {"id": "wmnf_osm_arethusa_ripley", "osm_name": "Arethusa-Ripley Falls Trail", "code": "WMNF-AR", "tags": ["waterfall", "crawford_notch"]},
+      {"id": "wmnf_osm_mount_eisenhower", "osm_name": "Mount Eisenhower Trail", "code": "WMNF-ME", "tags": ["presidentials", "alpine"]},
+      {"id": "wmnf_osm_hale_brook", "osm_name": "Hale Brook Trail", "code": "WMNF-HB", "tags": ["summit", "4000_footer", "family"]},
+      {"id": "wmnf_osm_huntington_ravine", "osm_name": "Huntington Ravine Trail", "code": "WMNF-HR", "tags": ["scramble", "ravine", "mount_washington"], "difficulty": "expert", "surface": "scramble", "note": "Steepest regular trail in the White Mountains: a Class 3 headwall scramble. Not recommended for descent or in wet or icy conditions."},
+      {"id": "wmnf_osm_frankenstein_cliff", "osm_name": "Frankenstein Cliff Trail", "code": "WMNF-FC", "tags": ["views", "cliffs", "crawford_notch"]},
+      {"id": "wmnf_osm_glen_boulder", "osm_name": "Glen Boulder Trail", "code": "WMNF-GB", "tags": ["alpine", "views", "pinkham_notch"]},
+      {"id": "wmnf_osm_mount_willard", "osm_name": "Mount Willard Trail", "code": "WMNF-MW", "tags": ["family", "views", "crawford_notch"]},
+      {"id": "wmnf_osm_hi_cannon", "osm_name": "Hi-Cannon Trail", "code": "WMNF-HC", "tags": ["ladder", "views", "franconia_notch"]},
+      {"id": "wmnf_osm_webster_jackson", "osm_name": "Webster-Jackson Trail", "code": "WMNF-WJ", "tags": ["summit", "4000_footer", "crawford_notch"]},
+      {"id": "wmnf_osm_arethusa_falls", "osm_name": "Arethusa Falls Trail", "code": "WMNF-AF", "tags": ["waterfall", "family"]},
+      {"id": "wmnf_osm_zeacliff", "osm_name": "Zeacliff Trail", "code": "WMNF-ZC", "tags": ["views", "steep"]},
+      {"id": "wmnf_osm_nelson_crag", "osm_name": "Nelson Crag Trail", "code": "WMNF-NC", "tags": ["alpine", "mount_washington", "quiet"]},
+      {"id": "wmnf_osm_howker_ridge", "osm_name": "Howker Ridge Trail", "code": "WMNF-HK", "tags": ["presidentials", "mount_madison", "alpine", "quiet"], "note": "Long, rugged ridge to Mount Madison over the Howks; above treeline on the upper ridge."},
+      {"id": "wmnf_osm_flume_slide", "osm_name": "Flume Slide Trail", "code": "WMNF-FS", "tags": ["slide", "steep", "franconia_notch"], "note": "Very steep, often wet ledges on the old slide: much easier going up than down."},
+      {"id": "wmnf_osm_osgood", "osm_name": "Osgood Trail", "code": "WMNF-OS", "tags": ["presidentials", "mount_madison", "alpine", "appalachian_trail"]},
+      {"id": "wmnf_osm_valley_way", "osm_name": "Valley Way", "code": "WMNF-VW", "tags": ["presidentials", "mount_madison", "hut"]},
+      {"id": "wmnf_osm_airline", "osm_name": "Airline Trail", "name": "Air Line Trail", "code": "WMNF-AL", "tags": ["presidentials", "mount_adams", "alpine", "ridge"]},
+      {"id": "wmnf_osm_liberty_spring", "osm_name": "Liberty Spring Trail", "code": "WMNF-LS", "tags": ["appalachian_trail", "franconia_notch", "campsite"]},
+      {"id": "wmnf_osm_whitehouse", "osm_name": "Whitehouse Trail", "code": "WMNF-WH", "tags": ["connector", "franconia_notch"]},
+      {"id": "wmnf_osm_franconia_ridge_full", "osm_name": "Franconia Ridge Trail", "name": "Franconia Ridge Trail (Mt. Flume \u2013 Mt. Lafayette)", "code": "WMNF-FRF", "tags": ["appalachian_trail", "ridge", "alpine"]}
+    ],
+    "auto": {
+      "_comment": "Every named hiking trail in the strip added east to the Maine border (2026-10)",
+      "within": [
+        44.095,
+        -71.24,
+        44.385,
+        -71.0
+      ],
+      "exclude_regex": "^F ?R ?\\d|\\bRoad\\b|\\bLane\\b|\\bStreet\\b|Snowmobile|\\bITS \\d|Ski Trail|\\bX[Cc]\\b|Singletrack|Corridor|^(Howie Roll|Carry On|Hairball|Laughing Lion)$|Rail Trail|Not Maintained|Abandoned|Decomissioned|Decommissioned|CLOSED|Unmaintained|Bushwhack|sections missing|^eroded\\)$|^(Spur|Spur Path|Summit Spur|Old Path|New Path|Old Trail.*)$|Scenic vista spur|^Access from|Campground Ford|Pond Loops|Loop to Pond|Main Route to Pond|Hubs Loop|logging road",
+      "aliases": {
+        "Carter-Moriah": "Carter-Moriah Trail",
+        "Black Angel": "Black Angel Trail"
+      },
+      "code_prefix": "WMNF",
+      "tags": [
+        "east_side"
+      ],
+      "defaults": {
+        "min_length_m": 300
+      },
+      "overrides": {
+        "Wildcat Ridge Trail": {
+          "note": "Very steep, ledgy climbs over the Wildcat peaks from Pinkham Notch."
+        },
+        "Carter-Moriah Trail": {
+          "note": "Appalachian Trail along the Carter\u2013Moriah Range; exposed ledges on Mount Moriah."
+        }
+      }
+    }
+  },
   "mount_monadnock": {
     "all_named": true,
     "exclude_regex": "\\bRoad\\b|^Loop [AB]$|\\bLane$|\\bBeach\\b",

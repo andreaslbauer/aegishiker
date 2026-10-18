@@ -373,8 +373,10 @@ class ComposerPanel(QWidget):
 
         route.name = self.name_edit.text().strip() or route.name
         dlg = IHikedThisDialog(self.app_state, route, self)
-        if dlg.exec() and dlg.created_session:
-            self.hike_logged_and_mapped.emit(dlg.created_session.id)
+        created = dlg.created_session if dlg.exec() else None
+        dlg.deleteLater()
+        if created:
+            self.hike_logged_and_mapped.emit(created.id)
 
     def import_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

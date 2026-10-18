@@ -235,8 +235,9 @@ class ExplorePanel(QWidget):
         if not seg:
             return
         dlg = ConditionDialog(seg, self)
-        if dlg.exec():
-            new_cond = dlg.selected_condition()
+        new_cond = dlg.selected_condition() if dlg.exec() else None
+        dlg.deleteLater()
+        if new_cond is not None:
             self.app_state.db.update_trail_condition(seg.id, new_cond)
             self.app_state.trails_updated.emit()
 
@@ -248,4 +249,5 @@ class ExplorePanel(QWidget):
     def _open_download_dialog(self) -> None:
         dlg = RegionDownloadDialog(self.app_state, self)
         dlg.exec()
+        dlg.deleteLater()
 
