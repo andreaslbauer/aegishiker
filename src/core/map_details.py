@@ -36,7 +36,7 @@ TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}
 USER_AGENT = "AegisHiker/1.0 (offline hiking planner; map pack builder)"
 ATTRIBUTION = "© OpenStreetMap contributors (ODbL) · Terrain: USGS 3DEP / AWS Terrain Tiles"
 
-MAX_MOSAIC_PX = 2200  # longest side of the contouring grid (~25-35 m cells for typical packs)
+MAX_MOSAIC_PX = 2400  # longest side of the contouring grid (~25-35 m cells for typical packs)
 MAX_STORED_DEM = 560  # longest side of the DEM kept in the pack for hillshading/lookup
 
 Bbox = Tuple[float, float, float, float]  # (min_lat, min_lon, max_lat, max_lon)

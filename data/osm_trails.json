@@ -47,9 +47,9 @@
         44.095,
         -71.24,
         44.385,
-        -71.0
+        -70.95
       ],
-      "exclude_regex": "^F ?R ?\\d|\\bRoad\\b|\\bLane\\b|\\bStreet\\b|Snowmobile|\\bITS \\d|Ski Trail|\\bX[Cc]\\b|Singletrack|Corridor|^(Howie Roll|Carry On|Hairball|Laughing Lion)$|Rail Trail|Not Maintained|Abandoned|Decomissioned|Decommissioned|CLOSED|Unmaintained|Bushwhack|sections missing|^eroded\\)$|^(Spur|Spur Path|Summit Spur|Old Path|New Path|Old Trail.*)$|Scenic vista spur|^Access from|Campground Ford|Pond Loops|Loop to Pond|Main Route to Pond|Hubs Loop|logging road",
+      "exclude_regex": "^F ?R ?\\d|\\bRoad\\b|\\bLane\\b|\\bStreet\\b|Snowmobile|\\bITS \\d|Ski Trail|\\bX[Cc]\\b|Singletrack|Corridor|^(Howie Roll|Carry On|Hairball|Laughing Lion)( Trail)?$|Rail Trail|Not Maintained|Abandoned|Decomissioned|Decommissioned|CLOSED|Unmaintained|Bushwhack|sections missing|^eroded\\)$|^(Spur|Spur Path|Summit Spur|Old Path|New Path|Old Trail.*)$|Scenic vista spur|^Access from|Campground Ford|Pond Loops|Loop to Pond|Main Route to Pond|Hubs Loop|logging road",
       "aliases": {
         "Carter-Moriah": "Carter-Moriah Trail",
         "Black Angel": "Black Angel Trail"

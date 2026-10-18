@@ -12,12 +12,12 @@
       "bbox": [
         -71.71,
         44.095,
-        -71.0,
+        -70.95,
         44.385
       ],
       "base_ele_m": 520.0,
       "max_ele_m": 1917.0,
-      "trail_count": 119,
+      "trail_count": 136,
       "poi_count": 9,
       "bundled_file": "packs/white_mountains_nh.json"
     },

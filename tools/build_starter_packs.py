@@ -356,7 +356,8 @@ def build_white_mountains_nh() -> DestinationPack:
     # South to the Flume Slide Trail (Franconia Notch), north to Randolph for the Howker Ridge
     # Trail and the Northern Presidentials, east to the Maine border (Wildcats, Carters, Baldfaces,
     # Evans Notch)
-    min_lat, max_lat, min_lon, max_lon = 44.095, 44.385, -71.710, -71.000
+    # (-70.95: just past the state line so Evans Notch trails that cross it, e.g. Bickford Brook, stay whole)
+    min_lat, max_lat, min_lon, max_lon = 44.095, 44.385, -71.710, -70.950
     dem, contours = _generate_dem_and_contours(
         min_lat,
         max_lat,
