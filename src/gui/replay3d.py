@@ -7,6 +7,7 @@ until it fills the frame, lingers, zooms back out and the hike continues.
 """
 import math
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -36,7 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.gui.charts.photo_preview import format_datetime, photo_pixmap
+from src.gui.charts.photo_preview import format_datetime, load_photo_image, photo_pixmap
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.terrain3d import (
@@ -66,7 +67,9 @@ class PhotoStop:
     pin: HikePhotoPin
     along_m: float
     world: Tuple[float, float, float]
-    pixmap: Optional[QPixmap]
+    pixmap: Optional[QPixmap]  # small (thumbnail) for the marker in the scene
+    full: Optional[QPixmap] = None  # full-resolution image for the zoom, loaded in the background
+    loading: Optional[Future] = None
 
 
 def _ease(t: float) -> float:
@@ -124,7 +127,9 @@ class Replay3DView(QWidget):
         for pin in sorted(dedupe_pins(photos), key=lambda p: (p.distance_along_m, p.date_taken or 0)):
             x, y = self.frame.to_xy(pin.lat, pin.lon)
             self.stops.append(PhotoStop(pin, pin.distance_along_m, (x, y, self.mesh.height_at(x, y) + 6.0),
-                                        photo_pixmap(pin, 1600, prefer_full=True)))
+                                        photo_pixmap(pin, 300)))
+        # Full-size photos are decoded off the GUI thread just ahead of each stop
+        self._loader = ThreadPoolExecutor(max_workers=1, thread_name_prefix="replay-photo")
 
         # Animation state
         self.dist = 0.0
@@ -151,6 +156,7 @@ class Replay3DView(QWidget):
         if self.phase in ("paused", "done"):
             self.phase = "playing"
         self._last_tick = time.monotonic()
+        self._prefetch()
         self.timer.start()
         self.state_changed.emit("playing")
 
@@ -179,8 +185,47 @@ class Replay3DView(QWidget):
 
     # ── animation ────────────────────────────────────────────────────────
 
+    def _full_size_px(self) -> int:
+        """Longest side to decode photos at: the view (or screen) in device pixels."""
+        dpr = self.devicePixelRatioF() or 1.0
+        side = max(self.width(), self.height())
+        screen = self.screen()
+        if screen is not None:
+            side = max(side, max(screen.size().width(), screen.size().height()))
+        return int(min(3840, max(1280, side * dpr)))
+
+    def _prefetch(self) -> None:
+        """Keep the full-size image of the next two stops loading; free those already passed."""
+        for i, stop in enumerate(self.stops):
+            if i < self.next_stop - 1 or i > self.next_stop + 1:
+                stop.full, stop.loading = None, None  # memory: only keep what's about to be shown
+            elif stop.full is None and stop.loading is None:
+                stop.loading = self._loader.submit(load_photo_image, stop.pin, self._full_size_px())
+
+    def _full_pixmap(self, stop: PhotoStop) -> Optional[QPixmap]:
+        """Full-size image if loaded (converted to a pixmap here, on the GUI thread)."""
+        if stop.full is None and stop.loading is not None and stop.loading.done():
+            img = stop.loading.result() if not stop.loading.cancelled() else None
+            stop.full = QPixmap.fromImage(img) if img is not None else None
+            stop.loading = None if stop.full is not None else stop.loading
+        return stop.full
+
+    def wait_for_photo(self, index: int, timeout: float = 10.0) -> Optional[QPixmap]:
+        """Block until a stop's full image is loaded (tests and exports)."""
+        stop = self.stops[index]
+        if stop.full is None:
+            if stop.loading is None:
+                stop.loading = self._loader.submit(load_photo_image, stop.pin, self._full_size_px())
+            stop.loading.result(timeout=timeout)
+        return self._full_pixmap(stop)
+
+    def shutdown(self) -> None:
+        self.timer.stop()
+        self._loader.shutdown(wait=False, cancel_futures=True)
+
     def advance(self, dt: float) -> None:
         """Advance the animation by dt seconds (also used by tests without a timer)."""
+        self._prefetch()
         if self.phase == "playing":
             self.dist = min(self.path.length, self.dist + self.speed_mps * dt)
             target_yaw = self.path.heading(self.dist)
@@ -479,7 +524,8 @@ class Replay3DView(QWidget):
             t = 1.0
         s = project(*stop.world)
         start_c = QPointF(s[0], s[1] - 30) if s else QPointF(w / 2, h / 2)
-        pix = stop.pixmap
+        # Full-size photo once loaded (usually well before the stop); the thumbnail meanwhile
+        pix = self._full_pixmap(stop) or stop.pixmap
         aspect = (pix.width() / pix.height()) if pix is not None and pix.height() else 1.5
         full_w, full_h = (w, w / aspect) if w / h < aspect else (h * aspect, h)
         start_w = 46.0
@@ -511,6 +557,8 @@ class Replay3DView(QWidget):
             p.setPen(QColor(236, 245, 238, alpha))
             p.setFont(QFont("Sans Serif", 11))
             caption = stop.pin.caption or stop.pin.ai_summary or stop.pin.filename
+            if stop.pin.people:
+                caption += "   👥 " + ", ".join(stop.pin.people)
             p.drawText(band.adjusted(24, 36, -24, -6), Qt.AlignmentFlag.AlignLeft, caption)
 
 
@@ -561,8 +609,12 @@ class Replay3DDialog(QDialog):
         QTimer.singleShot(400, self.view.play)  # start once the window is on screen
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
-        self.view.pause()
+        self.view.shutdown()
         super().closeEvent(event)
+
+    def done(self, result: int) -> None:  # Esc / reject also stops loading photos
+        self.view.shutdown()
+        super().done(result)
 
     def _toggle(self) -> None:
         self.view.pause() if self.view.is_running() else self.view.play()

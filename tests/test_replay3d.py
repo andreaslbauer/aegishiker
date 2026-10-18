@@ -48,6 +48,8 @@ def test_replay_runs_through_photo_sequence(tmp_path: Path) -> None:
     view = Replay3DView(route, pack, [pin, dup], "us")
     view.resize(800, 500)
     assert len(view.stops) == 1 and view.stops[0].pixmap is not None
+    full = view.wait_for_photo(0)
+    assert full is not None and full.width() == 600, "full-size photo for the zoom, not the thumbnail"
     assert not view.grab().isNull()
 
     view.phase = "playing"
@@ -67,3 +69,4 @@ def test_replay_runs_through_photo_sequence(tmp_path: Path) -> None:
     assert view.phase == "done" and abs(view.dist - view.path.length) < 1e-6
     view.seek(0.0)
     assert view.dist == 0.0 and view.next_stop == 0
+    view.shutdown()

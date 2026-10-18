@@ -137,22 +137,53 @@ def photo_keys(pin: HikePhotoPin) -> List[tuple]:
     return keys
 
 
-def dedupe_pins(pins: List[HikePhotoPin]) -> List[HikePhotoPin]:
-    """Drop duplicate photos (see photo_keys), keeping the richest copy of each: starred, with a
-    thumbnail, AI notes or people. Groups keep the order in which they first appear."""
-    def richness(p: HikePhotoPin) -> int:
-        return 4 * bool(p.is_starred) + 2 * bool(p.thumb_path) + bool(p.ai_summary) + bool(p.people)
+_FORMAT_RANK = {".jpg": 3, ".jpeg": 3, ".png": 3, ".webp": 3, ".tif": 3, ".tiff": 3, ".heic": 2, ".heif": 2}
 
-    chosen: List[HikePhotoPin] = []
+
+def _format_rank(pin: HikePhotoPin) -> int:
+    """Prefer copies that open at full size everywhere: JPEG/PNG over HEIC over RAW/video."""
+    path = (pin.photo_path or "").lower()
+    ext = path[path.rfind("."):] if "." in path else ""
+    return _FORMAT_RANK.get(ext, 1 if path else 0)
+
+
+def dedupe_pins(pins: List[HikePhotoPin]) -> List[HikePhotoPin]:
+    """Drop duplicate photos (see photo_keys). Of each set of copies the most readable file wins
+    (e.g. IMG_1234.HEIC.jpg over IMG_1234.HEIC), then the richest; the winner keeps the star, AI
+    notes, people and thumbnail of its copies. Groups keep the order in which they first appear."""
+    def score(p: HikePhotoPin) -> tuple:
+        return (_format_rank(p), 4 * bool(p.is_starred) + 2 * bool(p.thumb_path) + bool(p.ai_summary) + bool(p.people))
+
+    groups: List[List[HikePhotoPin]] = []
     group_of: Dict[tuple, int] = {}
     for pin in pins:
         keys = photo_keys(pin)
         g = next((group_of[k] for k in keys if k in group_of), None)
         if g is None:
-            g = len(chosen)
-            chosen.append(pin)
-        elif richness(pin) > richness(chosen[g]):
-            chosen[g] = pin
+            g = len(groups)
+            groups.append([])
+        groups[g].append(pin)
         for k in keys:
             group_of.setdefault(k, g)
-    return chosen
+
+    out: List[HikePhotoPin] = []
+    for copies in groups:
+        best = max(copies, key=score)
+        if len(copies) > 1:
+            update: Dict[str, Any] = {}
+            if not best.is_starred and any(c.is_starred for c in copies):
+                update["is_starred"] = True
+            for field in ("thumb_path", "ai_summary", "ai_mood", "caption"):
+                if not getattr(best, field):
+                    donor = next((getattr(c, field) for c in copies if getattr(c, field)), None)
+                    if donor:
+                        update[field] = donor
+            for field in ("people", "ai_tags"):
+                if not getattr(best, field):
+                    donor = next((getattr(c, field) for c in copies if getattr(c, field)), None)
+                    if donor:
+                        update[field] = list(donor)
+            if update:
+                best = best.model_copy(update=update)
+        out.append(best)
+    return out

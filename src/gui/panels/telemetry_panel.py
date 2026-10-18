@@ -72,7 +72,7 @@ class TelemetryPanel(QWidget):
         for idx, s in enumerate(sessions):
             route = self.app_state.db.get_route(s.route_id) if s.route_id else None
             r_name = route.name if route else "Hike Session"
-            self.session_combo.addItem(f"{r_name} ({(s.started_at or '')[:10]})", s.id)
+            self.session_combo.addItem(f"{hike_title(s, route)} ({(s.started_at or '')[:10]})", s.id)
             if s.id == self.app_state.active_session_id:
                 active_idx = idx
         self.session_combo.setCurrentIndex(active_idx)

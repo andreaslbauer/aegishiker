@@ -3,6 +3,7 @@ Lets the user replay any recorded/traced hike on an interactive topographic map,
 scrubbing through elevation and time while viewing geotagged photos matched from
 AegisPhotoVoyager along the trail corridor.
 """
+import html
 from pathlib import Path
 from typing import List, Optional
 import webbrowser
@@ -10,13 +11,14 @@ import webbrowser
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSlider,
     QSplitter,
@@ -33,6 +35,8 @@ from src.gui.widgets import SectionHeader, StatCard
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import TrailPhotoPin
 from src.hiking.photo_matcher import dedupe_pins
+from src.hiking.hike_info import hike_date_label, hike_people, hike_title, hike_trail_names, people_label
+from src.gui.dialogs.hike_picker_dialog import HikePickerDialog
 from src.hiking.units import format_distance, format_elevation
 from src.gui.busy import busy, run_in_background
 
@@ -67,12 +71,22 @@ class ReexperiencePanel(QWidget):
         header.actions_layout.addWidget(open_browser_btn)
         layout.addWidget(header)
 
-        # Session selector row
+        # Current hike + choose / rename / delete
         sel_row = QHBoxLayout()
-        sel_row.addWidget(QLabel("Recorded Hike Session:"))
-        self.session_combo = QComboBox()
-        self.session_combo.currentIndexChanged.connect(self._on_session_combo_changed)
-        sel_row.addWidget(self.session_combo, 1)
+        self.hike_lbl = QLabel()
+        self.hike_lbl.setWordWrap(True)
+        self.hike_lbl.setTextFormat(Qt.TextFormat.RichText)
+        sel_row.addWidget(self.hike_lbl, 1)
+        self.choose_btn = QPushButton("📂 Choose Hike…")
+        self.choose_btn.setObjectName("PrimaryButton")
+        self.choose_btn.setToolTip("Browse your hikes by year with trails, people and photos")
+        self.choose_btn.clicked.connect(self.choose_hike)
+        self.rename_btn = QPushButton("Rename…")
+        self.rename_btn.clicked.connect(self.rename_hike)
+        self.delete_btn = QPushButton("Delete…")
+        self.delete_btn.clicked.connect(self.delete_hike)
+        for b in (self.choose_btn, self.rename_btn, self.delete_btn):
+            sel_row.addWidget(b)
         layout.addLayout(sel_row)
 
         # Summary stat cards
@@ -152,29 +166,72 @@ class ReexperiencePanel(QWidget):
         layout.addWidget(main_split, 1)
 
         self.app_state.session_changed.connect(lambda _: self.refresh_all())
+        self.app_state.sessions_changed.connect(self.refresh_all)
         self.app_state.route_changed.connect(lambda _: self.refresh_all())
         self.refresh_all()
 
     def refresh_all(self) -> None:
-        self.session_combo.blockSignals(True)
-        self.session_combo.clear()
-        sessions = self.app_state.db.list_sessions()
-        active_idx = 0
-        for idx, s in enumerate(sessions):
-            route = self.app_state.db.get_route(s.route_id) if s.route_id else None
-            r_name = route.name if route else "Recorded Hike"
-            date_part = (s.started_at or "")[:10]
-            self.session_combo.addItem(f"{r_name} ({date_part}) — [{s.status}]", s.id)
-            if s.id == self.app_state.active_session_id:
-                active_idx = idx
-        self.session_combo.setCurrentIndex(active_idx)
-        self.session_combo.blockSignals(False)
         self._load_active_session_view()
 
-    def _on_session_combo_changed(self) -> None:
-        s_id = self.session_combo.currentData()
-        if s_id:
-            self.app_state.set_active_session(str(s_id))
+    def _update_hike_header(self, session, route) -> None:
+        if session is None:
+            self.hike_lbl.setText("<span style='color:#98B2A1'>No recorded hike yet — use “✓ I Hiked This Trail” "
+                                  "in the Trail Composer, or sync a hike from your phone.</span>")
+        else:
+            people = hike_people(self.photo_pins)
+            trails = hike_trail_names(route, {t.id: t for t in self.app_state.db.list_trails(session.pack_id or "")})
+            parts = [f"<span style='font-size:13pt; font-weight:700'>{html.escape(hike_title(session, route))}</span>",
+                     f"<span style='color:#98B2A1'>{html.escape(hike_date_label(session))}</span>"]
+            if trails and not (len(trails) == 1 and route is not None and trails[0] == route.name):
+                parts.append(f"<span style='color:#98B2A1'>Trails: {html.escape(' → '.join(trails))}</span>")
+            if people:
+                parts.append(f"<span style='color:#2ECC71'>👥 {html.escape(people_label(people, 8))}</span>")
+            self.hike_lbl.setText("<br>".join(parts))
+        for b in (self.rename_btn, self.delete_btn):
+            b.setEnabled(session is not None)
+
+    def choose_hike(self) -> None:
+        dlg = HikePickerDialog(self.app_state, self)
+        if dlg.exec() and dlg.selected_session_id:
+            self.app_state.set_active_session(dlg.selected_session_id)
+        else:
+            self.refresh_all()  # hikes may have been renamed or deleted in the dialog
+
+    def rename_hike(self) -> None:
+        session = self.app_state.get_active_session()
+        if session is None:
+            return
+        route = self.app_state.db.get_route(session.route_id) if session.route_id else None
+        title, ok = QInputDialog.getText(self, "Rename Hike", "Hike name:", text=hike_title(session, route))
+        if ok and title.strip():
+            self.app_state.rename_session(session.id, title)
+
+    def delete_hike(self) -> None:
+        session = self.app_state.get_active_session()
+        if session is None:
+            return
+        route = self.app_state.db.get_route(session.route_id) if session.route_id else None
+        answer = QMessageBox.question(
+            self, "Delete Hike",
+            f"Delete “{hike_title(session, route)}” ({hike_date_label(session)})?\n\n"
+            "This removes the hike, its replay map and its photo links. The photos themselves in "
+            "AegisPhotoVoyager are not touched, and the planned route stays in the Library.",
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.app_state.delete_session(session.id)
+
+    def _fill_missing_people(self) -> None:
+        """Photos saved before person names were read get them from AegisPhotoVoyager now."""
+        missing = [p for p in self.photo_pins if not p.people and p.voyager_photo_id is not None]
+        if not missing:
+            return
+        found = self.app_state.voyager_bridge.people_for_photo_ids([int(p.voyager_photo_id) for p in missing])
+        for pin in missing:
+            names = found.get(int(pin.voyager_photo_id))
+            if names:
+                pin.people = names
+                if pin.session_id:
+                    self.app_state.db.save_photo_pin(pin)
 
     def _load_active_session_view(self) -> None:
         session = self.app_state.get_active_session()
@@ -192,7 +249,9 @@ class ReexperiencePanel(QWidget):
         else:
             self.photo_pins = []
         self.photo_pins = dedupe_pins(self.photo_pins)  # also cleans up pins saved twice before
+        self._fill_missing_people()
         self.photo_pins.sort(key=lambda p: (p.date_taken or 0, p.distance_along_route_m))  # timeline order
+        self._update_hike_header(session, route)
 
         trails = self.app_state.db.list_trails(route.destination_id if route else self.app_state.active_destination_id)
         pois = self.app_state.db.list_pois(route.destination_id if route else self.app_state.active_destination_id)
@@ -220,9 +279,10 @@ class ReexperiencePanel(QWidget):
         self.photo_list.clear()
         for pin in self.photo_pins:
             when = format_time(pin)
+            who = f"  👥 {people_label(pin.people, 3)}" if pin.people else ""
             item = QListWidgetItem(
                 f"📸 {when + ' · ' if when else ''}{pin.caption or pin.filename} — "
-                f"{format_distance(pin.distance_along_route_m, unit)}"
+                f"{format_distance(pin.distance_along_route_m, unit)}{who}"
             )
             item.setData(Qt.ItemDataRole.UserRole, pin.id)
             self.photo_list.addItem(item)

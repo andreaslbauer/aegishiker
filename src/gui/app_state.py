@@ -26,6 +26,7 @@ class AppState(QObject):
     route_changed = Signal(str)
     session_changed = Signal(str)
     trails_updated = Signal()
+    sessions_changed = Signal()  # a hike was renamed or deleted
     hover_distance_changed = Signal(float)
     settings_changed = Signal()
     status_message = Signal(str)
@@ -114,6 +115,32 @@ class AppState(QObject):
         self.active_session_id = session_id
         self._remember("last_session_id", session_id)
         self.session_changed.emit(session_id)
+
+    def rename_session(self, session_id: str, title: str) -> None:
+        session = self.db.get_session(session_id)
+        title = title.strip()
+        if session is None or not title:
+            return
+        session.title = title
+        self.db.save_session(session)
+        self.sessions_changed.emit()
+
+    def delete_session(self, session_id: str) -> None:
+        """Delete a recorded hike with its photo links, GPS track and replay map file. The photos
+        themselves (in AegisPhotoVoyager) are never touched."""
+        from src.core import paths
+
+        self.db.delete_session(session_id)  # photo pins / telemetry / notes cascade
+        try:
+            (paths.get_hike_maps_dir() / f"{session_id}.html").unlink(missing_ok=True)
+        except OSError:
+            pass
+        if self.active_session_id == session_id:
+            remaining = self.db.list_sessions()
+            self.active_session_id = remaining[0].id if remaining else None
+            self._remember("last_session_id", self.active_session_id or "")
+            self.session_changed.emit(self.active_session_id or "")
+        self.sessions_changed.emit()
 
     def get_active_destination(self) -> Optional[Destination]:
         if not self.active_destination_id:

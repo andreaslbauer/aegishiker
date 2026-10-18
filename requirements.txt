@@ -9,6 +9,7 @@ requests>=2.32
 # QR codes for the phone page (pure Python) and photo cleaning/thumbnails
 segno>=1.6
 Pillow>=10
+pillow-heif>=0.16             # iPhone HEIC photos at full resolution (optional at runtime)
 
 # Optional: password-protected .aegishike exports
 cryptography>=42

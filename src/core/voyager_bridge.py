@@ -5,6 +5,7 @@ traced hike trail, enriched with AegisPhotoVoyager's AI vision summaries, tags, 
 and identified people (faces/persons).
 """
 import json
+import re
 import logging
 import os
 from pathlib import Path
@@ -18,6 +19,13 @@ from src.hiking.photo_matcher import match_photos_to_trail
 from . import settings
 
 logger = logging.getLogger(__name__)
+
+_PLACEHOLDER_PERSON = re.compile(r"^(person|unknown( person)?|face|cluster)[\s_#-]*\d*$", re.IGNORECASE)
+
+
+def is_placeholder_person(name: str) -> bool:
+    """Voyager names unidentified face clusters 'Person 1234' / 'Unknown Person': not real names."""
+    return bool(_PLACEHOLDER_PERSON.match(name.strip()))
 
 
 def find_voyager_db(configured_path: Optional[str] = None) -> Optional[str]:
@@ -284,26 +292,49 @@ class VoyagerBridge:
         conn: sqlite3.Connection,
         photo_ids: List[int],
     ) -> Dict[int, List[str]]:
+        """Named people per photo. Faces of merged persons resolve to the person they were merged
+        into; hidden persons and Voyager's auto-generated placeholders ("Person 1234") are skipped."""
         out: Dict[int, List[str]] = {}
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(persons)").fetchall()}
+        merged = "is_merged_into" in cols
+        hidden = "is_hidden" in cols
+        name_sql = "COALESCE(m.name, pr.name)" if merged else "pr.name"
+        join_sql = "LEFT JOIN persons m ON m.id = pr.is_merged_into" if merged else ""
+        hidden_sql = "AND (pr.is_hidden IS NULL OR pr.is_hidden = 0)" if hidden else ""
         chunk_size = 450
         for start in range(0, len(photo_ids), chunk_size):
             chunk = photo_ids[start : start + chunk_size]
             placeholders = ",".join("?" * len(chunk))
             sql = f"""
-                SELECT f.photo_id, pr.name
+                SELECT f.photo_id, {name_sql} AS name
                 FROM faces f
                 JOIN persons pr ON pr.id = f.person_id
+                {join_sql}
                 WHERE f.photo_id IN ({placeholders})
                   AND (f.is_ignored IS NULL OR f.is_ignored = 0)
                   AND f.person_id IS NOT NULL
+                  {hidden_sql}
             """
             for row in conn.execute(sql, chunk).fetchall():
                 pid, name = int(row["photo_id"]), str(row["name"] or "").strip()
-                if name and name != "Unknown Person":
+                if name and not is_placeholder_person(name):
                     out.setdefault(pid, [])
                     if name not in out[pid]:
                         out[pid].append(name)
         return out
+
+    def people_for_photo_ids(self, photo_ids: List[int]) -> Dict[int, List[str]]:
+        """Named people for Voyager photo ids (to refresh photos saved before names were known)."""
+        if not photo_ids or not self.is_available():
+            return {}
+        try:
+            with self._conn() as conn:
+                if not (self._table_exists(conn, "faces") and self._table_exists(conn, "persons")):
+                    return {}
+                return self._fetch_people_map(conn, [int(i) for i in photo_ids])
+        except Exception as e:
+            logger.error(f"VoyagerBridge.people_for_photo_ids failed: {e}")
+            return {}
 
     def find_photos_for_traced_trail(
         self,
