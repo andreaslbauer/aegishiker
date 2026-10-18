@@ -226,6 +226,40 @@ def chase_camera(
     return Camera(cxw, cyw, czw, yaw, pitch, focal=width * 0.85, cx=width / 2.0, cy=height * 0.42)
 
 
+def look_camera(
+    hiker: Tuple[float, float, float], target: Tuple[float, float, float], fallback_yaw: float,
+    width: int, height: int, back_m: float = 750.0, up_m: float = 380.0,
+    ground_at=None, clearance_m: float = 150.0,
+) -> Camera:
+    """Closer camera behind the hiker that looks at `target` (where a photo was taken)."""
+    hx, hy, hz = hiker
+    dx, dy = target[0] - hx, target[1] - hy
+    yaw = math.atan2(dy, dx) if math.hypot(dx, dy) > 40.0 else fallback_yaw
+    cxw = hx - math.cos(yaw) * back_m
+    cyw = hy - math.sin(yaw) * back_m
+    czw = hz + up_m
+    if ground_at is not None:
+        czw = max(czw, ground_at(cxw, cyw) + clearance_m)
+    horiz = max(1.0, math.hypot(target[0] - cxw, target[1] - cyw))
+    pitch = math.atan2(czw - target[2], horiz)
+    return Camera(cxw, cyw, czw, yaw, pitch, focal=width * 0.85, cx=width / 2.0, cy=height * 0.42)
+
+
+def blend_cameras(a: Camera, b: Camera, t: float) -> Camera:
+    """Camera t of the way from a to b (position, heading and tilt)."""
+    t = max(0.0, min(1.0, t))
+    return Camera(
+        a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t,
+        lerp_angle(a.yaw, b.yaw, t), a.pitch + (b.pitch - a.pitch) * t,
+        a.focal + (b.focal - a.focal) * t, a.cx, a.cy,
+    )
+
+
+def smoothstep(t: float) -> float:
+    t = max(0.0, min(1.0, t))
+    return t * t * (3 - 2 * t)
+
+
 def lerp_angle(a: float, b: float, t: float) -> float:
     d = (b - a + math.pi) % (2 * math.pi) - math.pi
     return a + d * t
