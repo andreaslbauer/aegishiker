@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic builder for AegisHiker's 9 bundled regional destination packs.
+"""Deterministic builder for AegisHiker's 10 bundled regional destination packs.
 
 Generates:
   - data/destinations_catalog.json
@@ -12,6 +12,7 @@ Generates:
   - data/packs/mount_rainier_paradise.json
   - data/packs/mount_monadnock.json
   - data/packs/fitchburg_state_forest.json
+  - data/packs/acton_boxborough_harvard.json
 
 Usage: build_starter_packs.py [pack_id ...]   (no ids = rebuild all)
 """
@@ -838,6 +839,54 @@ def build_fitchburg_state_forest() -> DestinationPack:
     )
 
 
+def build_acton_boxborough_harvard() -> DestinationPack:
+    """Town conservation lands of Acton, Boxborough and Harvard (MA): Nashoba Brook, Great Hill, Steele
+    Farm, Beaver Brook, Prospect & Oak Hills, Holy Hill and the Oxbow refuge on the Nashua River.
+    Trails come from OpenStreetMap (data/osm_trails.json)."""
+    pid = "acton_boxborough_harvard"
+    pois = [
+        # Acton
+        POI(id="poi_abh_nashoba_brook", pack_id=pid, name="Nashoba Brook Conservation Land", kind="trailhead", lat=42.5081, lon=-71.4104, ele_m=60.0, note="Acton's largest conservation area: brook, old pencil-mill ruins and Wheeler Farm foundation. Parking on Davis Rd"),
+        POI(id="poi_abh_wheeler", pack_id=pid, name="Wheeler Farm Foundation", kind="viewpoint", lat=42.51326, lon=-71.4053, ele_m=60.0),
+        POI(id="poi_abh_great_hill", pack_id=pid, name="Great Hill", kind="peak", lat=42.46843, lon=-71.45423, ele_m=109.0, note="Great Hill Conservation Land, behind the Acton public safety facility"),
+        POI(id="poi_abh_spring_hill", pack_id=pid, name="Spring Hill Conservation Land", kind="trailhead", lat=42.50155, lon=-71.40214, ele_m=80.0, note="Joins Camp Acton and Nashoba Brook conservation lands"),
+        POI(id="poi_abh_nagog_hill", pack_id=pid, name="Nagog Hill", kind="peak", lat=42.50704, lon=-71.44312, ele_m=111.0),
+        POI(id="poi_abh_grassy_pond", pack_id=pid, name="Grassy Pond", kind="water", lat=42.50192, lon=-71.45297, ele_m=70.0, note="Grassy Pond Conservation Land"),
+        POI(id="poi_abh_wills_hole", pack_id=pid, name="Wills Hole", kind="water", lat=42.51868, lon=-71.42185, ele_m=60.0, note="Wills Hole Conservation Land / Acton Town Forest"),
+        POI(id="poi_abh_arboretum", pack_id=pid, name="Acton Arboretum", kind="trailhead", lat=42.48001, lon=-71.43315, ele_m=70.0, note="Gardens, boardwalk and short woodland trails off Taylor Rd"),
+        POI(id="poi_abh_annursnac", pack_id=pid, name="Annursnac Hill", kind="peak", lat=42.47787, lon=-71.39534, ele_m=110.0),
+        # Boxborough
+        POI(id="poi_abh_steele_farm", pack_id=pid, name="Steele Farm", kind="trailhead", lat=42.48727, lon=-71.5214, ele_m=100.0, note="Boxborough town farm: open fields, stone walls and woodland loops off Middle Rd"),
+        POI(id="poi_abh_flerra", pack_id=pid, name="Flerra Meadows", kind="trailhead", lat=42.47269, lon=-71.51382, ele_m=90.0),
+        POI(id="poi_abh_flagg_hill", pack_id=pid, name="Flagg Hill", kind="peak", lat=42.46522, lon=-71.4992, ele_m=139.0),
+        POI(id="poi_abh_patch_hill", pack_id=pid, name="Patch Hill Conservation Area", kind="trailhead", lat=42.50023, lon=-71.50985, ele_m=110.0),
+        POI(id="poi_abh_beaver_brook", pack_id=pid, name="Beaver Brook Valley Preserve", kind="trailhead", lat=42.50638, lon=-71.52765, ele_m=90.0, note="Beaver Brook woods and meadows on the Boxborough / Harvard line"),
+        # Harvard
+        POI(id="poi_abh_prospect_hill", pack_id=pid, name="Prospect Hill", kind="peak", lat=42.50353, lon=-71.60912, ele_m=171.0, note="Orchard hilltop with long views west to Wachusett and Monadnock"),
+        POI(id="poi_abh_fruitlands", pack_id=pid, name="Fruitlands Museum", kind="trailhead", lat=42.50563, lon=-71.614, ele_m=120.0, note="Museum grounds with woodland and meadow trails down toward the Nashua valley (fee)"),
+        POI(id="poi_abh_oak_hill", pack_id=pid, name="Oak Hill", kind="peak", lat=42.51609, lon=-71.54911, ele_m=187.0, note="High point of the area, Harvard"),
+        POI(id="poi_abh_holy_hill", pack_id=pid, name="Holy Hill", kind="viewpoint", lat=42.5366, lon=-71.5605, ele_m=130.0, note="Shaker Village conservation land; site of the Shakers' outdoor worship ground"),
+        POI(id="poi_abh_bare_hill_pond", pack_id=pid, name="Bare Hill Pond", kind="water", lat=42.48844, lon=-71.59791, ele_m=80.0, note="Harvard Town Beach on the north shore"),
+        POI(id="poi_abh_bowers", pack_id=pid, name="Bowers Springs Conservation Area", kind="trailhead", lat=42.4645, lon=-71.60676, ele_m=110.0),
+        POI(id="poi_abh_delaney", pack_id=pid, name="Delaney Wildlife Management Area", kind="water", lat=42.45292, lon=-71.54822, ele_m=70.0, note="Delaney Pond and marshes (Harvard / Stow / Bolton); popular for birding. Hunting in season"),
+        POI(id="poi_abh_oxbow", pack_id=pid, name="Oxbow National Wildlife Refuge", kind="ranger", lat=42.53356, lon=-71.61999, ele_m=65.0, note="USFWS refuge along the Nashua River floodplain"),
+        POI(id="poi_abh_bill_ashe", pack_id=pid, name="Bill Ashe Trailhead", kind="trailhead", lat=42.54023, lon=-71.63342, ele_m=70.0, note="Oxbow NWR, off Still River Depot Rd"),
+    ]
+    return DestinationPack(
+        id=pid,
+        name="Acton, Boxborough & Harvard",
+        state_or_region="Massachusetts (Acton, Boxborough & Harvard — with Nashoba Brook, Steele Farm, Holy Hill & the Oxbow refuge)",
+        agency="Town Conservation Commissions, Harvard Conservation Trust, USFWS, USGS 3DEP & OpenStreetMap Contributors",
+        summary="Gentle hills, orchards, stone walls and brooks west of Concord: a patchwork of town conservation "
+                "lands from Acton's Nashoba Brook and Great Hill through Boxborough's Steele Farm and Beaver Brook "
+                "to Harvard's Prospect and Oak Hills, the Shaker lands on Holy Hill and the Nashua River at Oxbow.",
+        min_lat=42.434, max_lat=42.556, min_lon=-71.643, max_lon=-71.381,
+        base_ele_m=40.0, max_ele_m=200.0,
+        emergency_contact="911",
+        trails=[], pois=pois,
+    )
+
+
 def build_all(only: List[str] | None = None) -> None:
     packs = [
         build_white_mountains_nh(),
@@ -849,6 +898,7 @@ def build_all(only: List[str] | None = None) -> None:
         build_mount_rainier_paradise(),
         build_mount_monadnock(),
         build_fitchburg_state_forest(),
+        build_acton_boxborough_harvard(),
     ]
     if only:
         packs = [p for p in packs if p.id in only]

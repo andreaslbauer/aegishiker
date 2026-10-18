@@ -172,6 +172,25 @@
       "trail_count": 74,
       "poi_count": 16,
       "bundled_file": "packs/fitchburg_state_forest.json"
+    },
+    {
+      "id": "acton_boxborough_harvard",
+      "name": "Acton, Boxborough & Harvard",
+      "state_or_region": "Massachusetts (Acton, Boxborough & Harvard \u2014 with Nashoba Brook, Steele Farm, Holy Hill & the Oxbow refuge)",
+      "agency": "Town Conservation Commissions, Harvard Conservation Trust, USFWS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Gentle hills, orchards, stone walls and brooks west of Concord: a patchwork of town conservation lands from Acton's Nashoba Brook and Great Hill through Boxborough's Steele Farm and Beaver Brook to Harvard's Prospect and Oak Hills, the Shaker lands on Holy Hill and the Nashua River at Oxbow.",
+      "bbox": [
+        -71.643,
+        42.434,
+        -71.381,
+        42.556
+      ],
+      "base_ele_m": 40.0,
+      "max_ele_m": 200.0,
+      "trail_count": 171,
+      "poi_count": 23,
+      "bundled_file": "packs/acton_boxborough_harvard.json"
     }
   ]
 }

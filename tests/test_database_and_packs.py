@@ -14,6 +14,7 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
         "zion_canyon",
         "mount_rainier_paradise",
         "mount_monadnock",
+        "acton_boxborough_harvard",
     }
     assert expected.issubset(pack_ids)
 
@@ -22,6 +23,10 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
     names = {t.name for t in mon.trails}
     assert {"White Dot Trail", "White Cross Trail", "Pumpelly Trail", "Dublin Trail"} <= names
     assert not any(t.dogs_allowed for t in mon.trails), "dogs are not allowed in Monadnock State Park"
+
+    abh = seeded_db.get_destination("acton_boxborough_harvard")
+    assert abh is not None and len(abh.trails) >= 100
+    assert {"Holy Hill (yellow blaze)", "Nashua Acton & Boston Railroad Trail"} <= {t.name for t in abh.trails}
 
     nh = seeded_db.get_destination("white_mountains_nh")
     assert nh is not None

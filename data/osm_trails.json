@@ -485,5 +485,41 @@
         "note": "Long-distance trail (Rhode Island to New Hampshire) linking Leominster and Fitchburg State Forests."
       }
     }
+  },
+  "acton_boxborough_harvard": {
+    "all_named": true,
+    "exclude_regex": "\\bRoad\\b|\\bRd\\b|\\bStreet\\b|\\bAvenue\\b|\\bLane\\b|\\bDrive\\b|\\bTurnpike\\b|\\bDriveway\\b|^(no name|No Name|need name)$|^((?i:light |dark )?(?i:blue|red|yellow|green|white|orange|purple|pink)( (?i:and|&) (?i:blue|red|yellow|green|white|orange))?( (?i:dot|blaze))?( (?i:trail|loop))?)$|^(Trail|Connector|Orange Connector|Bypass|Shortcut|Farm Path|Old [Cc]art [Pp]ath)$|^(New )?(Primary|Secondary) [Tt]rail\\b|AT&T|Right [Oo]f Way|\\bROW\\b|Utility Line|Easement|easement link|Snowmobile|snowmobile|Disc Golf|Fitness Trail|Flood Prone|Beach Walkway|Ledge Lot|[Pp]roposed|under construction|[Uu]nmaintained|[Uu]nmarked|[Ss]ocial trail|Likely Trail|Probable Trail|Closed",
+    "aliases": {
+      "Field perimeter trail": "Field Perimeter Trail",
+      "Brown Trail (Blue blazes)": "Brown Trail (blue blazes)",
+      "Ohlin Trail (Yellow blazes)": "Ohlin Trail (yellow blaze)",
+      "Smith Trail (blue)": "Smith Trail (blue blaze)",
+      "Prospect Hill Primary Trail (yellow blazes)": "Prospect Hill Trail - Primary (yellow blaze)",
+      "Prospect Hill Secondary Trail (blue blazes)": "Prospect Hill Trail - Secondary (blue blaze)",
+      "Beaver Brook Preserve (Esker)": "Beaver Brook Valley Preserve (Esker)",
+      "Bolton Loop Trail (Yellow)": "Bolton Loop Trail"
+    },
+    "code_prefix": "ABH",
+    "tags": [
+      "acton",
+      "boxborough",
+      "harvard",
+      "conservation_land"
+    ],
+    "defaults": {
+      "min_length_m": 200,
+      "alpine_above_m": 5000
+    },
+    "overrides": {
+      "Holy Hill (yellow blaze)": {
+        "note": "Loop over the Shakers' Holy Hill worship ground with views across the Harvard orchards."
+      },
+      "Nashua Acton & Boston Railroad Trail": {
+        "note": "Level walk on the bed of the old Nashua, Acton & Boston Railroad."
+      },
+      "Acton Minutemen Line of March, April 19 1775": {
+        "note": "Route the Acton Minutemen took to the North Bridge in Concord on April 19, 1775."
+      }
+    }
   }
 }
