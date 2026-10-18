@@ -121,6 +121,13 @@ class HikePickerDialog(QDialog):
         self.tree.setHeaderHidden(True)
         self.tree.setIndentation(14)
         self.tree.setUniformRowHeights(False)
+        # Subtle selection: the app's bright green highlight would hide the cards' green/grey text
+        self.tree.setStyleSheet(
+            "QTreeWidget::item:selected, QTreeWidget::item:selected:active {"
+            " background: #1E4532; border: 1px solid #2ECC71; border-radius: 6px; }"
+            "QTreeWidget::item:hover:!selected { background: #16271D; }"
+            "QTreeWidget::branch:selected { background: transparent; border: none; }"
+        )
         self.tree.itemDoubleClicked.connect(lambda item, _c: self._open(item))
         self.tree.currentItemChanged.connect(lambda *_: self._sync_buttons())
         col.addWidget(self.tree, 1)

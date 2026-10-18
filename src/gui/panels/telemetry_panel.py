@@ -16,6 +16,7 @@ from src.gui.app_state import AppState
 from src.gui.charts.pace_chart import PaceChart
 from src.gui.widgets import SectionHeader, StatCard
 from src.hiking.telemetry import compute_splits, detect_off_trail, summarize_telemetry
+from src.hiking.hike_info import hike_title
 from src.hiking.units import format_distance, format_duration, format_duration_min, format_elevation
 
 
@@ -62,6 +63,7 @@ class TelemetryPanel(QWidget):
         layout.addWidget(splitter, 1)
 
         self.app_state.session_changed.connect(lambda _: self.refresh_all())
+        self.app_state.sessions_changed.connect(self.refresh_all)
         self.refresh_all()
 
     def refresh_all(self) -> None:
@@ -71,7 +73,6 @@ class TelemetryPanel(QWidget):
         active_idx = 0
         for idx, s in enumerate(sessions):
             route = self.app_state.db.get_route(s.route_id) if s.route_id else None
-            r_name = route.name if route else "Hike Session"
             self.session_combo.addItem(f"{hike_title(s, route)} ({(s.started_at or '')[:10]})", s.id)
             if s.id == self.app_state.active_session_id:
                 active_idx = idx
