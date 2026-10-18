@@ -181,9 +181,9 @@ def choose_contour_interval(min_ele: float, max_ele: float, units: str = "ft") -
     """Contour interval in metres, chosen as a round number in the map's display units."""
     relief = max_ele - min_ele
     if units == "ft":
-        ft = 200.0 if relief > 900 else (80.0 if relief > 350 else 40.0)
+        ft = 200.0 if relief > 900 else (80.0 if relief > 450 else 40.0)
         return ft * 0.3048
-    return 50.0 if relief > 900 else (20.0 if relief > 350 else 10.0)
+    return 50.0 if relief > 900 else (20.0 if relief > 450 else 10.0)
 
 
 def _simplify(points: List[Tuple[float, float]], tol: float) -> List[Tuple[float, float]]:
@@ -326,7 +326,7 @@ def sample_dem(dem: DEMGrid, lat: float, lon: float) -> Optional[float]:
 # ── OpenStreetMap features ──────────────────────────────────────────────────────
 
 _LINE_AREA_QUERY = """
-  way["highway"~"^(path|footway|bridleway|steps|track)$"]({b});
+  way["highway"~"^(path|footway|bridleway|steps|track)$"]["footway"!~"^(sidewalk|crossing|access_aisle)$"]({b});
   way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"]({b});
   way["waterway"~"^(river|stream|canal)$"]({b});
   way["natural"~"^(water|cliff|bare_rock|scree|wetland|glacier)$"]({b});
@@ -467,6 +467,9 @@ def _classify(tags: Dict[str, str]) -> Optional[str]:
     if tour == "viewpoint":
         return "viewpoint"
     am = tags.get("amenity", "")
+    if am == "parking" and (tags.get("access") in ("private", "customers", "permit", "no")
+                            or tags.get("parking") in ("street_side", "lane", "underground", "multi-storey", "rooftop")):
+        return None  # town lots and on-street parking, not trailhead parking
     if am in ("shelter", "drinking_water", "toilets", "parking", "ranger_station"):
         return am
     if tags.get("information") == "guidepost":

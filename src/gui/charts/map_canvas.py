@@ -464,6 +464,9 @@ class MapCanvas(BaseChartWidget):
             return
         painter.save()
         painter.setTransform(xf)
+        if self._relief is not None:
+            # Land-cover polygons from OSM relations can reach past the downloaded region
+            painter.setClipRect(self._relief_rect)
         for kind in ("forest", "open", "wetland", "scree", "bare_rock", "glacier", "water", "reserve"):
             path = self._area_paths.get(kind)
             if path is None:
