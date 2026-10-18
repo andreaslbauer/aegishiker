@@ -1,10 +1,11 @@
 """Saved Routes & Hike History Library panel with .hike archive and PDF export."""
 from typing import Optional
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
 
 from src.gui.app_state import AppState
 from src.gui.report import export_trailhead_pdf
-from src.gui.widgets import SectionHeader
+from src.gui.widgets import Card, SectionHeader, page_layout
 from src.hiking.hike_file import load_hike_archive, save_hike_archive
 from src.hiking.units import format_distance, format_duration, format_duration_min, format_elevation
 from src.gui.busy import busy
@@ -28,35 +29,51 @@ class LibraryPanel(QWidget):
         super().__init__(parent)
         self.app_state = app_state
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "Trail Library, Completed Hikes & Portable Archives",
-            "Manage all composed routes and completed hikes, export PDF Trailhead Sheets, or share .hike bundles.",
+            "Trail Library",
+            "All your saved routes: open one, print a trailhead safety sheet, or share it as a .hike file.",
         )
+        load_hike_btn = QPushButton("Import .hike…")
+        load_hike_btn.clicked.connect(self._import_hike_bundle)
+        header.actions_layout.addWidget(load_hike_btn)
         layout.addWidget(header)
 
+        card = Card("Saved routes", margins=(14, 14, 14, 14))
         self.route_table = QTableWidget(0, 5)
-        self.route_table.setHorizontalHeaderLabels(["Route Name", "Region", "Distance", "Ascent", "Est. Time"])
-        self.route_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.route_table, 1)
+        self.route_table.setHorizontalHeaderLabels(["Route", "Region", "Distance", "Ascent", "Est. Time"])
+        hdr = self.route_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for c in range(1, 5):
+            hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.route_table.verticalHeader().setVisible(False)
+        self.route_table.setShowGrid(False)
+        self.route_table.setAlternatingRowColors(True)
+        self.route_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.route_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.route_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.route_table.doubleClicked.connect(lambda _i: self._open_selected_route())
+        card.body.addWidget(self.route_table, 1)
 
         btn_row = QHBoxLayout()
-        open_btn = QPushButton("Open in Trail Composer")
+        btn_row.setSpacing(8)
+        delete_btn = QPushButton("Delete…")
+        delete_btn.setObjectName("DangerButton")
+        delete_btn.clicked.connect(self._delete_selected_routes)
+        pdf_btn = QPushButton("Trailhead Safety PDF…")
+        pdf_btn.clicked.connect(self._export_pdf)
+        save_hike_btn = QPushButton("Share as .hike…")
+        save_hike_btn.clicked.connect(self._export_hike_bundle)
+        open_btn = QPushButton("Open in Trail Composer  →")
         open_btn.setObjectName("PrimaryButton")
         open_btn.clicked.connect(self._open_selected_route)
-
-        pdf_btn = QPushButton("Export Trailhead & Safety PDF...")
-        pdf_btn.clicked.connect(self._export_pdf)
-
-        save_hike_btn = QPushButton("Export .hike Bundle...")
-        save_hike_btn.clicked.connect(self._export_hike_bundle)
-
-        load_hike_btn = QPushButton("Import .hike Bundle...")
-        load_hike_btn.clicked.connect(self._import_hike_bundle)
-
-        for b in [open_btn, pdf_btn, save_hike_btn, load_hike_btn]:
+        btn_row.addWidget(delete_btn)
+        btn_row.addStretch(1)
+        for b in (pdf_btn, save_hike_btn, open_btn):
             btn_row.addWidget(b)
-        layout.addLayout(btn_row)
+        card.body.addLayout(btn_row)
+        layout.addWidget(card, 1)
 
         self.app_state.route_changed.connect(lambda _: self.refresh_all())
         self.app_state.destination_changed.connect(lambda _: self.refresh_all())
@@ -74,6 +91,31 @@ class LibraryPanel(QWidget):
             self.route_table.setItem(idx, 2, QTableWidgetItem(format_distance(r.distance_m, unit)))
             self.route_table.setItem(idx, 3, QTableWidgetItem(f"+{format_elevation(r.elevation_gain_m, unit)}"))
             self.route_table.setItem(idx, 4, QTableWidgetItem(format_duration_min(r.estimated_duration_min)))
+
+    def _delete_selected_routes(self) -> None:
+        rows = sorted({i.row() for i in self.route_table.selectionModel().selectedRows()})
+        routes = [self._routes[r] for r in rows if 0 <= r < len(self._routes)]
+        if not routes:
+            return
+        names = "\n".join(f"• {r.name}" for r in routes[:8]) + (f"\n… and {len(routes) - 8} more" if len(routes) > 8 else "")
+        answer = QMessageBox.question(
+            self, "Delete Routes",
+            f"Delete {len(routes)} saved route{'s' if len(routes) != 1 else ''}?\n\n{names}\n\n"
+            "Recorded hikes that used them keep their photos and replay.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        deleted = {r.id for r in routes}
+        for r in routes:
+            self.app_state.db.delete_route(r.id)
+        if self.app_state.active_route_id in deleted:
+            remaining = self.app_state.db.list_routes(self.app_state.active_destination_id)
+            if remaining:
+                self.app_state.set_active_route(remaining[0].id)
+            else:
+                self.app_state.active_route_id = None
+        self.refresh_all()
+        self.app_state.status_message.emit(f"Deleted {len(routes)} route{'s' if len(routes) != 1 else ''}.")
 
     def _selected_route(self):
         rows = self.route_table.selectionModel().selectedRows()

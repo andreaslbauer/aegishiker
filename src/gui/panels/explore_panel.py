@@ -19,7 +19,7 @@ from src.gui.app_state import AppState
 from src.gui.charts.map_canvas import MapCanvas
 from src.gui.dialogs.condition_dialog import ConditionDialog
 from src.gui.dialogs.region_download_dialog import RegionDownloadDialog
-from src.gui.widgets import PillToggle, SectionHeader, StatCard
+from src.gui.widgets import Card, PillToggle, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.filters import TrailFilterCriteria, filter_trail_segments
 from src.hiking.models import TrailCondition, TrailDifficulty
 from src.hiking.routing import route_from_trail_segment
@@ -33,87 +33,91 @@ class ExplorePanel(QWidget):
         super().__init__(parent)
         self.app_state = app_state
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "Explore Regional Trail Packs",
-            "Browse offline regional trail networks, filter trailhead conditions, or download new OSM regions.",
+            "Explore Regions",
+            "Browse offline trail networks, check trail conditions, and pick a trail to build a hike from.",
         )
-        dl_btn = QPushButton("Download Custom Region...")
+        dl_btn = QPushButton("⬇  Download Region…")
         dl_btn.clicked.connect(self._open_download_dialog)
         header.actions_layout.addWidget(dl_btn)
         layout.addWidget(header)
 
-        # Destination selector + FTS search bar
+        # Region, search and condition filters in one card
+        filters = Card(margins=(16, 14, 16, 14))
         top_bar = QHBoxLayout()
-        top_bar.addWidget(QLabel("Destination Pack:"))
+        top_bar.setSpacing(12)
         self.dest_combo = QComboBox()
         self.dest_combo.currentIndexChanged.connect(self._on_dest_combo_changed)
-        top_bar.addWidget(self.dest_combo, 1)
-
+        top_bar.addWidget(self.dest_combo, 3)
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search trails, peaks, waterfalls, shelters (FTS5)...")
+        self.search_edit.setPlaceholderText("🔍  Search trails, peaks, waterfalls, shelters…")
+        self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self.refresh_trails)
-        top_bar.addWidget(self.search_edit, 1)
-        layout.addLayout(top_bar)
-
-        # Condition filter chips
+        top_bar.addWidget(self.search_edit, 2)
+        filters.body.addLayout(top_bar)
         chip_row = QHBoxLayout()
-        chip_row.addWidget(QLabel("Avoid Conditions:"))
+        chip_row.setSpacing(8)
+        avoid = QLabel("Avoid")
+        avoid.setObjectName("Muted")
+        chip_row.addWidget(avoid)
         self.cond_toggles: dict[TrailCondition, PillToggle] = {}
         for cond in [TrailCondition.MUDDY, TrailCondition.ICY, TrailCondition.OVERGROWN, TrailCondition.CLOSED]:
-            pill = PillToggle(f"No {cond.value.capitalize()}", checked=(cond == TrailCondition.CLOSED))
+            pill = PillToggle(cond.value.capitalize(), checked=(cond == TrailCondition.CLOSED))
             pill.toggled.connect(lambda _: self.refresh_trails())
             self.cond_toggles[cond] = pill
             chip_row.addWidget(pill)
         chip_row.addStretch(1)
-        layout.addLayout(chip_row)
+        filters.body.addLayout(chip_row)
+        layout.addWidget(filters)
 
         # Summary stat cards
-        cards_row = QHBoxLayout()
         self.trails_card = StatCard("Available Trails", "0")
         self.pois_card = StatCard("Points of Interest", "0")
         self.elev_card = StatCard("Base Elevation", "--")
-        cards_row.addWidget(self.trails_card)
-        cards_row.addWidget(self.pois_card)
-        cards_row.addWidget(self.elev_card)
-        layout.addLayout(cards_row)
+        layout.addLayout(stat_row(self.trails_card, self.pois_card, self.elev_card))
 
-        # Splitter with Trail Table + Map Preview
+        # Trails (card) | map
         splitter = QSplitter()
-        left_widget = QWidget()
-        left_col = QVBoxLayout(left_widget)
-        left_col.setContentsMargins(0, 0, 0, 0)
+        splitter.setHandleWidth(14)
+        trails_card = Card("Trails", margins=(14, 14, 14, 14))
+        self.trails_title = trails_card.title_lbl
 
         self.trail_table = QTableWidget(0, 5)
-        self.trail_table.setHorizontalHeaderLabels(["Trail Segment", "Difficulty", "Condition", "Length", "Ascent"])
+        self.trail_table.setHorizontalHeaderLabels(["Trail", "Difficulty", "Condition", "Length", "Ascent"])
         # Name takes the remaining width; short value columns hug their contents
         header = self.trail_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for col in range(1, 5):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.trail_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.trail_table.setShowGrid(False)
+        self.trail_table.setAlternatingRowColors(True)
         self.trail_table.verticalHeader().setVisible(False)
         self.trail_table.setWordWrap(True)  # very long names wrap rather than being elided
         self.trail_table.setTextElideMode(Qt.TextElideMode.ElideNone)
         header.sectionResized.connect(lambda idx, _old, _new: idx == 0 and self._fit_name_rows())
         self.trail_table.itemSelectionChanged.connect(self._on_trail_row_selected)
-        left_col.addWidget(self.trail_table, 1)
+        trails_card.body.addWidget(self.trail_table, 1)
 
         action_row = QHBoxLayout()
-        cond_btn = QPushButton("Update Trailhead Condition...")
+        action_row.setSpacing(8)
+        cond_btn = QPushButton("Update Condition…")
         cond_btn.clicked.connect(self._edit_selected_condition)
-        compose_btn = QPushButton("Compose / Trace This Trail →")
+        compose_btn = QPushButton("Build a Hike from This Trail  →")
         compose_btn.setObjectName("PrimaryButton")
         compose_btn.clicked.connect(self._compose_selected_trail)
         action_row.addWidget(cond_btn)
+        action_row.addStretch(1)
         action_row.addWidget(compose_btn)
-        left_col.addLayout(action_row)
+        trails_card.body.addLayout(action_row)
 
         self.map_canvas = MapCanvas()
-        splitter.addWidget(left_widget)
+        splitter.addWidget(trails_card)
         splitter.addWidget(self.map_canvas)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(0, 4)
+        splitter.setStretchFactor(1, 5)
         layout.addWidget(splitter, 1)
 
         self.app_state.destination_changed.connect(lambda _: self.refresh_all())
@@ -200,14 +204,14 @@ class ExplorePanel(QWidget):
         Measured with a safety margin: Qt's own size hint can judge a name fits on one line
         while the painted cell (with padding) elides it."""
         fm = self.trail_table.fontMetrics()
-        width = max(40, self.trail_table.columnWidth(0) - 16)
-        base = fm.height() + 8
+        width = max(40, self.trail_table.columnWidth(0) - 30)  # minus the theme's cell padding
+        base = fm.height() + 16  # item padding (theme) + breathing room
         for row in range(self.trail_table.rowCount()):
             item = self.trail_table.item(row, 0)
             if item is None:
                 continue
             rect = fm.boundingRect(0, 0, width, 10_000, int(Qt.TextFlag.TextWordWrap), item.text())
-            self.trail_table.setRowHeight(row, max(base, rect.height() + 8))
+            self.trail_table.setRowHeight(row, max(base, rect.height() + 16))
 
     def _selected_segment(self):
         rows = self.trail_table.selectionModel().selectedRows()

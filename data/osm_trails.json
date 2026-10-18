@@ -109,5 +109,25 @@
         "note": "Long ridge approach from Dublin with many open ledges."
       }
     }
+  },
+  "fitchburg_state_forest": {
+    "all_named": true,
+    "exclude_regex": "\\bRoad\\b|^(no name|No Name|need name)$|^(Blue|Green)$|^Bypass$",
+    "aliases": {
+      "Friends Trail (Yellow) Dow": "Friends (Yellow) Downhill"
+    },
+    "rename": {
+      "Stone Bridge Loop (red0": "Stone Bridge Loop (red)"
+    },
+    "code_prefix": "FSF",
+    "tags": [
+      "fitchburg",
+      "multi_use"
+    ],
+    "defaults": {
+      "min_length_m": 150,
+      "alpine_above_m": 5000,
+      "note": "Shared with mountain bikers: keep right and listen for riders."
+    }
   }
 }

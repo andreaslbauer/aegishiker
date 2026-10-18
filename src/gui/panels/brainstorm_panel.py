@@ -1,6 +1,6 @@
 """AI Trail Brainstormer & Guided Interview panel."""
 from typing import Dict, List, Optional
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from src.gui.app_state import AppState
 from src.gui.busy import busy
-from src.gui.widgets import SectionHeader
+from src.gui.widgets import Card, SectionHeader, add_form_row, form_layout, page_layout
 from src.hiking.interview import INTERVIEW_QUESTIONS
 from src.hiking.models import ComposedRoute
 from src.hiking.units import format_distance, format_duration, format_duration_min, format_elevation
@@ -31,18 +31,19 @@ class BrainstormPanel(QWidget):
         self.app_state = app_state
         self.candidates: List[ComposedRoute] = []
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "AI Trail Brainstormer & Guided Interview",
-            "Answer 6 quick trail preferences to rank the best routes in your active destination pack.",
+            "AI Brainstorm",
+            "Answer a few questions about your group and the day — AegisHiker ranks the best routes in this region.",
         )
         layout.addWidget(header)
 
         body = QHBoxLayout()
+        body.setSpacing(16)
 
-        # Left column: 6-step interview form
-        form_box = QGroupBox("Hiker Party & Trail Preferences")
-        form_layout = QFormLayout(form_box)
+        # Left: the interview
+        form_card = Card("Your hike", "Who's going and what you're after")
+        form = form_layout()
         self.combos: Dict[str, QComboBox] = {}
         for q in INTERVIEW_QUESTIONS:
             combo = QComboBox()
@@ -52,34 +53,42 @@ class BrainstormPanel(QWidget):
             if idx >= 0:
                 combo.setCurrentIndex(idx)
             self.combos[q.id] = combo
-            form_layout.addRow(q.prompt, combo)
-
-        run_btn = QPushButton("Recommend & Rank Best Trails")
+            add_form_row(form, q.prompt.split(". ", 1)[-1].rstrip(":"), combo)
+        form_card.body.addLayout(form)
+        form_card.body.addStretch(1)
+        run_btn = QPushButton("Recommend Trails")
         run_btn.setObjectName("PrimaryButton")
         run_btn.clicked.connect(self.run_brainstorm)
-        form_layout.addRow("", run_btn)
-        body.addWidget(form_box, 4)
+        form_card.body.addWidget(run_btn)
+        body.addWidget(form_card, 4)
 
-        # Right column: Ranked candidate routes + AI briefing
-        right_col = QVBoxLayout()
+        # Right: ranked routes + briefing
+        results = Card("Recommended routes", "Best matches first — open one in the Trail Composer to fine-tune it")
         self.cand_table = QTableWidget(0, 5)
-        self.cand_table.setHorizontalHeaderLabels(["Rank & Route", "Distance", "Ascent", "Est. Time", "Difficulty"])
-        self.cand_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        right_col.addWidget(self.cand_table, 2)
+        self.cand_table.setHorizontalHeaderLabels(["Route", "Distance", "Ascent", "Est. Time", "Difficulty"])
+        hdr = self.cand_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for c in range(1, 5):
+            hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.cand_table.verticalHeader().setVisible(False)
+        self.cand_table.setShowGrid(False)
+        self.cand_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        results.body.addWidget(self.cand_table, 3)
 
         self.summary_browser = QTextBrowser()
-        self.summary_browser.setMaximumHeight(130)
-        right_col.addWidget(self.summary_browser, 1)
+        self.summary_browser.setObjectName("Inset")
+        self.summary_browser.setMaximumHeight(120)
+        results.body.addWidget(self.summary_browser, 1)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
-        send_btn = QPushButton("Open Selected Recommendation in Trail Composer →")
+        send_btn = QPushButton("Open in Trail Composer  →")
         send_btn.setObjectName("PrimaryButton")
         send_btn.clicked.connect(self._send_selected_to_composer)
         btn_row.addWidget(send_btn)
-        right_col.addLayout(btn_row)
-
-        body.addLayout(right_col, 6)
+        results.body.addLayout(btn_row)
+        body.addWidget(results, 6)
         layout.addLayout(body, 1)
 
         self.app_state.destination_changed.connect(lambda _: self.run_brainstorm())

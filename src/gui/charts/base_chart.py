@@ -11,12 +11,12 @@ class BaseChartWidget(QWidget):
         self.setMinimumHeight(140)
         self.setMouseTracking(True)
 
-    def draw_background(self, painter: QPainter, bg_hex: str = "#0A130E", border_hex: str = "#2C4637") -> None:
+    def draw_background(self, painter: QPainter, bg_hex: str = "#0A130E", border_hex: str = "#223829") -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = self.rect().adjusted(1, 1, -1, -1)
         painter.setPen(QColor(border_hex))
         painter.setBrush(QColor(bg_hex))
-        painter.drawRoundedRect(rect, 8, 8)
+        painter.drawRoundedRect(rect, 12, 12)  # same rounding as the theme's cards
 
     def draw_empty_state(self, painter: QPainter) -> None:
         self.draw_background(painter)

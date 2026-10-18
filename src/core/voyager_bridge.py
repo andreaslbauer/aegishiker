@@ -14,18 +14,14 @@ from typing import Any, Dict, List, Optional
 
 from src.hiking.geo import compute_bbox, expand_bbox_meters
 from src.hiking.models import HikePhotoPin
+from src.hiking.hike_info import is_placeholder_person  # noqa: F401  (re-exported)
 from src.hiking.photo_matcher import match_photos_to_trail
 
 from . import settings
 
 logger = logging.getLogger(__name__)
 
-_PLACEHOLDER_PERSON = re.compile(r"^(person|unknown( person)?|face|cluster)[\s_#-]*\d*$", re.IGNORECASE)
 
-
-def is_placeholder_person(name: str) -> bool:
-    """Voyager names unidentified face clusters 'Person 1234' / 'Unknown Person': not real names."""
-    return bool(_PLACEHOLDER_PERSON.match(name.strip()))
 
 
 def find_voyager_db(configured_path: Optional[str] = None) -> Optional[str]:

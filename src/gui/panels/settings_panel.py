@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLineEdit,
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from src.gui.app_state import AppState
 from src.gui.themes import apply_theme
-from src.gui.widgets import SectionHeader
+from src.gui.widgets import Card, SectionHeader, add_form_row, form_layout, page_layout
 
 
 class SettingsPanel(QWidget):
@@ -24,15 +25,19 @@ class SettingsPanel(QWidget):
         super().__init__(parent)
         self.app_state = app_state
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "Preferences, Units, Local AI & AegisPhotoVoyager Integration",
-            "Configure metric/imperial units, theme, pacing defaults, local Ollama AI, and PhotoVoyager DB location.",
+            "Preferences",
+            "Units and look, hiking defaults, your AegisPhotoVoyager library, local AI and your emergency contact.",
         )
         layout.addWidget(header)
 
-        box = QGroupBox("AegisHiker Preferences")
-        form = QFormLayout(box)
+        display_card, display_form = self._form_card("Display", "Units and colour theme")
+        hiking_card, hiking_form = self._form_card("Hiking", "Defaults for pace estimates and photo matching")
+        photos_card, photos_form = self._form_card("AegisPhotoVoyager", "Where your photo library lives")
+        ai_card, ai_form = self._form_card("Local AI", "Ollama on this computer — nothing leaves it")
+        safety_card, safety_form = self._form_card("Safety", "Printed on the trailhead leave-behind sheet")
+        form = display_form
 
         self.unit_combo = QComboBox()
         self.unit_combo.addItem("Metric (km, m, kg, °C)", "metric")
@@ -40,7 +45,7 @@ class SettingsPanel(QWidget):
         idx = self.unit_combo.findData(self.app_state.settings.get("unit_system", "metric"))
         if idx >= 0:
             self.unit_combo.setCurrentIndex(idx)
-        form.addRow("Unit System:", self.unit_combo)
+        add_form_row(display_form, "Units", self.unit_combo)
 
         self.theme_combo = QComboBox()
         self.theme_combo.addItem("Alpine Forest Dark", "dark")
@@ -48,21 +53,21 @@ class SettingsPanel(QWidget):
         t_idx = self.theme_combo.findData(self.app_state.settings.get("theme", "dark"))
         if t_idx >= 0:
             self.theme_combo.setCurrentIndex(t_idx)
-        form.addRow("Color Theme:", self.theme_combo)
+        add_form_row(display_form, "Theme", self.theme_combo)
 
         self.speed_spin = QDoubleSpinBox()
         self.speed_spin.setRange(1.5, 10.0)
         self.speed_spin.setSingleStep(0.25)
         self.speed_spin.setValue(float(self.app_state.settings.get("base_speed_kmh", 4.5)))
         self.speed_spin.setSuffix(" km/h")
-        form.addRow("Default Flat Hiking Speed:", self.speed_spin)
+        add_form_row(hiking_form, "Flat walking speed", self.speed_spin)
 
         self.corridor_spin = QDoubleSpinBox()
         self.corridor_spin.setRange(25.0, 2500.0)
         self.corridor_spin.setSingleStep(25.0)
         self.corridor_spin.setValue(float(self.app_state.settings.get("photo_match_corridor_m", 250.0)))
         self.corridor_spin.setSuffix(" m")
-        form.addRow("Photo GPS Corridor Radius:", self.corridor_spin)
+        add_form_row(hiking_form, "Photo match distance", self.corridor_spin)
 
         voyager_row = QHBoxLayout()
         discovered = self.app_state.voyager_bridge.discover_db_path()
@@ -74,25 +79,38 @@ class SettingsPanel(QWidget):
         browse_btn.clicked.connect(self._browse_voyager)
         voyager_row.addWidget(self.voyager_edit, 1)
         voyager_row.addWidget(browse_btn)
-        form.addRow("AegisPhotoVoyager DB Path:", voyager_row)
+        add_form_row(photos_form, "Library database", voyager_row)
 
         self.ollama_url_edit = QLineEdit(str(self.app_state.settings.get("ollama_host", "http://127.0.0.1:11434")))
-        form.addRow("Local Ollama Host:", self.ollama_url_edit)
+        add_form_row(ai_form, "Ollama host", self.ollama_url_edit)
 
         self.ollama_model_edit = QLineEdit(str(self.app_state.settings.get("ollama_model", "qwen2.5:7b")))
-        form.addRow("Ollama Model:", self.ollama_model_edit)
+        add_form_row(ai_form, "Model", self.ollama_model_edit)
 
         self.emergency_edit = QLineEdit(str(self.app_state.settings.get("emergency_contact", "")))
         self.emergency_edit.setPlaceholderText("Name, phone, and overdue instructions for Leave-Behind PDF")
-        form.addRow("Emergency Contact:", self.emergency_edit)
+        add_form_row(safety_form, "Emergency contact", self.emergency_edit)
 
         save_btn = QPushButton("Save Preferences")
         save_btn.setObjectName("PrimaryButton")
         save_btn.clicked.connect(self.save_settings)
-        form.addRow("", save_btn)
 
-        layout.addWidget(box)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(16)
+        grid.addWidget(display_card, 0, 0)
+        grid.addWidget(hiking_card, 0, 1)
+        grid.addWidget(photos_card, 1, 0)
+        grid.addWidget(ai_card, 1, 1)
+        grid.addWidget(safety_card, 2, 0, 1, 2)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        layout.addLayout(grid)
         layout.addStretch(1)
+        save_row = QHBoxLayout()
+        save_row.addStretch(1)
+        save_row.addWidget(save_btn)
+        layout.addLayout(save_row)
 
     def _browse_voyager(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -103,6 +121,13 @@ class SettingsPanel(QWidget):
         )
         if path:
             self.voyager_edit.setText(path)
+
+    @staticmethod
+    def _form_card(title: str, subtitle: str):
+        card = Card(title, subtitle)
+        form = form_layout()
+        card.body.addLayout(form)
+        return card, form
 
     def save_settings(self) -> None:
         s = self.app_state.settings

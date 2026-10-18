@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.gui.app_state import AppState
-from src.gui.widgets import SectionHeader, StatCard
+from src.gui.widgets import Card, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.models import HikeSession, TelemetryPoint
 
 
@@ -24,29 +24,24 @@ class PhoneSyncPanel(QWidget):
         super().__init__(parent)
         self.app_state = app_state
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "Mobile Companion & Offline Field Sync",
-            "Pair your phone over home Wi-Fi to cache regional trail packs in IndexedDB for zero-signal trailhead use.",
+            "Mobile Companion",
+            "Pair your phone on home Wi-Fi, take your trails offline, and sync your GPS track back after the hike.",
         )
         layout.addWidget(header)
 
-        cards_row = QHBoxLayout()
-        self.server_card = StatCard("LAN Server Status", "Stopped")
-        self.dest_card = StatCard("Active Offline Pack", "--")
-        self.route_card = StatCard("Active Route", "--")
-        cards_row.addWidget(self.server_card)
-        cards_row.addWidget(self.dest_card)
-        cards_row.addWidget(self.route_card)
-        layout.addLayout(cards_row)
+        self.server_card = StatCard("Companion Server", "Stopped")
+        self.dest_card = StatCard("Offline Region", "--")
+        self.route_card = StatCard("Route on the Phone", "--")
+        layout.addLayout(stat_row(self.server_card, self.dest_card, self.route_card))
 
         body = QHBoxLayout()
+        body.setSpacing(16)
 
         # Left: QR code frame
-        qr_frame = QFrame()
-        qr_frame.setObjectName("CardFrame")
-        qr_col = QVBoxLayout(qr_frame)
-        qr_col.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        qr_frame = Card("Pair your phone", "Start the server, then scan the code with the phone's camera")
+        qr_col = qr_frame.body
         self.qr_lbl = QLabel("Start the LAN companion server to generate a pairing QR code")
         self.qr_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.qr_lbl.setMinimumSize(240, 240)
@@ -58,10 +53,11 @@ class PhoneSyncPanel(QWidget):
         qr_col.addWidget(self.url_edit)
 
         btn_row = QHBoxLayout()
-        self.toggle_btn = QPushButton("Start Mobile Companion Server")
+        self.toggle_btn = QPushButton("Start Companion Server")
         self.toggle_btn.setObjectName("PrimaryButton")
         self.toggle_btn.clicked.connect(self.toggle_server)
-        sim_btn = QPushButton("Simulate Mobile GPS Telemetry Sync")
+        sim_btn = QPushButton("Simulate a GPS Sync")
+        sim_btn.setObjectName("FlatButton")
         sim_btn.clicked.connect(self.simulate_mobile_sync)
         btn_row.addWidget(self.toggle_btn)
         btn_row.addWidget(sim_btn)
@@ -69,12 +65,10 @@ class PhoneSyncPanel(QWidget):
         body.addWidget(qr_frame, 5)
 
         # Right: Offline architecture instructions
-        info_frame = QFrame()
-        info_frame.setObjectName("CardFrame")
-        info_col = QVBoxLayout(info_frame)
+        info_frame = Card("How it works")
+        info_col = info_frame.body
         info_lbl = QLabel(
-            "<h3>How Offline Trailhead Mode Works</h3>"
-            "<ol>"
+            "<ol style='margin-left:-14px; line-height:150%'>"
             "<li><b>Before Leaving Home (On Wi-Fi):</b> Click <i>Start Mobile Companion Server</i> and scan the QR code "
             "with your phone's camera.</li>"
             "<li><b>Cache Regional Pack Offline:</b> Tap <i>Cache Pack Offline</i> in the mobile web app. "

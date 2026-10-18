@@ -14,8 +14,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QSplitter,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -26,7 +28,7 @@ from src.gui.charts.map_canvas import MapCanvas
 from src.gui.panels.segment_builder import SegmentBuilder
 from src.gui.dialogs.i_hiked_this_dialog import IHikedThisDialog
 from src.gui.help_text import TOOLTIPS
-from src.gui.widgets import SectionHeader, StatCard
+from src.gui.widgets import Card, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.edits import close_loop_route, reverse_route
 from src.hiking.geojson_io import export_route_to_geojson, import_route_from_geojson
 from src.hiking.gpx import export_route_to_gpx, import_route_from_gpx
@@ -46,73 +48,98 @@ class ComposerPanel(QWidget):
         self.waypoints: List[Tuple[float, float]] = []
         self._draft: Optional[ComposedRoute] = None  # hike being built segment by segment
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "Trail Composer & Elevation Studio",
-            "Build a hike trail by trail on the left, or click the map to trace one. Inspect elevation grades, or click '✓ I Hiked This Trail'.",
+            "Trail Composer",
+            "Build a hike trail by trail, or click the map to trace one — then check its climbs and timing.",
         )
-
-        # Prominent "✓ I Hiked This Trail" button
-        self.i_hiked_btn = QPushButton("✓ I Hiked This Trail")
+        import_btn = QPushButton("Import…")
+        import_btn.setObjectName("FlatButton")
+        import_btn.setToolTip("Import a GPX or GeoJSON route")
+        import_btn.clicked.connect(self.import_file)
+        export_btn = QPushButton("Export GPX…")
+        export_btn.setObjectName("FlatButton")
+        export_btn.clicked.connect(self.export_gpx_file)
+        self.i_hiked_btn = QPushButton("✓  I Hiked This Trail")
         self.i_hiked_btn.setObjectName("PrimaryButton")
         self.i_hiked_btn.setToolTip(TOOLTIPS["i_hiked_this"])
         self.i_hiked_btn.clicked.connect(self.open_i_hiked_this_wizard)
-        header.actions_layout.addWidget(self.i_hiked_btn)
+        for b in (import_btn, export_btn, self.i_hiked_btn):
+            header.actions_layout.addWidget(b)
         layout.addWidget(header)
 
-        # Top control bar: Region selector, Route name, Pacing model, Pack weight
+        # Route card: region, saved route, name + save, and the tracing tools in a menu
+        route_card = Card(margins=(16, 12, 16, 12))
         ctrl_row = QHBoxLayout()
-        ctrl_row.addWidget(QLabel("Region:"))
+        ctrl_row.setSpacing(10)
         self.region_combo = QComboBox()
+        self.region_combo.setToolTip("Region")
         self.region_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.region_combo.setMinimumContentsLength(20)
+        self.region_combo.setMinimumContentsLength(18)
         self.region_combo.currentIndexChanged.connect(self._on_region_combo_changed)
-        ctrl_row.addWidget(self.region_combo, 1)
-
-        ctrl_row.addWidget(QLabel("Saved Routes:"))
         self.route_combo = QComboBox()
+        self.route_combo.setToolTip("Saved routes in this region")
         self.route_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.route_combo.setMinimumContentsLength(22)
+        self.route_combo.setMinimumContentsLength(20)
         self.route_combo.currentIndexChanged.connect(self._on_route_combo_changed)
-        ctrl_row.addWidget(self.route_combo, 1)
-
-        ctrl_row.addWidget(QLabel("Route Name:"))
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("My Custom Trail Loop")
-        ctrl_row.addWidget(self.name_edit, 1)
+        self.name_edit.setPlaceholderText("Route name")
+        save_btn = QPushButton("Save Route")
+        save_btn.clicked.connect(self.save_current_route)
+        tools_btn = QToolButton()
+        tools_btn.setText("Route tools  ▾")
+        tools_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        tools = QMenu(tools_btn)
+        tools.addAction("Undo last waypoint", self.undo_waypoint)
+        tools.addAction("Clear traced waypoints", self.clear_trace)
+        tools.addSeparator()
+        tools.addAction("Close the loop back to the start", self.close_loop)
+        tools.addAction("Reverse the route", self.reverse_current_route)
+        tools_btn.setMenu(tools)
+        for label, widget, stretch in (("Region", self.region_combo, 3), ("Saved route", self.route_combo, 3)):
+            cap = QLabel(label)
+            cap.setObjectName("Muted")
+            ctrl_row.addWidget(cap)
+            ctrl_row.addWidget(widget, stretch)
+            ctrl_row.addSpacing(6)
+        ctrl_row.addWidget(self.name_edit, 3)
+        ctrl_row.addWidget(save_btn)
+        ctrl_row.addWidget(tools_btn)
+        route_card.body.addLayout(ctrl_row)
+        layout.addWidget(route_card)
 
-        ctrl_row.addWidget(QLabel("Pace Rule:"))
-        self.pace_combo = QComboBox()
-        for model_name in ["naismith", "langmuir", "tobler"]:
-            self.pace_combo.addItem(model_name.capitalize(), model_name)
-        self.pace_combo.currentIndexChanged.connect(self._recalculate_pace)
-        ctrl_row.addWidget(self.pace_combo)
-
-        ctrl_row.addWidget(QLabel("Pack:"))
-        self.pack_spin = QDoubleSpinBox()
-        self.pack_spin.setRange(0.0, 35.0)
-        self.pack_spin.setValue(float(self.app_state.settings.get("default_pack_weight_kg", 6.0)))
-        self.pack_spin.setSuffix(" kg")
-        self.pack_spin.valueChanged.connect(self._recalculate_pace)
-        ctrl_row.addWidget(self.pack_spin)
-        layout.addLayout(ctrl_row)
-
-        # Live metric stat cards
-        cards_row = QHBoxLayout()
+        # Live stats + pacing settings
         self.dist_card = StatCard("Total Distance", "0.0 km")
         self.gain_card = StatCard("Elevation Gain", "+0 m")
         self.loss_card = StatCard("Elevation Loss", "-0 m")
         self.time_card = StatCard("Estimated Time", "0m")
         self.grade_card = StatCard("Max / Avg Grade", "0.0%")
-        cards_row.addWidget(self.dist_card)
-        cards_row.addWidget(self.gain_card)
-        cards_row.addWidget(self.loss_card)
-        cards_row.addWidget(self.time_card)
-        cards_row.addWidget(self.grade_card)
-        layout.addLayout(cards_row)
+        pace_card = Card(margins=(16, 10, 16, 10), spacing=6)
+        pace_title = QLabel("PACING")
+        pace_title.setObjectName("StatTitle")
+        pace_card.body.addWidget(pace_title)
+        self.pace_combo = QComboBox()
+        for model_name in ["naismith", "langmuir", "tobler"]:
+            self.pace_combo.addItem(f"{model_name.capitalize()} rule", model_name)
+        self.pace_combo.currentIndexChanged.connect(self._recalculate_pace)
+        self.pack_spin = QDoubleSpinBox()
+        self.pack_spin.setRange(0.0, 35.0)
+        self.pack_spin.setValue(float(self.app_state.settings.get("default_pack_weight_kg", 6.0)))
+        self.pack_spin.setPrefix("Pack ")
+        self.pack_spin.setSuffix(" kg")
+        self.pack_spin.valueChanged.connect(self._recalculate_pace)
+        pace_row = QHBoxLayout()
+        pace_row.setSpacing(6)
+        pace_row.addWidget(self.pace_combo, 1)
+        pace_row.addWidget(self.pack_spin, 1)
+        pace_card.body.addLayout(pace_row)
+        stats = stat_row(self.dist_card, self.gain_card, self.loss_card, self.time_card, self.grade_card)
+        stats.addWidget(pace_card, 2)
+        layout.addLayout(stats)
 
         # Vertical splitter: Interactive MapCanvas on top, ElevationChart on bottom
         splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setHandleWidth(12)
         self.map_canvas = MapCanvas()
         self.map_canvas.waypoint_clicked.connect(self._on_map_waypoint_clicked)
         self.elev_chart = ElevationChart()
@@ -123,7 +150,7 @@ class ComposerPanel(QWidget):
         splitter.setStretchFactor(0, 6)
         splitter.setStretchFactor(1, 3)
 
-        # Left: segment-by-segment hike builder; right: map + elevation profile
+        # Left: segment-by-segment hike builder (card); right: map + elevation profile
         self.segment_builder = SegmentBuilder(self.app_state)
         self.segment_builder.draft_changed.connect(self._on_draft_changed)
         self.segment_builder.preview_changed.connect(self.map_canvas.set_preview)
@@ -132,34 +159,16 @@ class ComposerPanel(QWidget):
             lambda lat, lon: self.segment_builder.hover_at(lat, lon, self._pick_tolerance_m())
         )
         self.segment_builder.route_saved.connect(self._on_builder_saved)
+        builder_card = Card("Build by trail segments", margins=(16, 14, 16, 14))
+        builder_card.body.addWidget(self.segment_builder)
         main_split = QSplitter(Qt.Orientation.Horizontal)
-        main_split.addWidget(self.segment_builder)
+        main_split.setHandleWidth(14)
+        main_split.addWidget(builder_card)
         main_split.addWidget(splitter)
         main_split.setStretchFactor(0, 0)
         main_split.setStretchFactor(1, 1)
-        main_split.setSizes([380, 1000])
+        main_split.setSizes([400, 1000])
         layout.addWidget(main_split, 1)
-
-        # Bottom toolbar: Undo, Clear, Close Loop, Reverse, Save, GPX/GeoJSON Import/Export
-        tool_row = QHBoxLayout()
-        undo_btn = QPushButton("Undo Waypoint")
-        undo_btn.clicked.connect(self.undo_waypoint)
-        clear_btn = QPushButton("Clear Trace")
-        clear_btn.clicked.connect(self.clear_trace)
-        loop_btn = QPushButton("Close Loop")
-        loop_btn.clicked.connect(self.close_loop)
-        rev_btn = QPushButton("Reverse Route")
-        rev_btn.clicked.connect(self.reverse_current_route)
-        save_btn = QPushButton("Save Route")
-        save_btn.clicked.connect(self.save_current_route)
-        gpx_in_btn = QPushButton("Import GPX/GeoJSON...")
-        gpx_in_btn.clicked.connect(self.import_file)
-        gpx_out_btn = QPushButton("Export GPX...")
-        gpx_out_btn.clicked.connect(self.export_gpx_file)
-
-        for b in [undo_btn, clear_btn, loop_btn, rev_btn, save_btn, gpx_in_btn, gpx_out_btn]:
-            tool_row.addWidget(b)
-        layout.addLayout(tool_row)
 
         self.app_state.destination_changed.connect(lambda _: self.refresh_all())
         self.app_state.route_changed.connect(lambda _: self.refresh_from_active_route())
@@ -254,6 +263,9 @@ class ComposerPanel(QWidget):
         self.map_canvas.sync_basemap(self.app_state.db, self.app_state.active_destination_id)
         self.map_canvas.set_scene_data(trails=trails, pois=pois, route=route, photo_pins=pins)
 
+        if route is not None and self._draft is None and route.id != getattr(self, "_fitted_route_id", None):
+            self._fitted_route_id = route.id
+            self.map_canvas.fit_when_shown(route.coordinates)
         if route:
             self.name_edit.setText(route.name)
             self.elev_chart.set_profile(route.elevation_profile, photo_pins=pins, unit_system=unit)

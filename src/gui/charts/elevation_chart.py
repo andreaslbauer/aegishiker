@@ -53,7 +53,7 @@ class ElevationChart(BaseChartWidget):
             painter.end()
             return
 
-        self.draw_background(painter, "#0B1610", "#2C4637")
+        self.draw_background(painter, "#0B1610", "#223829")
         pad_l, pad_r, pad_t, pad_b = 48.0, 20.0, 18.0, 26.0
         w = max(10.0, float(self.width()) - pad_l - pad_r)
         h = max(10.0, float(self.height()) - pad_t - pad_b)

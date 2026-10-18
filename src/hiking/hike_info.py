@@ -1,9 +1,22 @@
 """Display helpers for recorded hikes: title, date, trails walked and the people in its photos."""
+import re
 from collections import Counter
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional
 
 from .models import ComposedRoute, HikePhotoPin, HikeSession, TrailSegment
+
+_PLACEHOLDER_PERSON = re.compile(r"^(person|unknown( person)?|face|cluster)[\s_#-]*\d*$", re.IGNORECASE)
+
+
+def is_placeholder_person(name: str) -> bool:
+    """AegisPhotoVoyager names unidentified face clusters 'Person 1234' / 'Unknown Person'."""
+    return bool(_PLACEHOLDER_PERSON.match(name.strip()))
+
+
+def real_people(names) -> List[str]:
+    return [n for n in names if n and not is_placeholder_person(n)]
+
 
 _GENERIC_TITLES = {"", "Recorded Hike", "Photo Hike Session", "Traced Trail Hike"}
 
@@ -60,7 +73,7 @@ def hike_people(pins: Iterable[HikePhotoPin]) -> List[str]:
     counts: Counter = Counter()
     first_seen: Dict[str, int] = {}
     for i, pin in enumerate(pins):
-        for name in pin.people:
+        for name in real_people(pin.people):
             counts[name] += 1
             first_seen.setdefault(name, i)
     return sorted(counts, key=lambda n: (-counts[n], first_seen[n]))

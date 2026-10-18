@@ -153,6 +153,25 @@
       "trail_count": 38,
       "poi_count": 7,
       "bundled_file": "packs/mount_monadnock.json"
+    },
+    {
+      "id": "fitchburg_state_forest",
+      "name": "Fitchburg State Forest",
+      "state_or_region": "Massachusetts (Fitchburg, Lunenburg & Townsend \u2014 with Pearl Hill State Park & Willard Brook)",
+      "agency": "MA DCR, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Rolling hemlock and pine woods, brooks and ponds north of Fitchburg: Pearl Hill, Table Rock, Trap Falls and a dense web of shared hiking and mountain-bike trails.",
+      "bbox": [
+        -71.8,
+        42.6,
+        -71.73,
+        42.678
+      ],
+      "base_ele_m": 120.0,
+      "max_ele_m": 310.0,
+      "trail_count": 0,
+      "poi_count": 10,
+      "bundled_file": "packs/fitchburg_state_forest.json"
     }
   ]
 }

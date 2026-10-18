@@ -18,10 +18,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSlider,
     QSplitter,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -31,11 +33,11 @@ from src.gui.app_state import AppState
 from src.gui.charts.elevation_chart import ElevationChart
 from src.gui.charts.map_canvas import MapCanvas
 from src.gui.charts.photo_preview import format_datetime, format_time
-from src.gui.widgets import SectionHeader, StatCard
+from src.gui.widgets import Card, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import TrailPhotoPin
 from src.hiking.photo_matcher import dedupe_pins
-from src.hiking.hike_info import hike_date_label, hike_people, hike_title, hike_trail_names, people_label
+from src.hiking.hike_info import hike_date_label, hike_people, hike_title, hike_trail_names, people_label, real_people
 from src.gui.dialogs.hike_picker_dialog import HikePickerDialog
 from src.hiking.units import format_distance, format_elevation
 from src.gui.busy import busy, run_in_background
@@ -52,58 +54,59 @@ class ReexperiencePanel(QWidget):
         self.play_timer.setInterval(120)
         self.play_timer.timeout.connect(self._advance_playback)
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "Re-experience Hike — Interactive Trail & Photo Replay Map",
-            "Scrub or play through your completed hikes and relive geotagged photos matched from AegisPhotoVoyager.",
+            "Re-experience Hike",
+            "Relive a completed hike on the map, in 3D, and through the photos you took along the way.",
         )
-
-        rescan_btn = QPushButton("Rescan Voyager Photos")
-        rescan_btn.clicked.connect(self.rescan_voyager_for_active_session)
-        export_html_btn = QPushButton("Export Interactive HTML Map...")
-        export_html_btn.clicked.connect(self.export_html_map)
-        open_browser_btn = QPushButton("Open Interactive Map in Browser")
-        open_browser_btn.setObjectName("PrimaryButton")
-        open_browser_btn.clicked.connect(self.open_in_browser)
-
-        header.actions_layout.addWidget(rescan_btn)
-        header.actions_layout.addWidget(export_html_btn)
-        header.actions_layout.addWidget(open_browser_btn)
-        layout.addWidget(header)
-
-        # Current hike + choose / rename / delete
-        sel_row = QHBoxLayout()
-        self.hike_lbl = QLabel()
-        self.hike_lbl.setWordWrap(True)
-        self.hike_lbl.setTextFormat(Qt.TextFormat.RichText)
-        sel_row.addWidget(self.hike_lbl, 1)
-        self.choose_btn = QPushButton("📂 Choose Hike…")
+        self.choose_btn = QPushButton("📂  Choose Hike…")
         self.choose_btn.setObjectName("PrimaryButton")
         self.choose_btn.setToolTip("Browse your hikes by year with trails, people and photos")
         self.choose_btn.clicked.connect(self.choose_hike)
+        more_btn = QToolButton()
+        more_btn.setText("More  ▾")
+        more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        more = QMenu(more_btn)
+        more.addAction("Rescan AegisPhotoVoyager photos", self.rescan_voyager_for_active_session)
+        more.addSeparator()
+        more.addAction("Open interactive map in browser", self.open_in_browser)
+        more.addAction("Export interactive HTML map…", self.export_html_map)
+        more_btn.setMenu(more)
+        header.actions_layout.addWidget(more_btn)
+        header.actions_layout.addWidget(self.choose_btn)
+        layout.addWidget(header)
+
+        # Current hike: name, date, trails, people — rename / delete
+        hike_card = Card(margins=(18, 14, 18, 14))
+        hike_row = QHBoxLayout()
+        hike_row.setSpacing(12)
+        self.hike_lbl = QLabel()
+        self.hike_lbl.setWordWrap(True)
+        self.hike_lbl.setTextFormat(Qt.TextFormat.RichText)
+        hike_row.addWidget(self.hike_lbl, 1)
         self.rename_btn = QPushButton("Rename…")
+        self.rename_btn.setObjectName("FlatButton")
         self.rename_btn.clicked.connect(self.rename_hike)
         self.delete_btn = QPushButton("Delete…")
+        self.delete_btn.setObjectName("DangerButton")
         self.delete_btn.clicked.connect(self.delete_hike)
-        for b in (self.choose_btn, self.rename_btn, self.delete_btn):
-            sel_row.addWidget(b)
-        layout.addLayout(sel_row)
+        for b in (self.rename_btn, self.delete_btn):
+            hike_row.addWidget(b, 0, Qt.AlignmentFlag.AlignTop)
+        hike_card.body.addLayout(hike_row)
+        layout.addWidget(hike_card)
 
         # Summary stat cards
-        cards_row = QHBoxLayout()
         self.dist_card = StatCard("Hike Distance", "0.0 km")
         self.gain_card = StatCard("Elevation Gain", "+0 m")
-        self.photos_card = StatCard("Matched Voyager Photos", "0")
+        self.photos_card = StatCard("Photos", "0")
         self.cursor_card = StatCard("Replay Position", "0.00 km")
-        cards_row.addWidget(self.dist_card)
-        cards_row.addWidget(self.gain_card)
-        cards_row.addWidget(self.photos_card)
-        cards_row.addWidget(self.cursor_card)
-        layout.addLayout(cards_row)
+        layout.addLayout(stat_row(self.dist_card, self.gain_card, self.photos_card, self.cursor_card))
 
-        # Playback controls bar
+        # Playback controls
+        play_card = Card(margins=(14, 10, 14, 10))
         play_row = QHBoxLayout()
-        self.replay3d_btn = QPushButton("🎬 Play 3D Replay")
+        play_row.setSpacing(10)
+        self.replay3d_btn = QPushButton("🎬  Play 3D Replay")
         self.replay3d_btn.setObjectName("PrimaryButton")
         self.replay3d_btn.setToolTip("Fly along the hike in 3D; photos zoom in to fill the screen where they were taken")
         self.replay3d_btn.clicked.connect(self.open_3d_replay)
@@ -111,17 +114,20 @@ class ReexperiencePanel(QWidget):
         self.play_btn = QPushButton("▶ Animate on Map")
         self.play_btn.clicked.connect(self.toggle_playback)
         play_row.addWidget(self.play_btn)
-
         self.scrubber = QSlider(Qt.Orientation.Horizontal)
         self.scrubber.setRange(0, 1000)
         self.scrubber.valueChanged.connect(self._on_scrubber_changed)
+        play_row.addSpacing(8)
         play_row.addWidget(self.scrubber, 1)
-        layout.addLayout(play_row)
+        play_card.body.addLayout(play_row)
+        layout.addWidget(play_card)
 
         # Main splitter: Left (MapCanvas + ElevationChart), Right (Photo Story Cards)
         main_split = QSplitter(Qt.Orientation.Horizontal)
+        main_split.setHandleWidth(14)
 
         left_split = QSplitter(Qt.Orientation.Vertical)
+        left_split.setHandleWidth(12)
         self.map_canvas = MapCanvas()
         self.map_canvas.show_photo_thumbnails = True  # photos on the map; hover for a larger view
         self.map_canvas.photo_clicked.connect(self._on_photo_pin_clicked)
@@ -132,10 +138,8 @@ class ReexperiencePanel(QWidget):
         left_split.setStretchFactor(0, 6)
         left_split.setStretchFactor(1, 3)
 
-        right_frame = QFrame()
-        right_frame.setObjectName("CardFrame")
-        right_col = QVBoxLayout(right_frame)
-        right_col.addWidget(QLabel("<b>Trail Photo Timeline (AegisPhotoVoyager)</b>"))
+        right_frame = Card("Photo timeline", margins=(14, 14, 14, 14))
+        right_col = right_frame.body
 
         self.photo_list = QListWidget()
         self.photo_list.currentRowChanged.connect(self._on_photo_row_selected)
@@ -144,12 +148,12 @@ class ReexperiencePanel(QWidget):
         self.thumb_lbl = QLabel("Select or scrub to a photo pin along the trail")
         self.thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumb_lbl.setMinimumHeight(150)
-        self.thumb_lbl.setStyleSheet("background-color: #0B1610; border: 1px solid #2C4637; border-radius: 8px;")
+        self.thumb_lbl.setStyleSheet("background-color: #0B1610; border: 1px solid #223829; border-radius: 10px;")
         right_col.addWidget(self.thumb_lbl)
 
         self.photo_meta_lbl = QLabel("")
         self.photo_meta_lbl.setWordWrap(True)
-        self.photo_meta_lbl.setStyleSheet("color: #98B2A1; font-size: 9pt;")
+        self.photo_meta_lbl.setObjectName("Muted")
         right_col.addWidget(self.photo_meta_lbl)
 
         main_split.addWidget(left_split)
@@ -180,10 +184,11 @@ class ReexperiencePanel(QWidget):
         else:
             people = hike_people(self.photo_pins)
             trails = hike_trail_names(route, {t.id: t for t in self.app_state.db.list_trails(session.pack_id or "")})
-            parts = [f"<span style='font-size:13pt; font-weight:700'>{html.escape(hike_title(session, route))}</span>",
-                     f"<span style='color:#98B2A1'>{html.escape(hike_date_label(session))}</span>"]
+            parts = [f"<span style='font-size:12pt; font-weight:700'>{html.escape(hike_title(session, route))}</span>",
+                     f"<span style='color:#93AD9C'>{html.escape(hike_date_label(session))}</span>"]
             if trails and not (len(trails) == 1 and route is not None and trails[0] == route.name):
-                parts.append(f"<span style='color:#98B2A1'>Trails: {html.escape(' → '.join(trails))}</span>")
+                shown = trails if len(trails) <= 6 else trails[:5] + [f"+{len(trails) - 5} more"]
+                parts.append(f"<span style='color:#93AD9C'>Trails: {html.escape(' → '.join(shown))}</span>")
             if people:
                 parts.append(f"<span style='color:#2ECC71'>👥 {html.escape(people_label(people, 8))}</span>")
             self.hike_lbl.setText("<br>".join(parts))
@@ -223,7 +228,14 @@ class ReexperiencePanel(QWidget):
             self.app_state.delete_session(session.id)
 
     def _fill_missing_people(self) -> None:
-        """Photos saved before person names were read get them from AegisPhotoVoyager now."""
+        """Photos saved before person names were read get them from AegisPhotoVoyager now; names of
+        unidentified faces ("Person 1234") saved before they were filtered are removed."""
+        for pin in self.photo_pins:
+            named = real_people(pin.people)
+            if named != pin.people:
+                pin.people = named
+                if pin.session_id:
+                    self.app_state.db.save_photo_pin(pin)
         missing = [p for p in self.photo_pins if not p.people and p.voyager_photo_id is not None]
         if not missing:
             return

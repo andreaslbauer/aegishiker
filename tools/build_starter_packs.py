@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic builder for AegisHiker's 8 bundled regional destination packs.
+"""Deterministic builder for AegisHiker's 9 bundled regional destination packs.
 
 Generates:
   - data/destinations_catalog.json
@@ -11,6 +11,7 @@ Generates:
   - data/packs/zion_canyon.json
   - data/packs/mount_rainier_paradise.json
   - data/packs/mount_monadnock.json
+  - data/packs/fitchburg_state_forest.json
 
 Usage: build_starter_packs.py [pack_id ...]   (no ids = rebuild all)
 """
@@ -798,6 +799,36 @@ def build_mount_monadnock() -> DestinationPack:
     )
 
 
+def build_fitchburg_state_forest() -> DestinationPack:
+    """Fitchburg State Forest (MA) with the adjoining Pearl Hill State Park, Willard Brook State Forest
+    and Table Rock Conservation Area. Trails come from OpenStreetMap (data/osm_trails.json)."""
+    pid = "fitchburg_state_forest"
+    pois = [
+        POI(id="poi_fsf_center", pack_id=pid, name="Fitchburg State Forest", kind="junction", lat=42.62592, lon=-71.77174, ele_m=171.0, note="Centre of the state forest (Fitchburg / Lunenburg / Townsend)"),
+        POI(id="poi_fsf_pearl", pack_id=pid, name="Pearl Hill (1,017 ft)", kind="peak", lat=42.62383, lon=-71.78722, ele_m=310.0, note="High point of the area, in Fitchburg State Forest"),
+        POI(id="poi_fsf_rattlesnake", pack_id=pid, name="Rattlesnake Hill", kind="peak", lat=42.65295, lon=-71.77955, ele_m=255.0),
+        POI(id="poi_fsf_fort", pack_id=pid, name="Fort Hill", kind="peak", lat=42.66009, lon=-71.78007, ele_m=241.0),
+        POI(id="poi_fsf_table_rock", pack_id=pid, name="Table Rock Conservation Area", kind="viewpoint", lat=42.61672, lon=-71.76357, ele_m=200.0),
+        POI(id="poi_fsf_pearl_pond", pack_id=pid, name="Pearl Hill Pond", kind="water", lat=42.65687, lon=-71.75823, ele_m=165.0, note="Pearl Hill State Park swimming pond"),
+        POI(id="poi_fsf_pearl_camp", pack_id=pid, name="Pearl Hill Campground", kind="camp", lat=42.65338, lon=-71.76672, ele_m=170.0, note="Pearl Hill State Park campground (reservations)"),
+        POI(id="poi_fsf_damon_camp", pack_id=pid, name="Damon Pond Campground", kind="camp", lat=42.66036, lon=-71.78972, ele_m=150.0, note="Willard Brook State Forest campground"),
+        POI(id="poi_fsf_willard_hq", pack_id=pid, name="Willard Brook Headquarters", kind="ranger", lat=42.67344, lon=-71.7733, ele_m=130.0, note="DCR headquarters, Route 119, Townsend"),
+        POI(id="poi_fsf_trap_falls", pack_id=pid, name="Trap Falls Parking", kind="trailhead", lat=42.67221, lon=-71.77579, ele_m=135.0, note="Trap Falls on Willard Brook, a short walk from the lot"),
+    ]
+    return DestinationPack(
+        id=pid,
+        name="Fitchburg State Forest",
+        state_or_region="Massachusetts (Fitchburg, Lunenburg & Townsend — with Pearl Hill State Park & Willard Brook)",
+        agency="MA DCR, USGS 3DEP & OpenStreetMap Contributors",
+        summary="Rolling hemlock and pine woods, brooks and ponds north of Fitchburg: Pearl Hill, Table Rock, "
+                "Trap Falls and a dense web of shared hiking and mountain-bike trails.",
+        min_lat=42.600, max_lat=42.678, min_lon=-71.800, max_lon=-71.730,
+        base_ele_m=120.0, max_ele_m=310.0,
+        emergency_contact="911",
+        trails=[], pois=pois,
+    )
+
+
 def build_all(only: List[str] | None = None) -> None:
     packs = [
         build_white_mountains_nh(),
@@ -808,6 +839,7 @@ def build_all(only: List[str] | None = None) -> None:
         build_zion_canyon(),
         build_mount_rainier_paradise(),
         build_mount_monadnock(),
+        build_fitchburg_state_forest(),
     ]
     if only:
         packs = [p for p in packs if p.id in only]

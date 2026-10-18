@@ -1,8 +1,14 @@
 """Main application window for AegisHiker."""
-from typing import Optional
-from PySide6.QtCore import QByteArray, QEvent, Qt, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QShowEvent
+from typing import Dict, Optional
+from PySide6.QtCore import QByteArray, QEvent, QSize, Qt, QTimer
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QFont, QIcon, QShowEvent
 from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
     QSplitter,
     QFileDialog,
     QLabel,
@@ -32,6 +38,10 @@ from src.gui.report import export_trailhead_pdf
 from src.gui.busy import busy
 
 
+# Bump when the window layout changes so stale saved dock layouts are ignored (1: sidebar layout)
+WINDOW_STATE_VERSION = 1
+
+
 class MainWindow(QMainWindow):
     def __init__(self, app_state: Optional[AppState] = None, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -44,8 +54,10 @@ class MainWindow(QMainWindow):
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
-        # Central tabbed workspace
+        # Pages (a QTabWidget with its tab bar hidden; the sidebar navigates between them)
         self.tabs = QTabWidget()
+        self.tabs.setObjectName("Pages")
+        self.tabs.tabBar().hide()
         self.explore_panel = ExplorePanel(self.app_state)
         self.brainstorm_panel = BrainstormPanel(self.app_state)
         self.composer_panel = ComposerPanel(self.app_state)
@@ -55,23 +67,32 @@ class MainWindow(QMainWindow):
         self.gear_panel = GearPanel(self.app_state)
         self.library_panel = LibraryPanel(self.app_state)
         self.settings_panel = SettingsPanel(self.app_state)
+        for panel, name in (
+            (self.explore_panel, "Explore Regions"),
+            (self.brainstorm_panel, "AI Brainstorm"),
+            (self.composer_panel, "Trail Composer"),
+            (self.reexperience_panel, "Re-experience Hike"),
+            (self.phone_sync_panel, "Mobile Companion"),
+            (self.telemetry_panel, "Telemetry & Splits"),
+            (self.gear_panel, "Gear & Hydration"),
+            (self.library_panel, "Trail Library"),
+            (self.settings_panel, "Preferences"),
+        ):
+            self.tabs.addTab(panel, name)
 
-        self.tabs.addTab(self.explore_panel, "1. Explore Regions")
-        self.tabs.addTab(self.brainstorm_panel, "2. AI Brainstorm")
-        self.tabs.addTab(self.composer_panel, "3. Trail Composer")
-        self.tabs.addTab(self.reexperience_panel, "4. Re-experience Hike Map")
-        self.tabs.addTab(self.phone_sync_panel, "5. Mobile Companion")
-        self.tabs.addTab(self.telemetry_panel, "6. Telemetry & Splits")
-        self.tabs.addTab(self.gear_panel, "7. Gear & Hydration")
-        self.tabs.addTab(self.library_panel, "8. Trail Library")
-        self.tabs.addTab(self.settings_panel, "9. Preferences")
-
-        self.setCentralWidget(self.tabs)
-
-        # AI Trail Guide Dock
+        # AI Trail Guide dock: out of the way until asked for (sidebar button / View menu)
         self.chat_dock = ChatDock(self.app_state, self)
         self.chat_dock.setObjectName("TrailGuideDock")  # needed for saveState/restoreState
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
+        self.chat_dock.hide()
+
+        central = QWidget()
+        row = QHBoxLayout(central)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        row.addWidget(self._build_sidebar())
+        row.addWidget(self.tabs, 1)
+        self.setCentralWidget(central)
 
         # Cross-panel navigation signals
         self.explore_panel.compose_trail_requested.connect(self._compose_trail)
@@ -82,6 +103,92 @@ class MainWindow(QMainWindow):
         self._build_menus()
         self._build_status_bar()
         self._restore_ui_state()
+
+    # (sidebar label, icon, page index); None = group heading
+    NAV = [
+        ("PLAN", None, None),
+        ("Explore Regions", "🗺", 0),
+        ("Trail Composer", "🥾", 2),
+        ("AI Brainstorm", "✨", 1),
+        ("Gear & Hydration", "🎒", 6),
+        ("ON THE TRAIL", None, None),
+        ("Mobile Companion", "📱", 4),
+        ("REMEMBER", None, None),
+        ("Re-experience Hike", "🎬", 3),
+        ("Telemetry & Splits", "📈", 5),
+        ("Trail Library", "📚", 7),
+    ]
+
+    def _build_sidebar(self) -> QWidget:
+        side = QFrame()
+        side.setObjectName("Sidebar")
+        side.setFixedWidth(224)
+        col = QVBoxLayout(side)
+        col.setContentsMargins(0, 18, 0, 14)
+        col.setSpacing(2)
+        title = QLabel(f"⛰  {APP_NAME}")
+        title.setObjectName("AppTitle")
+        sub = QLabel("Plan · Hike · Remember")
+        sub.setObjectName("AppSubtitle")
+        for lbl in (title, sub):
+            lbl.setContentsMargins(18, 0, 12, 0)
+            col.addWidget(lbl)
+        col.addSpacing(10)
+
+        self.nav = QListWidget()
+        self.nav.setObjectName("NavList")
+        self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._nav_rows: Dict[int, int] = {}  # page index -> list row
+        heading_font = QFont()
+        heading_font.setPointSizeF(max(7.5, heading_font.pointSizeF() * 0.8))
+        heading_font.setBold(True)
+        for label, icon, page in self.NAV:
+            if page is None:
+                item = QListWidgetItem(label)
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+                item.setFont(heading_font)
+                item.setForeground(QColor("#5E7868"))
+                item.setSizeHint(QSize(0, 34))
+            else:
+                item = QListWidgetItem(f"{icon}   {label}")
+                item.setData(Qt.ItemDataRole.UserRole, page)
+                item.setSizeHint(QSize(0, 38))
+                self._nav_rows[page] = self.nav.count()
+            self.nav.addItem(item)
+        self.nav.currentRowChanged.connect(self._on_nav_row)
+        self.tabs.currentChanged.connect(self._sync_nav)
+        col.addWidget(self.nav, 1)
+
+        self.guide_btn = QPushButton("💬   AI Trail Guide")
+        self.guide_btn.setObjectName("NavButton")
+        self.guide_btn.setCheckable(True)
+        self.guide_btn.setToolTip("Show or hide the AI Trail Guide chat")
+        self.guide_btn.toggled.connect(self.chat_dock.setVisible)
+        self.chat_dock.visibilityChanged.connect(self.guide_btn.setChecked)
+        self.settings_btn = QPushButton("⚙   Preferences")
+        self.settings_btn.setObjectName("NavButton")
+        self.settings_btn.setCheckable(True)
+        self.settings_btn.clicked.connect(lambda: self.tabs.setCurrentWidget(self.settings_panel))
+        col.addWidget(self.guide_btn)
+        col.addWidget(self.settings_btn)
+        self._sync_nav(self.tabs.currentIndex())
+        return side
+
+    def _on_nav_row(self, row: int) -> None:
+        item = self.nav.item(row) if row >= 0 else None
+        page = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if page is not None and page != self.tabs.currentIndex():
+            self.tabs.setCurrentIndex(int(page))
+
+    def _sync_nav(self, page: int) -> None:
+        self.nav.blockSignals(True)
+        if page in self._nav_rows:
+            self.nav.setCurrentRow(self._nav_rows[page])
+        else:
+            self.nav.clearSelection()
+            self.nav.setCurrentRow(-1)
+        self.nav.blockSignals(False)
+        self.settings_btn.setChecked(self.tabs.currentWidget() is self.settings_panel)
 
     @staticmethod
     def _run_dialog(dlg) -> None:
@@ -123,7 +230,7 @@ class MainWindow(QMainWindow):
 
         view_menu = menubar.addMenu("&View")
         toggle_chat_act = self.chat_dock.toggleViewAction()
-        toggle_chat_act.setText("Toggle AI Trail Guide Dock")
+        toggle_chat_act.setText("AI Trail Guide")
         view_menu.addAction(toggle_chat_act)
 
         help_menu = menubar.addMenu("&Help")
@@ -195,7 +302,7 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(QByteArray.fromBase64(geometry.encode("ascii")))
         state = str(s.get("window_state", "") or "")
         if state:
-            self.restoreState(QByteArray.fromBase64(state.encode("ascii")))
+            self.restoreState(QByteArray.fromBase64(state.encode("ascii")), WINDOW_STATE_VERSION)
         tab = int(s.get("active_tab", 0) or 0)
         if 0 <= tab < self.tabs.count():
             self.tabs.setCurrentIndex(tab)
@@ -232,7 +339,7 @@ class MainWindow(QMainWindow):
     def _save_ui_state(self) -> None:
         s = self.app_state.settings
         s.set("window_geometry", bytes(self.saveGeometry().toBase64()).decode("ascii"))
-        s.set("window_state", bytes(self.saveState().toBase64()).decode("ascii"))
+        s.set("window_state", bytes(self.saveState(WINDOW_STATE_VERSION).toBase64()).decode("ascii"))
         s.set("active_tab", self.tabs.currentIndex())
         ui = {"splitters": {key: sp.sizes() for key, sp in self._splitters()}}
         # Keep positions of splitters never shown this session (still pending) as they were

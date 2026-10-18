@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.gui.app_state import AppState
-from src.gui.widgets import SectionHeader, StatCard
+from src.gui.widgets import Card, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.gear import (
     estimate_calories_kcal,
     estimate_hydration_ml,
@@ -31,15 +31,19 @@ class GearPanel(QWidget):
         self.app_state = app_state
         self.items: List[GearItem] = []
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "Gear Checklist, 10 Essentials & Hydration Planner",
-            "Compute pack weight, water requirements, and energy expenditure for your active route.",
+            "Gear & Hydration",
+            "The Ten Essentials and a packing checklist for this route, with pack weight, water and energy needs.",
         )
         layout.addWidget(header)
 
+        ctrl_card = Card(margins=(16, 12, 16, 12))
         ctrl_row = QHBoxLayout()
-        ctrl_row.addWidget(QLabel("Template:"))
+        ctrl_row.setSpacing(12)
+        cap = QLabel("Trip type")
+        cap.setObjectName("Muted")
+        ctrl_row.addWidget(cap)
         self.tpl_combo = QComboBox()
         for key, label in [
             ("day_hike", "Day Hike (3-Season)"),
@@ -48,37 +52,42 @@ class GearPanel(QWidget):
             ("trail_running", "Fastpacking / Trail Running"),
         ]:
             self.tpl_combo.addItem(label, key)
-        ctrl_row.addWidget(self.tpl_combo)
-
-        ctrl_row.addWidget(QLabel("Ambient Temp:"))
+        ctrl_row.addWidget(self.tpl_combo, 2)
+        ctrl_row.addSpacing(8)
+        cap2 = QLabel("Expected temperature")
+        cap2.setObjectName("Muted")
+        ctrl_row.addWidget(cap2)
         self.temp_spin = QDoubleSpinBox()
         self.temp_spin.setRange(-25.0, 45.0)
         self.temp_spin.setValue(18.0)
         self.temp_spin.setSuffix(" °C")
         self.temp_spin.valueChanged.connect(self._recompute_cards)
         ctrl_row.addWidget(self.temp_spin)
-
-        load_btn = QPushButton("Load Template for Active Route")
+        ctrl_row.addStretch(1)
+        load_btn = QPushButton("Load Checklist for This Route")
         load_btn.setObjectName("PrimaryButton")
         load_btn.clicked.connect(self.load_template_for_route)
         ctrl_row.addWidget(load_btn)
-        ctrl_row.addStretch(1)
-        layout.addLayout(ctrl_row)
+        ctrl_card.body.addLayout(ctrl_row)
+        layout.addWidget(ctrl_card)
 
-        cards_row = QHBoxLayout()
-        self.weight_card = StatCard("Checked Pack Weight", "0.00 kg")
-        self.water_card = StatCard("Recommended Water", "0.0 L")
-        self.cal_card = StatCard("Estimated Burn", "0 kcal")
-        cards_row.addWidget(self.weight_card)
-        cards_row.addWidget(self.water_card)
-        cards_row.addWidget(self.cal_card)
-        layout.addLayout(cards_row)
+        self.weight_card = StatCard("Packed Weight", "0.00 kg")
+        self.water_card = StatCard("Water to Carry", "0.0 L")
+        self.cal_card = StatCard("Energy Burn", "0 kcal")
+        layout.addLayout(stat_row(self.weight_card, self.water_card, self.cal_card))
 
+        list_card = Card("Checklist", "Tick items as you pack them", margins=(14, 14, 14, 14))
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Packed", "Item Name", "Category", "Weight (g)"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setHorizontalHeaderLabels(["Packed", "Item", "Category", "Weight (g)"])
+        hdr = self.table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
         self.table.itemChanged.connect(self._on_table_item_changed)
-        layout.addWidget(self.table, 1)
+        list_card.body.addWidget(self.table)
+        layout.addWidget(list_card, 1)
 
         self.app_state.route_changed.connect(lambda _: self.refresh_from_db())
         self.refresh_from_db()

@@ -413,7 +413,7 @@ class MapCanvas(BaseChartWidget):
             painter.end()
             return
 
-        self.draw_background(painter, "#0B1610", "#2C4637")
+        self.draw_background(painter, "#0B1610", "#223829")
         painter.setClipRect(self.rect().adjusted(2, 2, -2, -2))
         xf = self._view_transform()
         self._draw_relief(painter, xf)

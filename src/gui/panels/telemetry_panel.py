@@ -1,5 +1,6 @@
 """Post-Hike GPS Telemetry & Pace Split Analyzer panel."""
 from typing import Optional
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
 
 from src.gui.app_state import AppState
 from src.gui.charts.pace_chart import PaceChart
-from src.gui.widgets import SectionHeader, StatCard
+from src.gui.widgets import Card, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.telemetry import compute_splits, detect_off_trail, summarize_telemetry
 from src.hiking.hike_info import hike_title
 from src.hiking.units import format_distance, format_duration, format_duration_min, format_elevation
@@ -25,41 +26,47 @@ class TelemetryPanel(QWidget):
         super().__init__(parent)
         self.app_state = app_state
 
-        layout = QVBoxLayout(self)
+        layout = page_layout(self)
         header = SectionHeader(
-            "GPS Telemetry & Pace Split Analyzer",
-            "Compare planned vs. actual hike telemetry, kilometer pace splits, and off-trail corridor deviations.",
+            "Telemetry & Splits",
+            "Compare the plan with what you actually hiked: pace per kilometre, climbs and how far you strayed from the trail.",
         )
         layout.addWidget(header)
 
+        sel_card = Card(margins=(16, 12, 16, 12))
         sel_row = QHBoxLayout()
-        sel_row.addWidget(QLabel("Hike Session:"))
+        sel_row.setSpacing(12)
+        cap = QLabel("Hike")
+        cap.setObjectName("Muted")
+        sel_row.addWidget(cap)
         self.session_combo = QComboBox()
         self.session_combo.currentIndexChanged.connect(self._on_session_changed)
         sel_row.addWidget(self.session_combo, 1)
-        layout.addLayout(sel_row)
+        sel_card.body.addLayout(sel_row)
+        layout.addWidget(sel_card)
 
-        cards_row = QHBoxLayout()
         self.dist_card = StatCard("Actual Distance", "0.0 km")
         self.gain_card = StatCard("Actual Ascent", "+0 m")
-        self.time_card = StatCard("Moving Duration", "0m")
-        self.dev_card = StatCard("Max Corridor Dev", "0 m")
-        cards_row.addWidget(self.dist_card)
-        cards_row.addWidget(self.gain_card)
-        cards_row.addWidget(self.time_card)
-        cards_row.addWidget(self.dev_card)
-        layout.addLayout(cards_row)
+        self.time_card = StatCard("Moving Time", "0m")
+        self.dev_card = StatCard("Max Off-Trail", "0 m")
+        layout.addLayout(stat_row(self.dist_card, self.gain_card, self.time_card, self.dev_card))
 
         splitter = QSplitter()
+        splitter.setHandleWidth(14)
         self.pace_chart = PaceChart()
+        splits_card = Card("Splits", margins=(14, 14, 14, 14))
         self.split_table = QTableWidget(0, 4)
-        self.split_table.setHorizontalHeaderLabels(["Split #", "Distance", "Elev Δ", "Pace (min/km)"])
+        self.split_table.setHorizontalHeaderLabels(["Split", "Distance", "Elev Δ", "Pace (min/km)"])
         self.split_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.split_table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.split_table.verticalHeader().setVisible(False)
+        self.split_table.setShowGrid(False)
+        splits_card.body.addWidget(self.split_table)
 
         splitter.addWidget(self.pace_chart)
-        splitter.addWidget(self.split_table)
-        splitter.setStretchFactor(0, 5)
-        splitter.setStretchFactor(1, 5)
+        splitter.addWidget(splits_card)
+        splitter.setStretchFactor(0, 6)
+        splitter.setStretchFactor(1, 4)
         layout.addWidget(splitter, 1)
 
         self.app_state.session_changed.connect(lambda _: self.refresh_all())

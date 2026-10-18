@@ -46,12 +46,11 @@ class SegmentBuilder(QWidget):
         self._candidates: List[Candidate] = []
         self._picked: List[Candidate] = []  # options added by clicking trails on the map
         self._name_edited = False
-        self.setMinimumWidth(340)
+        self.setMinimumWidth(320)
 
         col = QVBoxLayout(self)
-        col.setContentsMargins(0, 0, 6, 0)
-        title = QLabel("<b>Build Hike by Trail Segments</b>")
-        col.addWidget(title)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(8)
 
         self.pick_chk = QCheckBox("Pick trails on the map")
         self.pick_chk.setChecked(True)
@@ -61,7 +60,7 @@ class SegmentBuilder(QWidget):
         )
         col.addWidget(self.pick_chk)
 
-        col.addWidget(QLabel("1. Starting trail (or click one on the map):"))
+        col.addWidget(self._step("1 · Starting trail — or click one on the map"))
         self.start_combo = QComboBox()
         self.start_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.start_combo.setMinimumContentsLength(24)
@@ -78,17 +77,18 @@ class SegmentBuilder(QWidget):
         start_row.addWidget(start_btn)
         col.addLayout(start_row)
 
-        col.addWidget(QLabel("Hike so far:"))
+        col.addWidget(self._step("Hike so far"))
         self.legs_list = QListWidget()
+        self.legs_list.setObjectName("Inset")
         self.legs_list.setMaximumHeight(130)
         self.legs_list.setWordWrap(True)
         col.addWidget(self.legs_list)
 
-        self.next_lbl = QLabel("2. Next segment (double-click, or click any trail on the map):")
+        self.next_lbl = self._step("2 · Next segment — double-click, or click any trail on the map")
         col.addWidget(self.next_lbl)
         self.cand_list = QListWidget()
+        self.cand_list.setObjectName("Inset")
         self.cand_list.setWordWrap(True)
-        self.cand_list.setAlternatingRowColors(True)
         self.cand_list.currentRowChanged.connect(self._on_candidate_highlighted)
         self.cand_list.itemDoubleClicked.connect(lambda _item: self.add_selected())
         col.addWidget(self.cand_list, 1)
@@ -115,14 +115,14 @@ class SegmentBuilder(QWidget):
         self.summary_lbl.setStyleSheet("color: #2ECC71;")
         col.addWidget(self.summary_lbl)
 
-        col.addWidget(QLabel("3. Name:"))
+        col.addWidget(self._step("3 · Name"))
         name_row = QHBoxLayout()
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("Proposed from the segment names")
         self.name_edit.textEdited.connect(self._on_name_edited)
         propose_btn = QPushButton("↺")
         propose_btn.setToolTip("Use the proposed name built from the segment names")
-        propose_btn.setFixedWidth(32)
+        propose_btn.setObjectName("IconButton")
         propose_btn.clicked.connect(self._reset_name)
         name_row.addWidget(self.name_edit, 1)
         name_row.addWidget(propose_btn)
@@ -133,6 +133,13 @@ class SegmentBuilder(QWidget):
         col.addWidget(self.save_btn)
 
         self._sync_ui()
+
+    @staticmethod
+    def _step(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setObjectName("StatTitle")
+        lbl.setWordWrap(True)
+        return lbl
 
     # ── region ───────────────────────────────────────────────────────────
 
@@ -410,11 +417,11 @@ class SegmentBuilder(QWidget):
     def _fit_rows(lst: QListWidget) -> None:
         """Size each row to its wrapped text so nothing is cut off with '…'."""
         fm = lst.fontMetrics()
-        width = max(60, lst.viewport().width() - 14)
+        width = max(60, lst.viewport().width() - 28)  # minus the theme's item padding
         for i in range(lst.count()):
             item = lst.item(i)
             rect = fm.boundingRect(0, 0, width, 10_000, int(Qt.TextFlag.TextWordWrap), item.text())
-            item.setSizeHint(QSize(width, rect.height() + 10))
+            item.setSizeHint(QSize(width, rect.height() + 16))
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
