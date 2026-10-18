@@ -391,24 +391,22 @@
       }
     ],
     "auto": {
-      "_comment": "Every named hiking trail in the strip added east to the Maine border (2026-10)",
+      "_comment": "Every named hiking trail in the region (beyond the hand-picked list above)",
       "within": [
         44.095,
-        -71.24,
+        -71.71,
         44.385,
         -70.95
       ],
-      "exclude_regex": "^F ?R ?\\d|\\bRoad\\b|\\bLane\\b|\\bStreet\\b|Snowmobile|\\bITS \\d|Ski Trail|\\bX[Cc]\\b|Singletrack|Corridor|^(Howie Roll|Carry On|Hairball|Laughing Lion)( Trail)?$|Rail Trail|Not Maintained|Abandoned|Decomissioned|Decommissioned|CLOSED|Unmaintained|Bushwhack|sections missing|^eroded\\)$|^(Spur|Spur Path|Summit Spur|Old Path|New Path|Old Trail.*)$|Scenic vista spur|^Access from|Campground Ford|Pond Loops|Loop to Pond|Main Route to Pond|Hubs Loop|logging road",
+      "exclude_regex": "^F ?R ?\\d|\\bRoad\\b|\\bLane\\b|\\bStreet\\b|Snowmobile|\\bITS \\d|Ski Trail|\\bX[Cc]\\b|Singletrack|Corridor|^(Howie Roll|Carry On|Hairball|Laughing Lion)( Trail)?$|Rail Trail|Not Maintained|Abandoned|Decomissioned|Decommissioned|CLOSED|Unmaintained|Bushwhack|sections missing|^eroded\\)$|^(Spur|Spur Path|Summit Spur|Old Path|New Path|Old Trail.*)$|Scenic vista spur|^Access from|Campground Ford|Pond Loops|Loop to Pond|Main Route to Pond|Hubs Loop|logging road|Pump Track|Summit Stairs|Viewing Platform|Bridge Removed|^(Nature Trail|Outlook|Short Trail|Upper Falls)$",
       "aliases": {
         "Carter-Moriah": "Carter-Moriah Trail",
         "Black Angel": "Black Angel Trail"
       },
       "code_prefix": "WMNF",
-      "tags": [
-        "east_side"
-      ],
+      "tags": [],
       "defaults": {
-        "min_length_m": 300
+        "min_length_m": 100
       },
       "overrides": {
         "Wildcat Ridge Trail": {

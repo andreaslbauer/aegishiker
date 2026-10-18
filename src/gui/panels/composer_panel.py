@@ -154,6 +154,7 @@ class ComposerPanel(QWidget):
         self.segment_builder = SegmentBuilder(self.app_state)
         self.segment_builder.draft_changed.connect(self._on_draft_changed)
         self.segment_builder.preview_changed.connect(self.map_canvas.set_preview)
+        self.segment_builder.focus_requested.connect(lambda coords: self.map_canvas.fit_when_shown(coords, 70.0))
         self.segment_builder.candidates_changed.connect(self.map_canvas.set_candidates)
         self.map_canvas.hover_geo.connect(
             lambda lat, lon: self.segment_builder.hover_at(lat, lon, self._pick_tolerance_m())

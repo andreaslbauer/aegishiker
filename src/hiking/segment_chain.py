@@ -4,6 +4,10 @@ Start on one trail, then repeatedly pick the next trail from the candidates that
 segment: at its end, or forking off partway along it (the current segment is then cut at that
 junction). Turning around on the current trail (out-and-back) and re-using trails already walked
 are always allowed. The chain is complete when it returns to its starting point or the user ends it.
+
+Besides the region's named trails the chain can know the basemap's other footpaths and tracks
+("map paths", see `map_paths_from_features`). They are never listed as options on their own, but
+the user can click one on the map to walk it, and routes to a clicked trail may use them to fill gaps.
 """
 import bisect
 import heapq
@@ -13,9 +17,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from .elevation import summarize_elevation
+from .elevation import sample_dem, summarize_elevation
 from .geo import haversine_m
-from .models import ComposedRoute, TrailSegment
+from .models import ComposedRoute, DEMGrid, MapFeature, TrailSegment
 from .routing import recompute_composed_route
 
 JUNCTION_M = 25.0  # trail vertices this close are treated as the same junction
@@ -28,6 +32,39 @@ FORK_MIN_ALONG_M = END_JUNCTION_M + 25.0  # forks right where the segment began 
 _CELL_DEG = 0.0005  # ~40-55 m grid cells for the vertex index
 
 Place = Tuple[str, float, float]  # (name, lon, lat)
+
+MAP_PATH_TAG = "map_path"  # tag on TrailSegments made from basemap paths (not region trails)
+MAP_PATH_STEP_M = 20.0  # densify map paths so crossings with trails fall within JUNCTION_M
+
+
+def map_paths_from_features(
+    features: Sequence[MapFeature], dem: Optional[DEMGrid], pack_id: str = ""
+) -> List[TrailSegment]:
+    """The basemap's footpaths and tracks as walkable segments (elevations from the DEM)."""
+    out: List[TrailSegment] = []
+    for i, f in enumerate(features):
+        if f.geom != "line" or f.kind not in ("path", "track") or len(f.coords) < 2:
+            continue
+        pts: List[List[float]] = []
+        for a, b in zip(f.coords, f.coords[1:]):
+            d = haversine_m(a[1], a[0], b[1], b[0])
+            n = max(1, int(d // MAP_PATH_STEP_M))
+            for j in range(n):
+                t = j / n
+                pts.append([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
+        pts.append(list(f.coords[-1][:2]))
+        coords = [[lon, lat, round(sample_dem(dem, lat, lon), 1)] for lon, lat in pts]
+        unnamed = "Unnamed path" if f.kind == "path" else "Unnamed track"
+        out.append(TrailSegment(
+            id=f"mappath_{i}", pack_id=pack_id, name=f.name or unnamed, coords_3d=coords,
+            tags=[MAP_PATH_TAG] + ([] if f.name else ["unnamed"]),
+            description="Path from the map (not one of the region's listed trails)",
+        ))
+    return out
+
+
+def is_map_path(trail: TrailSegment) -> bool:
+    return MAP_PATH_TAG in trail.tags
 
 
 @dataclass
@@ -92,11 +129,15 @@ class Candidate:
 class SegmentChain:
     trails: Sequence[TrailSegment]
     places: Sequence[Place] = ()
+    map_paths: Sequence[TrailSegment] = ()  # pickable / routable, never offered as options themselves
     legs: List[Leg] = field(default_factory=list)
     ended: bool = False
     _history: List[Tuple[List[Leg], bool]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        self.named_trails: List[TrailSegment] = list(self.trails)
+        self._n_named = len(self.named_trails)
+        self.trails = self.named_trails + list(self.map_paths)
         self._grid: Dict[Tuple[int, int], List[Tuple[int, int]]] = defaultdict(list)
         # (min_lat, min_lon, max_lat, max_lon) from geometry: stored trail bboxes may be unset
         self._bounds = [
@@ -201,7 +242,7 @@ class SegmentChain:
         touches: Dict[int, Dict[int, Tuple[int, float]]] = defaultdict(dict)  # trail -> k -> (vertex, d)
         for k in range(1, len(leg_pts)):
             for ti, vi, d in self._near_vertices(leg_pts[k][0], leg_pts[k][1]):
-                if self.trails[ti].id == last.trail.id:
+                if ti >= self._n_named or self.trails[ti].id == last.trail.id:
                     continue
                 prev = touches[ti].get(k)
                 if prev is None or d < prev[1]:
@@ -308,9 +349,14 @@ class SegmentChain:
     def trails_at(self, lat: float, lon: float, tol_m: float) -> List[Tuple[TrailSegment, bool, float]]:
         """Trails within `tol_m` of the point, nearest first, as (trail, reverse, distance).
         `reverse` starts the trail at the end nearer the click. Trails sharing a stretch of path
-        are all returned so the caller can ask which one is meant."""
+        are all returned so the caller can ask which one is meant. Map paths are returned only
+        where no region trail is near (a listed trail usually is a map path too)."""
+        hits = self._trails_at(lat, lon, tol_m, 0, self._n_named)
+        return hits or self._trails_at(lat, lon, tol_m, self._n_named, len(self.trails))
+
+    def _trails_at(self, lat: float, lon: float, tol_m: float, lo: int, hi: int) -> List[Tuple[TrailSegment, bool, float]]:
         hits = []
-        for t, (lo_lat, lo_lon, hi_lat, hi_lon) in zip(self.trails, self._bounds):
+        for t, (lo_lat, lo_lon, hi_lat, hi_lon) in zip(self.trails[lo:hi], self._bounds[lo:hi]):
             if len(t.coords_3d) < 2 or not (lo_lat - 0.01 <= lat <= hi_lat + 0.01 and lo_lon - 0.01 <= lon <= hi_lon + 0.01):
                 continue
             d = self._dist_to_line_m(lat, lon, t.coords_3d)
@@ -334,6 +380,7 @@ class SegmentChain:
     CLOSE_GAP_M = 300.0  # a clicked trail this close (but not connected) can be jumped to
     MAX_GAP_M = 1500.0  # beyond this an unconnected trail is not offered
     MAX_ROUTE_M = 25_000.0
+    MAP_PATH_COST = 1.5  # routing weight of a metre on a map path vs. on a region trail
 
     def _network(self):
         """Walkable graph over every trail vertex: neighbours along a trail plus junction links
@@ -347,14 +394,41 @@ class SegmentChain:
         adj: List[List[Tuple[int, float]]] = [[] for _ in range(n)]
         for ti, t in enumerate(self.trails):
             pts, base = t.coords_3d, offsets[ti]
+            # Routes prefer the region's trails; map paths (unnamed paths, tracks) fill the gaps
+            cost = 1.0 if ti < self._n_named else self.MAP_PATH_COST
             for vi in range(len(pts) - 1):
-                d = haversine_m(pts[vi][1], pts[vi][0], pts[vi + 1][1], pts[vi + 1][0])
+                d = cost * haversine_m(pts[vi][1], pts[vi][0], pts[vi + 1][1], pts[vi + 1][0])
                 adj[base + vi].append((base + vi + 1, d))
                 adj[base + vi + 1].append((base + vi, d))
+        # Junction links, as in _near_vertices but with a flat-earth distance and direct grid scans
+        # (map paths make this tens of thousands of vertices): 25 m between any vertices from
+        # adjacent cells, 75 m when either vertex is a trail's end (searched 2 cells out)
+        grid = self._grid
+        ky = 110_540.0
+        kx = 111_320.0 * math.cos(math.radians(self.trails[0].coords_3d[0][1])) if self.trails and self.trails[0].coords_3d else ky
+        j2, e2 = JUNCTION_M ** 2, END_JUNCTION_M ** 2
+        ends = {(ti, len(t.coords_3d) - 1) for ti, t in enumerate(self.trails)} | {(ti, 0) for ti in range(len(self.trails))}
+        for ti, t in enumerate(self.trails):
+            pts, base = t.coords_3d, offsets[ti]
+            last = len(pts) - 1
             for vi, p in enumerate(pts):
-                for tj, vj, d in self._near_vertices(p[0], p[1]):
-                    if tj != ti:
-                        adj[base + vi].append((offsets[tj] + vj, d))
+                is_end = vi == 0 or vi == last
+                cx, cy = int(p[0] / _CELL_DEG), int(p[1] / _CELL_DEG)
+                reach = 2 if is_end else 1
+                for dx in range(-reach, reach + 1):
+                    for dy in range(-reach, reach + 1):
+                        for tj, vj in grid.get((cx + dx, cy + dy), ()):
+                            if tj == ti:
+                                continue
+                            q = self.trails[tj].coords_3d[vj]
+                            ddx, ddy = (q[0] - p[0]) * kx, (q[1] - p[1]) * ky
+                            d2 = ddx * ddx + ddy * ddy
+                            if d2 <= j2 or (d2 <= e2 and (is_end or (tj, vj) in ends)):
+                                # Both directions: a middle vertex only scans adjacent cells, so
+                                # an end 2 cells away links back to it from its own scan
+                                d = math.sqrt(d2)
+                                adj[base + vi].append((offsets[tj] + vj, d))
+                                adj[offsets[tj] + vj].append((base + vi, d))
         self._graph = (offsets, adj)
         return self._graph
 
@@ -469,6 +543,8 @@ class SegmentChain:
         """Trail names in walking order, consecutive repeats merged, parenthetical asides dropped."""
         names: List[str] = []
         for leg in self.legs:
+            if "unnamed" in leg.trail.tags:
+                continue
             short = re.sub(r"\s*\([^)]*\)", "", leg.trail.name).strip() or leg.trail.name
             if not names or names[-1] != short:
                 names.append(short)
@@ -498,7 +574,7 @@ class SegmentChain:
     def to_route(self, name: str, pack_id: str) -> ComposedRoute:
         trail_ids: List[str] = []
         for leg in self.legs:
-            if leg.trail.id not in trail_ids:
+            if leg.trail.id not in trail_ids and not is_map_path(leg.trail):
                 trail_ids.append(leg.trail.id)
         route = ComposedRoute(
             name=name or self.proposed_name() or "Composed Hike",
@@ -509,4 +585,4 @@ class SegmentChain:
             tags=["segment_builder"],
             notes="Segments: " + " → ".join(leg.trail.name for leg in self.legs),
         )
-        return recompute_composed_route(route, list(self.trails))
+        return recompute_composed_route(route, self.named_trails)

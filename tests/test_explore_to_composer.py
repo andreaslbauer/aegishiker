@@ -57,3 +57,41 @@ def test_selecting_region_fits_map_to_destination(seeded_db: Database, tmp_path:
         (destination.max_lat, destination.max_lon),
     ]]
     explore.deleteLater()
+
+
+def test_clicking_builder_trail_zooms_map(seeded_db: Database, tmp_path: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.main_window import MainWindow
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    win = MainWindow(app_state=state)
+    win.show()
+    composer = win.composer_panel
+    win.tabs.setCurrentWidget(composer)
+    builder = composer.segment_builder
+    assert builder.start_on_trail("wmnf_osm_crawford_path")
+    app.processEvents()
+    canvas = composer.map_canvas
+
+    def visible_span():
+        return canvas.zoom, canvas.pan_offset
+
+    before = visible_span()
+    builder.cand_list.setCurrentRow(0)  # programmatic selection (as from a map click) must not zoom
+    app.processEvents()
+    assert visible_span() == before
+
+    builder.cand_list.itemClicked.emit(builder.cand_list.item(0))
+    app.processEvents()
+    after_cand = visible_span()
+    assert after_cand != before, "clicking an option zooms the map to it"
+    assert canvas.zoom <= 80.0
+
+    builder.legs_list.itemClicked.emit(builder.legs_list.item(0))
+    app.processEvents()
+    assert visible_span() != after_cand, "clicking a leg of the hike zooms to that leg"
+    win.hide()
+    win.deleteLater()

@@ -374,7 +374,7 @@ def build_white_mountains_nh() -> DestinationPack:
         state_or_region="New Hampshire (White Mountain National Forest)",
         agency="USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
         summary="Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border.",
-        pack_version="1.3",  # 1.1: Flume Slide / Howker Ridge; 1.2: east to the Maine border; 1.3: + connector trails, Lost Pond
+        pack_version="1.4",  # 1.1: Flume Slide / Howker Ridge; 1.2: east to the Maine border; 1.3: + connector trails, Lost Pond; 1.4: every named trail in the region (Presidentials)
         min_lat=min_lat,
         max_lat=max_lat,
         min_lon=min_lon,

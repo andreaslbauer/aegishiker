@@ -137,3 +137,29 @@ def test_clicked_trail_offered_via_network_or_as_jump() -> None:
     assert jump is not None and 80 < jump.gap_m < 200 and jump.leg.trail.id == "p"
     chain.apply(jump)
     assert chain.legs[-1].trail.id == "p" and chain.legs[-1].end == 5
+
+
+def test_map_paths_fill_gaps_but_are_not_options() -> None:
+    from src.hiking.models import MapFeature
+    from src.hiking.segment_chain import map_paths_from_features
+
+    # Brook Trail ends at its east end; an unnamed map path continues east to "Far Trail", which
+    # is ~1.8 km away and not connected to any listed trail
+    a = _line("a", "Brook Trail", [(-71.0 + i * 0.0015, 44.0, 300) for i in range(11)])
+    far = _line("far", "Far Trail", [(-70.962 + i * 0.0015, 44.0, 320) for i in range(6)])
+    feats = [MapFeature(kind="path", geom="line", name="", coords=[[-70.985, 44.0], [-70.962, 44.0]])]
+    paths = map_paths_from_features(feats, None, "p")
+    assert len(paths) == 1 and len(paths[0].coords_3d) > 50, "densified for junctions"
+
+    chain = SegmentChain([a, far], [], map_paths=paths)
+    chain.start(a)
+    assert all(c.leg.trail.id in ("a", "far") for c in chain.candidates()), "map paths are never listed"
+    assert chain.trails_at(44.0, -70.975, 30)[0][0].name == "Unnamed path", "clickable where no trail is"
+    assert chain.trails_at(44.0, -70.99, 30)[0][0].id == "a", "listed trails win where both are"
+
+    cand = chain.candidate_to(far, 44.0, -70.956)
+    assert cand is not None and cand.gap_m == 0, "routed over the map path, no straight-line jump"
+    assert cand.trail_name == "Far Trail" and cand.via_names == ["Unnamed path"]
+    chain.apply(cand)
+    assert chain.proposed_name() == "Brook Trail → Far Trail", "unnamed paths stay out of the name"
+    assert chain.to_route("", "p").trail_ids == ["a", "far"]

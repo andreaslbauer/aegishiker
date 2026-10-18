@@ -4,6 +4,7 @@ Pick a starting trail, then keep choosing the next trail from those that branch 
 segment (or meet it at its end), turn around for an out-and-back, and finish when back at the start
 or with 'End Here'. The growing hike is shown live on the Composer's map, stats and elevation chart.
 """
+import math
 from typing import List, Optional
 
 from PySide6.QtCore import QSize, Qt, Signal
@@ -26,7 +27,7 @@ from PySide6.QtWidgets import (
 from src.gui.app_state import AppState
 from src.gui.busy import busy
 from src.hiking.models import ComposedRoute, DestinationPack
-from src.hiking.segment_chain import Candidate, SegmentChain
+from src.hiking.segment_chain import Candidate, SegmentChain, map_paths_from_features
 from src.hiking.units import format_distance, format_elevation
 
 PLACE_KINDS = {"peak", "hut", "shelter", "trailhead", "parking", "waterfall", "viewpoint", "campsite", "saddle", "spring"}
@@ -37,6 +38,7 @@ class SegmentBuilder(QWidget):
     preview_changed = Signal(object)  # Optional[List[(lat, lon)]] — highlighted candidate
     candidates_changed = Signal(object)  # List[List[(lat, lon)]] — pickable segments for the map
     route_saved = Signal(str)  # route_id
+    focus_requested = Signal(object)  # List[(lat, lon)] — the user clicked a trail: zoom the map to it
 
     def __init__(self, app_state: AppState, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -65,6 +67,7 @@ class SegmentBuilder(QWidget):
         self.start_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.start_combo.setMinimumContentsLength(24)
         self.start_combo.view().setMinimumWidth(460)  # long trail names readable in the popup
+        self.start_combo.activated.connect(self._on_start_trail_chosen)
         col.addWidget(self.start_combo)
         start_row = QHBoxLayout()
         self.reverse_chk = QCheckBox("Start from the far end")
@@ -82,6 +85,7 @@ class SegmentBuilder(QWidget):
         self.legs_list.setObjectName("Inset")
         self.legs_list.setMaximumHeight(130)
         self.legs_list.setWordWrap(True)
+        self.legs_list.itemClicked.connect(self._on_leg_clicked)
         col.addWidget(self.legs_list)
 
         self.next_lbl = self._step("2 · Next segment — double-click, or click any trail on the map")
@@ -90,6 +94,7 @@ class SegmentBuilder(QWidget):
         self.cand_list.setObjectName("Inset")
         self.cand_list.setWordWrap(True)
         self.cand_list.currentRowChanged.connect(self._on_candidate_highlighted)
+        self.cand_list.itemClicked.connect(self._on_candidate_clicked)
         self.cand_list.itemDoubleClicked.connect(lambda _item: self.add_selected())
         col.addWidget(self.cand_list, 1)
 
@@ -156,7 +161,9 @@ class SegmentBuilder(QWidget):
                       for f in pack.features if f.geom == "point" and f.name and f.kind in PLACE_KINDS]
             places += [(p.name, p.lon, p.lat) for p in pack.pois]
             trails = sorted(pack.trails, key=lambda t: t.name.lower())
-            self.chain = SegmentChain(trails, places)
+            # The map's other footpaths and tracks: pickable on the map and used to fill gaps
+            map_paths = map_paths_from_features(pack.features, pack.dem, pack.id)
+            self.chain = SegmentChain(trails, places, map_paths=map_paths)
             unit = self._unit()
             for t in trails:
                 self.start_combo.addItem(f"{t.name}  ({format_distance(t.distance_m, unit)})", t.id)
@@ -263,9 +270,15 @@ class SegmentBuilder(QWidget):
         )
         if pick is not None:
             trail, reverse, _d = trails[pick]
-            self.start_combo.setCurrentIndex(self.start_combo.findData(trail.id))
-            self.reverse_chk.setChecked(reverse)
-            self.start_chain()
+            idx = self.start_combo.findData(trail.id)
+            if idx >= 0:
+                self.start_combo.setCurrentIndex(idx)
+                self.reverse_chk.setChecked(reverse)
+                self.start_chain()
+            else:  # a map path: not in the list of region trails
+                self.chain.start(trail, reverse=reverse)
+                self._name_edited = False
+                self._refresh()
         return True
 
     def _offer_clicked_trail(self, lat: float, lon: float, tol_m: float) -> None:
@@ -330,6 +343,40 @@ class SegmentBuilder(QWidget):
         self._name_edited = False
         self.name_edit.setText(self.chain.proposed_name() if self.chain else "")
 
+    FOCUS_MIN_SPAN_M = 400.0
+
+    def _focus(self, coords: List[tuple]) -> None:
+        """Ask the map to show these (lat, lon) points; short segments keep some surroundings
+        (at least FOCUS_MIN_SPAN_M across) instead of zooming in to a few metres."""
+        if not coords:
+            return
+        lats = [c[0] for c in coords]
+        lons = [c[1] for c in coords]
+        clat, clon = 0.5 * (min(lats) + max(lats)), 0.5 * (min(lons) + max(lons))
+        half_lat = self.FOCUS_MIN_SPAN_M / 2 / 110540.0
+        half_lon = half_lat / max(0.1, math.cos(math.radians(clat)))
+        self.focus_requested.emit(list(coords) + [(clat - half_lat, clon - half_lon), (clat + half_lat, clon + half_lon)])
+
+    # Zoom only on clicks in the lists: rows selected programmatically (e.g. by clicking the map)
+    # must not move the map under the user's cursor
+    def _on_start_trail_chosen(self, index: int) -> None:
+        trail = next((t for t in (self.chain.trails if self.chain else []) if t.id == self.start_combo.itemData(index)), None)
+        if trail is not None:
+            coords = [(p[1], p[0]) for p in trail.coords_3d]
+            if not (self.chain and self.chain.legs):
+                self.preview_changed.emit(coords)
+            self._focus(coords)
+
+    def _on_leg_clicked(self, item: QListWidgetItem) -> None:
+        row = self.legs_list.row(item)
+        if self.chain and 0 <= row < len(self.chain.legs):
+            self._focus([(p[1], p[0]) for p in self.chain.legs[row].coords()])
+
+    def _on_candidate_clicked(self, item: QListWidgetItem) -> None:
+        row = self.cand_list.row(item)
+        if 0 <= row < len(self._candidates):
+            self._focus([(p[1], p[0]) for p in self._candidates[row].coords()])
+
     def _on_candidate_highlighted(self, row: int) -> None:
         if 0 <= row < len(self._candidates):
             self.preview_changed.emit([(p[1], p[0]) for p in self._candidates[row].coords()])
@@ -375,9 +422,12 @@ class SegmentBuilder(QWidget):
             elif chain.ended:
                 self.status_lbl.setText("✓ Hike ends here. Name it and save, or Undo to keep going.")
             elif not self._candidates:
-                self.status_lbl.setText("No trails continue from here — End Here or Undo.")
+                self.status_lbl.setText("No listed trails continue from here: click any path on the map to go on, or End Here / Undo.")
             else:
-                self.status_lbl.setText("Pick where to go next. Trails are listed from the end of the current segment backwards.")
+                self.status_lbl.setText(
+                    "Pick where to go next. Trails are listed from the end of the current segment backwards. "
+                    "Missing one? Click it on the map, even an unnamed path, and the gap is filled in."
+                )
         else:
             self.summary_lbl.setText("")
             self.status_lbl.setText("Choose a starting trail and click 'Start Hike Here'." if chain else "")
