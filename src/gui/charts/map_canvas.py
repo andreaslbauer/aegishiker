@@ -92,6 +92,7 @@ class MapCanvas(BaseChartWidget):
     trail_selected = Signal(str)  # trail_id
     photo_clicked = Signal(str)  # photo_pin_id
     hover_distance_changed = Signal(float)  # distance_along_route_m
+    hover_geo = Signal(float, float)  # (lat, lon) under the cursor while not dragging
 
     DIFFICULTY_COLORS = {
         "easy": "#2ECC71",
@@ -113,6 +114,7 @@ class MapCanvas(BaseChartWidget):
         self.excluded_conditions: set[str] = set()
         self.highlight_distance_m: Optional[float] = None
         self.preview_coords: List[Tuple[float, float]] = []  # (lat, lon) of a candidate segment
+        self.candidate_paths: List[List[Tuple[float, float]]] = []  # pickable next segments
         self.units: str = "us"
         self.zoom: float = 1.0
         self.pan_offset = QPointF(0.0, 0.0)
@@ -306,6 +308,14 @@ class MapCanvas(BaseChartWidget):
         centre = self.project(0.5 * (min(lats) + max(lats)), 0.5 * (min(lons) + max(lons)))
         self.pan_offset = QPointF(self.width() / 2.0, self.height() / 2.0) - centre
         self.update()
+
+    def set_candidates(self, paths: Optional[List[List[Tuple[float, float]]]]) -> None:
+        """Show the segments the user can pick next (thin dashed lines)."""
+        self.candidate_paths = [p for p in (paths or []) if len(p) >= 2]
+        self.update()
+
+    def metres_per_pixel(self) -> float:
+        return 1.0 / max(1e-9, self._px_per_m())
 
     def set_preview(self, coords: Optional[List[Tuple[float, float]]]) -> None:
         """Show (or clear) a dashed preview of a segment the user is considering."""
@@ -668,6 +678,18 @@ class MapCanvas(BaseChartWidget):
         painter.drawEllipse(end_pt, 6.0, 6.0)
 
     def _draw_preview(self, painter: QPainter, xf: QTransform) -> None:
+        if self.candidate_paths:
+            painter.save()
+            painter.setTransform(xf)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(self._cosmetic(QColor(244, 208, 63, 150), 2.2, Qt.PenStyle.DashLine))
+            for pts in self.candidate_paths:
+                path = QPainterPath()
+                path.moveTo(self._w(pts[0][1], pts[0][0]))
+                for lat, lon in pts[1:]:
+                    path.lineTo(self._w(lon, lat))
+                painter.drawPath(path)
+            painter.restore()
         if len(self.preview_coords) < 2:
             return
         path = QPainterPath()
@@ -843,6 +865,8 @@ class MapCanvas(BaseChartWidget):
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 self.update()
             return
+        lat, lon = self.unproject(pos)
+        self.hover_geo.emit(lat, lon)
         f = self._feature_at(pos) if (self._point_features or self._hover_lines) else None
         if f is not None:
             QToolTip.showText(event.globalPosition().toPoint(), self._tooltip_for(f), self)

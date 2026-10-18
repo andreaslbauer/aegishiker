@@ -32,6 +32,7 @@ PLACE_KINDS = {"peak", "hut", "shelter", "trailhead", "parking", "waterfall", "v
 class SegmentBuilder(QWidget):
     draft_changed = Signal(object)  # Optional[ComposedRoute] — the hike built so far
     preview_changed = Signal(object)  # Optional[List[(lat, lon)]] — highlighted candidate
+    candidates_changed = Signal(object)  # List[List[(lat, lon)]] — pickable segments for the map
     route_saved = Signal(str)  # route_id
 
     def __init__(self, app_state: AppState, parent: Optional[QWidget] = None) -> None:
@@ -48,7 +49,15 @@ class SegmentBuilder(QWidget):
         title = QLabel("<b>Build Hike by Trail Segments</b>")
         col.addWidget(title)
 
-        col.addWidget(QLabel("1. Starting trail:"))
+        self.pick_chk = QCheckBox("Pick trails on the map")
+        self.pick_chk.setChecked(True)
+        self.pick_chk.setToolTip(
+            "Click a trail on the map to start there, then click the dashed yellow options to add "
+            "segments. Turn off to trace a route by clicking waypoints instead."
+        )
+        col.addWidget(self.pick_chk)
+
+        col.addWidget(QLabel("1. Starting trail (or click one on the map):"))
         self.start_combo = QComboBox()
         self.start_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.start_combo.setMinimumContentsLength(24)
@@ -71,7 +80,7 @@ class SegmentBuilder(QWidget):
         self.legs_list.setWordWrap(True)
         col.addWidget(self.legs_list)
 
-        self.next_lbl = QLabel("2. Next segment (double-click to add):")
+        self.next_lbl = QLabel("2. Next segment (double-click, or click it on the map):")
         col.addWidget(self.next_lbl)
         self.cand_list = QListWidget()
         self.cand_list.setWordWrap(True)
@@ -195,6 +204,47 @@ class SegmentBuilder(QWidget):
         self.app_state.status_message.emit(f"Saved hike '{route.name}'.")
         self.route_saved.emit(route.id)
 
+    # ── map picking ──────────────────────────────────────────────────────
+
+    def pick_at(self, lat: float, lon: float, tol_m: float) -> bool:
+        """Handle a map click. Returns True when it picked something (or should not trace)."""
+        if not self.pick_chk.isChecked() or not self.chain:
+            return False
+        if self.has_draft():
+            if self.chain.complete:
+                self.app_state.status_message.emit("The hike is complete: save it, or Undo to keep building.")
+                return True
+            idx = self.chain.candidate_index_at(self._candidates, lat, lon, tol_m)
+            if idx is None:
+                self.app_state.status_message.emit("Click one of the dashed yellow trail options to add it.")
+                return True
+            self.cand_list.setCurrentRow(idx)
+            self.add_selected()
+            return True
+        hit = self.chain.trail_at(lat, lon, tol_m)
+        if hit is None:
+            self.app_state.status_message.emit("Click on a trail to start the hike there.")
+            return True
+        trail, reverse = hit
+        self.start_combo.setCurrentIndex(self.start_combo.findData(trail.id))
+        self.reverse_chk.setChecked(reverse)
+        self.start_chain()
+        return True
+
+    def hover_at(self, lat: float, lon: float, tol_m: float) -> None:
+        """Preview the trail or option under the cursor."""
+        if not self.pick_chk.isChecked() or not self.chain:
+            return
+        if self.has_draft():
+            if self.chain.complete:
+                return
+            idx = self.chain.candidate_index_at(self._candidates, lat, lon, tol_m)
+            if idx is not None and idx != self.cand_list.currentRow():
+                self.cand_list.setCurrentRow(idx)
+            return
+        hit = self.chain.trail_at(lat, lon, tol_m)
+        self.preview_changed.emit([(p[1], p[0]) for p in hit[0].coords_3d] if hit else None)
+
     def _on_name_edited(self, _text: str) -> None:
         self._name_edited = True
 
@@ -259,6 +309,9 @@ class SegmentBuilder(QWidget):
         self._fit_rows(self.cand_list)
         self._sync_ui()
         self.preview_changed.emit(None)
+        self.candidates_changed.emit(
+            [] if not chain or chain.complete else [[(p[1], p[0]) for p in c.leg.coords()] for c in self._candidates]
+        )
         self.draft_changed.emit(draft)
 
     @staticmethod

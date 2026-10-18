@@ -5,6 +5,7 @@ segment: at its end, or forking off partway along it (the current segment is the
 junction). Turning around on the current trail (out-and-back) and re-using trails already walked
 are always allowed. The chain is complete when it returns to its starting point or the user ends it.
 """
+import math
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
@@ -242,6 +243,50 @@ class SegmentChain:
             gain_m=stats["elevation_gain_m"],
             loss_m=stats["elevation_loss_m"],
         )
+
+    # ── picking on the map ────────────────────────────────────────────────
+
+    @staticmethod
+    def _dist_to_line_m(lat: float, lon: float, pts: Sequence[Sequence[float]]) -> float:
+        """Distance (m) from a point to a [lon, lat, ...] polyline (local flat approximation)."""
+        kx = 111_320.0 * math.cos(math.radians(lat))
+        ky = 110_540.0
+        best = math.inf
+        for a, b in zip(pts, pts[1:]):
+            ax, ay = (a[0] - lon) * kx, (a[1] - lat) * ky
+            bx, by = (b[0] - lon) * kx, (b[1] - lat) * ky
+            dx, dy = bx - ax, by - ay
+            seg2 = dx * dx + dy * dy
+            t = 0.0 if seg2 == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / seg2))
+            best = min(best, math.hypot(ax + t * dx, ay + t * dy))
+        return best
+
+    def trail_at(self, lat: float, lon: float, tol_m: float) -> Optional[Tuple[TrailSegment, bool]]:
+        """Nearest trail within `tol_m` and whether to walk it reversed (start at the end nearer
+        the click)."""
+        best, best_d = None, tol_m
+        for t in self.trails:
+            if len(t.coords_3d) < 2 or not (t.min_lat - 0.01 <= lat <= t.max_lat + 0.01 and t.min_lon - 0.01 <= lon <= t.max_lon + 0.01):
+                continue
+            d = self._dist_to_line_m(lat, lon, t.coords_3d)
+            if d < best_d:
+                best, best_d = t, d
+        if best is None:
+            return None
+        first, last = best.coords_3d[0], best.coords_3d[-1]
+        reverse = haversine_m(lat, lon, last[1], last[0]) < haversine_m(lat, lon, first[1], first[0])
+        return best, reverse
+
+    def candidate_index_at(self, cands: Sequence[Candidate], lat: float, lon: float, tol_m: float) -> Optional[int]:
+        """Candidate whose segment passes closest to the point (within `tol_m`). Where options
+        overlap, the earlier one in the list (closer to the end of the current segment) wins."""
+        best, best_d = None, tol_m
+        for i, c in enumerate(cands):
+            pts = c.leg.coords()
+            d = self._dist_to_line_m(lat, lon, pts)
+            if d < best_d:
+                best, best_d = i, d
+        return best
 
     # ── result ────────────────────────────────────────────────────────────
 

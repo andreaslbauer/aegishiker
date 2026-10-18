@@ -48,15 +48,19 @@ def test_window_and_selections_restored_after_restart(seeded_db: Database, tmp_p
 
     state2, win2 = _open_window(seeded_db, settings_file)
     app.processEvents()
+    assert win2.tabs.currentIndex() == 2
+    win2.tabs.setCurrentIndex(0)  # splitter positions apply when their tab is first shown
+    app.processEvents()
+    app.processEvents()
     assert state2.active_destination_id == "mount_monadnock"
     assert state2.active_route_id == route_id
-    assert win2.tabs.currentIndex() == 2
     # within a few px: the headless test platform has no real frame/screen for Qt to restore against
     assert abs(win2.width() - size[0]) <= 10 and abs(win2.height() - size[1]) <= 10
     assert win2.composer_panel.pace_combo.currentData() == "tobler"
     assert win2.composer_panel.pack_spin.value() == 9.5
     assert win2.explore_panel.cond_toggles[TrailCondition.ICY].isChecked()
-    assert dict(win2._splitters())[key].sizes() == sizes
+    restored = dict(win2._splitters())[key].sizes()
+    assert abs(restored[0] / sum(restored) - sizes[0] / sum(sizes)) < 0.02, (restored, sizes)
     for w in (win, win2):
         w.hide()
         w.deleteLater()

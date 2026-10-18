@@ -1,6 +1,6 @@
 """Main application window for AegisHiker."""
 from typing import Optional
-from PySide6.QtCore import QByteArray, Qt, QTimer
+from PySide6.QtCore import QByteArray, QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QShowEvent
 from PySide6.QtWidgets import (
     QSplitter,
@@ -190,29 +190,44 @@ class MainWindow(QMainWindow):
         if 0 <= tab < self.tabs.count():
             self.tabs.setCurrentIndex(tab)
         ui = s.get("ui_state") or {}
-        self._pending_splitters = dict(ui.get("splitters") or {})  # applied once laid out (showEvent)
+        self._pending_splitters = dict(ui.get("splitters") or {})
+        self._arm_splitter_restore()
         for key, panel in self._panels_with_state().items():
             if isinstance(ui.get(key), dict):
                 panel.restore_ui_state(ui[key])
 
-    def showEvent(self, event: QShowEvent) -> None:
-        super().showEvent(event)
-        if getattr(self, "_pending_splitters", None):
-            # Splitters only keep restored positions once the window has its real size
-            QTimer.singleShot(0, self._restore_splitters)
-
-    def _restore_splitters(self) -> None:
-        pending, self._pending_splitters = self._pending_splitters, {}
+    def _arm_splitter_restore(self) -> None:
+        """Apply saved splitter positions when each splitter is first shown with its real size.
+        Splitters in hidden tabs keep a stale width until shown, so restoring earlier squeezes them."""
+        self._splitter_keys = {}
         for key, splitter in self._splitters():
-            if pending.get(key):
-                splitter.restoreState(QByteArray.fromBase64(str(pending[key]).encode("ascii")))
+            if key in self._pending_splitters:
+                self._splitter_keys[splitter] = key
+                splitter.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802 (Qt API)
+        if event.type() == QEvent.Type.Show and obj in getattr(self, "_splitter_keys", {}):
+            key = self._splitter_keys.pop(obj)
+            obj.removeEventFilter(self)
+            QTimer.singleShot(0, lambda sp=obj, k=key: self._apply_splitter(sp, k))
+        return super().eventFilter(obj, event)
+
+    def _apply_splitter(self, splitter: QSplitter, key: str) -> None:
+        saved = self._pending_splitters.pop(key, None)
+        if not isinstance(saved, list) or len(saved) != splitter.count() or sum(saved) <= 0:
+            return
+        total = sum(splitter.sizes()) or sum(saved)
+        splitter.setSizes([round(total * v / sum(saved)) for v in saved])  # same proportions
 
     def _save_ui_state(self) -> None:
         s = self.app_state.settings
         s.set("window_geometry", bytes(self.saveGeometry().toBase64()).decode("ascii"))
         s.set("window_state", bytes(self.saveState().toBase64()).decode("ascii"))
         s.set("active_tab", self.tabs.currentIndex())
-        ui = {"splitters": {key: bytes(sp.saveState().toBase64()).decode("ascii") for key, sp in self._splitters()}}
+        ui = {"splitters": {key: sp.sizes() for key, sp in self._splitters()}}
+        # Keep positions of splitters never shown this session (still pending) as they were
+        for key, sizes in getattr(self, "_pending_splitters", {}).items():
+            ui["splitters"][key] = sizes
         for key, panel in self._panels_with_state().items():
             ui[key] = panel.ui_state()
         s.set("ui_state", ui)

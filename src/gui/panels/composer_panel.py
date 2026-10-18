@@ -127,6 +127,10 @@ class ComposerPanel(QWidget):
         self.segment_builder = SegmentBuilder(self.app_state)
         self.segment_builder.draft_changed.connect(self._on_draft_changed)
         self.segment_builder.preview_changed.connect(self.map_canvas.set_preview)
+        self.segment_builder.candidates_changed.connect(self.map_canvas.set_candidates)
+        self.map_canvas.hover_geo.connect(
+            lambda lat, lon: self.segment_builder.hover_at(lat, lon, self._pick_tolerance_m())
+        )
         self.segment_builder.route_saved.connect(self._on_builder_saved)
         main_split = QSplitter(Qt.Orientation.Horizontal)
         main_split.addWidget(self.segment_builder)
@@ -195,7 +199,12 @@ class ComposerPanel(QWidget):
         if route is not None or had_draft:
             self.refresh_from_active_route()
         if route is not None:
-            self.map_canvas.zoom_to_coordinates(route.coordinates)
+            # Fit the hike when it starts or runs off-screen; otherwise keep the view still so
+            # map clicks don't make the map jump under the cursor
+            rect = self.map_canvas.rect().adjusted(20, 20, -20, -20)
+            offscreen = any(not rect.contains(self.map_canvas.project(c[0], c[1]).toPoint()) for c in route.coordinates[::5])
+            if not had_draft or offscreen:
+                self.map_canvas.zoom_to_coordinates(route.coordinates)
 
     def _on_builder_saved(self, route_id: str) -> None:
         self._draft = None
@@ -277,10 +286,15 @@ class ComposerPanel(QWidget):
         if route:
             self._update_metrics(route)
 
+    def _pick_tolerance_m(self) -> float:
+        return 12.0 * self.map_canvas.metres_per_pixel()  # ~12 px on screen at any zoom
+
     def _on_map_waypoint_clicked(self, lat: float, lon: float) -> None:
+        if self.segment_builder.pick_at(lat, lon, self._pick_tolerance_m()):
+            return
         if self._draft is not None:
             self.app_state.status_message.emit(
-                "Building a hike by segments: save or clear it before tracing by clicking the map."
+                "Building a hike by segments: save or clear it, or turn on 'Pick trails on the map'."
             )
             return
         self.waypoints.append((lat, lon))
