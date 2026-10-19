@@ -571,9 +571,8 @@ class SegmentBuilder(QWidget):
                 self.status_lbl.setText("No listed trails continue from here: click any path on the map to go on, or End Here / Remove Last Segment.")
             else:
                 self.status_lbl.setText(
-                    "On the map, the dashed yellow trails are where you can go next and the dots (●) are their "
-                    "junctions and ends: click a trail to select it, then the dot where you turned or stopped. "
-                    "Double-click an option in the list to add all of it. Missing a trail? Click it on the map."
+                    "Click a dashed yellow trail, then the dot (●) where you turned or stopped. "
+                    "Double-click an option to add all of it."
                 )
         else:
             self.summary_lbl.setText("")

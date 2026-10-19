@@ -18,6 +18,7 @@ from PySide6.QtGui import (
     QPaintEvent,
     QPen,
     QPolygonF,
+    QPixmap,
     QTransform,
     QWheelEvent,
 )
@@ -95,6 +96,14 @@ _BASEMAP_FIELDS = (
 )
 
 
+Shape = Tuple[QRectF, QPolygonF]  # world-space bounds and outline of one basemap feature
+
+
+def _shape(points: List[QPointF]) -> Shape:
+    poly = QPolygonF(points)
+    return poly.boundingRect(), poly
+
+
 class MapCanvas(BaseChartWidget):
     waypoint_clicked = Signal(float, float)  # (lat, lon)
     trail_selected = Signal(str)  # trail_id
@@ -145,14 +154,25 @@ class MapCanvas(BaseChartWidget):
         self._kx: float = math.cos(math.radians(44.0))
         self._relief: Optional[QImage] = None
         self._relief_rect = QRectF()
-        self._contour_paths: Tuple[QPainterPath, QPainterPath] = (QPainterPath(), QPainterPath())
+        # Basemap geometry, one polygon per feature with its world-space bounds: each kind as one giant
+        # QPainterPath was ~10x slower to stroke antialiased, and couldn't skip what is off screen
+        self._contour_paths: Tuple[List[Shape], List[Shape]] = ([], [])
         self._contour_labels: List[Tuple[float, float, float]] = []  # (lon, lat, ele_m) on index contours
         self._contour_interval = 0.0
-        self._line_paths: Dict[str, QPainterPath] = {}
-        self._area_paths: Dict[str, QPainterPath] = {}
+        self._line_paths: Dict[str, List[Shape]] = {}
+        self._area_paths: Dict[str, List[Shape]] = {}
         self._point_features: List[MapFeature] = []
         self._hover_lines: List[Tuple[Tuple[float, float, float, float], MapFeature]] = []
         self._attribution = ""
+        self._trail_shapes: Dict[tuple, Shape] = {}
+        self._scene_sig: tuple = ()
+        self._base: Optional[QPixmap] = None
+        self._base_key: tuple = ()
+        self._base_xf = QTransform()
+        self._interacting = False
+        self._settle_timer = QTimer(self)
+        self._settle_timer.setSingleShot(True)
+        self._settle_timer.timeout.connect(self._settled)
 
     # ── Data ────────────────────────────────────────────────────────────────
 
@@ -166,6 +186,10 @@ class MapCanvas(BaseChartWidget):
     ) -> None:
         self.trails = list(trails or [])
         self.pois = list(pois or [])
+        self._scene_sig = (
+            tuple((t.id, t.condition_status, t.difficulty, len(t.coords_3d)) for t in self.trails),
+            tuple((q.id, q.lat, q.lon) for q in self.pois),
+        )
         self.active_route = route
         self.photo_pins = list(photo_pins or [])
         self.telemetry = list(telemetry or [])
@@ -176,7 +200,7 @@ class MapCanvas(BaseChartWidget):
         """Build cached relief image and world-space paths for the pack's map details."""
         self.basemap_pack_id = pack.id if pack else None
         self._relief = None
-        self._contour_paths = (QPainterPath(), QPainterPath())
+        self._contour_paths = ([], [])
         self._contour_labels = []
         self._line_paths = {}
         self._area_paths = {}
@@ -260,15 +284,13 @@ class MapCanvas(BaseChartWidget):
             levels = sorted({c.ele_m for c in pack.contours})
             interval = min((b - a for a, b in zip(levels, levels[1:])), default=0.0)
         self._contour_interval = interval
-        normal, index = QPainterPath(), QPainterPath()
+        normal: List[Shape] = []
+        index: List[Shape] = []
         for line in pack.contours:
             if len(line.coords) < 2:
                 continue
             is_index = interval > 0 and abs(round(line.ele_m / (interval * 5)) * interval * 5 - line.ele_m) < 0.5
-            target = index if is_index else normal
-            target.moveTo(self._w(line.coords[0][0], line.coords[0][1]))
-            for lon, lat in line.coords[1:]:
-                target.lineTo(self._w(lon, lat))
+            (index if is_index else normal).append(_shape([self._w(lon, lat) for lon, lat in line.coords]))
             if is_index and len(line.coords) >= 12:
                 mid = line.coords[len(line.coords) // 2]
                 self._contour_labels.append((mid[0], mid[1], line.ele_m))
@@ -283,9 +305,7 @@ class MapCanvas(BaseChartWidget):
             if len(f.coords) < 2:
                 continue
             if f.geom == "area" and f.kind in AREA_STYLES:
-                path = self._area_paths.setdefault(f.kind, QPainterPath())
-                path.addPolygon(QPolygonF([self._w(lon, lat) for lon, lat in f.coords]))
-                path.closeSubpath()
+                self._area_paths.setdefault(f.kind, []).append(_shape([self._w(lon, lat) for lon, lat in f.coords]))
                 continue
             key = f.kind
             if f.kind == "path" and any(s in f.info for s in HARD_SAC):
@@ -294,10 +314,7 @@ class MapCanvas(BaseChartWidget):
                 key = "water_edge"
             if key not in LINE_STYLES:
                 continue
-            path = self._line_paths.setdefault(key, QPainterPath())
-            path.moveTo(self._w(f.coords[0][0], f.coords[0][1]))
-            for lon, lat in f.coords[1:]:
-                path.lineTo(self._w(lon, lat))
+            self._line_paths.setdefault(key, []).append(_shape([self._w(lon, lat) for lon, lat in f.coords]))
             if f.kind in ("path", "track", "cliff", "aerialway"):
                 lons = [c[0] for c in f.coords]
                 lats = [c[1] for c in f.coords]
@@ -425,6 +442,46 @@ class MapCanvas(BaseChartWidget):
 
     # ── Painting ──────────────────────────────────────────────────────────────
 
+    # ── Base layer cache ──────────────────────────────────────────────────────
+    # The static map (relief, land cover, contours, paths, trails, labels) is rendered into a pixmap.
+    # Repaints for the hike, options, hover and cursor reuse it; while the user drags or zooms it is
+    # shown moved/scaled to the new view, and redrawn sharp once they pause (SETTLE_MS).
+
+    SETTLE_MS = 110
+
+    def _static_key(self) -> tuple:
+        return (self.basemap_pack_id, self._scene_sig, frozenset(self.excluded_conditions),
+                bool(self.candidate_paths), self.units, self.width(), self.height(), self.devicePixelRatioF())
+
+    def _interacted(self) -> None:
+        """The view is changing (drag / wheel / keys): show the cached map moved until it settles."""
+        self._interacting = True
+        self._settle_timer.start(self.SETTLE_MS)
+        self.update()
+
+    def _settled(self) -> None:
+        self._interacting = False
+        self.update()
+
+    def _render_base(self, xf: QTransform, key: tuple) -> None:
+        dpr = self.devicePixelRatioF() or 1.0
+        pm = QPixmap(max(1, int(self.width() * dpr)), max(1, int(self.height() * dpr)))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        self.draw_background(p, "#0B1610", "#223829")
+        p.setClipRect(self.rect().adjusted(2, 2, -2, -2))
+        self._draw_relief(p, xf)
+        self._draw_areas(p, xf)
+        self._draw_topo_contours(p, xf)
+        self._draw_basemap_lines(p, xf)
+        self._draw_trails(p, xf)
+        self._draw_contour_labels(p)
+        self._draw_basemap_points(p)
+        self._draw_pois(p)
+        p.end()
+        self._base, self._base_key, self._base_xf = pm, key, QTransform(xf)
+
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         if not self.trails and not self.active_route:
@@ -432,17 +489,24 @@ class MapCanvas(BaseChartWidget):
             painter.end()
             return
 
-        self.draw_background(painter, "#0B1610", "#223829")
-        painter.setClipRect(self.rect().adjusted(2, 2, -2, -2))
         xf = self._view_transform()
-        self._draw_relief(painter, xf)
-        self._draw_areas(painter, xf)
-        self._draw_topo_contours(painter, xf)
-        self._draw_basemap_lines(painter, xf)
-        self._draw_trails(painter, xf)
-        self._draw_contour_labels(painter)
-        self._draw_basemap_points(painter)
-        self._draw_pois(painter)
+        key = self._static_key()
+        if self._base is None or self._base_key != key or (self._base_xf != xf and not self._interacting):
+            self._render_base(xf, key)
+        if self._base_xf == xf:
+            painter.drawPixmap(0, 0, self._base)
+        else:
+            # Mid-interaction: the last sharp render, moved / scaled to where the view is now
+            self.draw_background(painter, "#0B1610", "#223829")
+            painter.save()
+            painter.setClipRect(self.rect().adjusted(2, 2, -2, -2))
+            inv, _ok = self._base_xf.inverted()
+            painter.setTransform(inv * xf)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+            painter.drawPixmap(0, 0, self._base)
+            painter.restore()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setClipRect(self.rect().adjusted(2, 2, -2, -2))
         self._draw_options(painter, xf)
         self._draw_active_route(painter, xf)
         self._draw_preview(painter, xf)
@@ -481,24 +545,30 @@ class MapCanvas(BaseChartWidget):
         if self._relief is not None:
             # Land-cover polygons from OSM relations can reach past the downloaded region
             painter.setClipRect(self._relief_rect)
+        view = self._world_view(xf)
         for kind in ("forest", "open", "wetland", "scree", "bare_rock", "glacier", "water", "reserve"):
-            path = self._area_paths.get(kind)
-            if path is None:
+            shapes = self._area_paths.get(kind)
+            if not shapes:
                 continue
             fill, edge = AREA_STYLES[kind]
             if kind == "reserve":
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.setPen(self._cosmetic(edge, 1.3, Qt.PenStyle.DashDotLine))
-                painter.drawPath(path)
+                for rect, poly in shapes:
+                    if rect.intersects(view):
+                        painter.drawPolygon(poly)
                 continue
             painter.setBrush(QBrush(QColor(fill)))
             painter.setPen(self._cosmetic(edge, 0.8) if QColor(edge).alpha() else Qt.PenStyle.NoPen)
-            painter.drawPath(path)
+            tiny = 1.5 / max(1e-12, xf.m11())
+            for rect, poly in shapes:
+                if rect.intersects(view) and (rect.width() > tiny or rect.height() > tiny):
+                    painter.drawPolygon(poly)
         painter.restore()
 
     def _draw_topo_contours(self, painter: QPainter, xf: Optional[QTransform] = None) -> None:
         normal, index = self._contour_paths
-        if normal.isEmpty() and index.isEmpty():
+        if not normal and not index:
             return
         xf = xf or self._view_transform()
         ppm = xf.m11() / M_PER_DEG_LAT
@@ -507,11 +577,12 @@ class MapCanvas(BaseChartWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         # Thin contours fade out when zoomed far out so the index lines stay readable
         spacing_px = self._contour_interval * ppm * 8 if self._contour_interval else 10.0
+        view = self._world_view(xf)
         if spacing_px > 3.0:
             painter.setPen(self._cosmetic(QColor(176, 146, 98, 70 if spacing_px > 8 else 40), 0.7))
-            painter.drawPath(normal)
+            self._draw_lines(painter, normal, view)
         painter.setPen(self._cosmetic(QColor(196, 160, 104, 140), 1.2))
-        painter.drawPath(index)
+        self._draw_lines(painter, index, view)
         painter.restore()
 
     def _draw_basemap_lines(self, painter: QPainter, xf: QTransform) -> None:
@@ -522,27 +593,55 @@ class MapCanvas(BaseChartWidget):
         painter.setTransform(xf)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         order = ["reserve", "water_edge", "stream", "river", "cliff", "road_minor", "road_major", "track", "aerialway", "path", "path_hard"]
+        view = self._world_view(xf)
         for key in order:
-            path = self._line_paths.get(key)
-            if path is None:
+            shapes = self._line_paths.get(key)
+            if not shapes:
                 continue
             color, width, style = LINE_STYLES[key]
             if key == "stream" and ppm < 1 / 40.0:
                 width = 0.7
             if key == "road_major":
                 painter.setPen(self._cosmetic("#3A2E1A", width + 1.6))
-                painter.drawPath(path)
+                self._draw_lines(painter, shapes, view)
             painter.setPen(self._cosmetic(color, width, style))
-            painter.drawPath(path)
+            self._draw_lines(painter, shapes, view)
         painter.restore()
+
+    def _world_view(self, xf: QTransform) -> QRectF:
+        """The part of the world (in _w coordinates) the widget shows, plus a small margin."""
+        inv, _ok = xf.inverted()
+        return inv.mapRect(QRectF(self.rect()).adjusted(-20, -20, 20, 20))
+
+    @staticmethod
+    def _draw_lines(painter: QPainter, shapes: List[Shape], view: QRectF) -> None:
+        tiny = 1.2 / max(1e-12, painter.transform().m11())  # about a pixel, in world units
+        for rect, poly in shapes:
+            if rect.intersects(view) and (rect.width() > tiny or rect.height() > tiny):
+                painter.drawPolyline(poly)
+
+    def _trail_shape(self, seg: TrailSegment) -> Shape:
+        """World-space outline of a trail, built once per trail (painting is frequent)."""
+        key = (seg.id, len(seg.coords_3d), self._kx)
+        cached = self._trail_shapes.get(key)
+        if cached is None:
+            cached = _shape([self._w(c[0], c[1]) for c in seg.coords_3d])
+            if len(self._trail_shapes) > 5000:
+                self._trail_shapes.clear()
+            self._trail_shapes[key] = cached
+        return cached
 
     def _draw_trails(self, painter: QPainter, xf: Optional[QTransform] = None) -> None:
         xf = xf or self._view_transform()
         painter.save()
         painter.setTransform(xf)
         painter.setBrush(Qt.BrushStyle.NoBrush)
+        view = self._world_view(xf)
         for seg in self.trails:
-            if len(seg.coordinates) < 2:
+            if len(seg.coords_3d) < 2:
+                continue
+            rect, poly = self._trail_shape(seg)
+            if not rect.intersects(view):
                 continue
             cond = seg.condition.value.lower()
             excluded = cond in self.excluded_conditions or cond == "closed"
@@ -556,11 +655,7 @@ class MapCanvas(BaseChartWidget):
                 color.setAlpha(70 if self.candidate_paths else 200)
                 pen = self._cosmetic(color, 3.0)
             painter.setPen(pen)
-            path = QPainterPath()
-            path.moveTo(self._w(seg.coordinates[0][1], seg.coordinates[0][0]))
-            for c in seg.coordinates[1:]:
-                path.lineTo(self._w(c[1], c[0]))
-            painter.drawPath(path)
+            painter.drawPolyline(poly)
         painter.restore()
 
     def _fmt_ele(self, ele_m: float) -> str:
@@ -1153,7 +1248,7 @@ class MapCanvas(BaseChartWidget):
                 self.pan_offset += delta
                 self._press_pos = pos
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
-                self.update()
+                self._interacted()
             return
         lat, lon = self.unproject(pos)
         self.hover_geo.emit(lat, lon)
@@ -1177,6 +1272,8 @@ class MapCanvas(BaseChartWidget):
         self._press_pos = None
         self._dragging = False
         self.unsetCursor()
+        if was_drag:
+            self._settle_timer.start(0)
         if was_drag or event.button() != Qt.MouseButton.LeftButton:
             return
         pos = event.position()
@@ -1205,7 +1302,7 @@ class MapCanvas(BaseChartWidget):
             self.zoom = max(0.25, self.zoom / 1.2)
         # Keep the point under the cursor fixed while zooming
         self.pan_offset += pos - self.project(anchor_lat, anchor_lon)
-        self.update()
+        self._interacted()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() in (Qt.Key.Key_Home, Qt.Key.Key_0):
@@ -1214,9 +1311,9 @@ class MapCanvas(BaseChartWidget):
             self.update()
         elif event.key() in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
             self.zoom = min(80.0, self.zoom * 1.2)
-            self.update()
+            self._interacted()
         elif event.key() == Qt.Key.Key_Minus:
             self.zoom = max(0.25, self.zoom / 1.2)
-            self.update()
+            self._interacted()
         else:
             super().keyPressEvent(event)
