@@ -89,6 +89,7 @@ class ElevationChart(BaseChartWidget):
         painter.fillPath(area, grad)
 
         painter.setPen(QPen(QColor("#2ECC71"), 2.5))
+        painter.setBrush(Qt.BrushStyle.NoBrush)  # an open path with a brush gets filled to its chord
         painter.drawPath(line)
 
         # Axes labels

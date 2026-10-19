@@ -136,7 +136,37 @@ def test_clicked_trail_offered_via_network_or_as_jump() -> None:
     jump = chain.candidate_to(pond, p2[1], p2[0])
     assert jump is not None and 80 < jump.gap_m < 200 and jump.leg.trail.id == "p"
     chain.apply(jump)
-    assert chain.legs[-1].trail.id == "p" and chain.legs[-1].end == 5
+    assert chain.legs[-1].trail.id == "p" and chain.legs[-1].end == 3, "the jump ends where the user clicked"
+
+
+def test_clicked_trail_leaves_current_segment_at_the_intersection() -> None:
+    trails, places = _network()
+    chain = SegmentChain(trails, places)
+    chain.start(trails[0])  # Brook Trail, all the way east
+    ridge = trails[1]
+    spot = ridge.coords_3d[4]
+    cand = chain.candidate_to(ridge, spot[1], spot[0])
+    assert cand is not None and cand.gap_m == 0 and not cand.via_names
+    chain.apply(cand)
+    assert [leg.trail.id for leg in chain.legs] == ["a", "b"]
+    assert chain.legs[0].end == 6, "Brook Trail is left at the fork, not walked to its end and back"
+    assert (chain.legs[1].start, chain.legs[1].end) == (0, 4), "Ridge Trail is walked to the clicked spot"
+
+
+def test_clicked_option_ends_at_the_click_and_can_continue() -> None:
+    trails, places = _network()
+    chain = SegmentChain(trails, places)
+    chain.start(trails[0])
+    fork = next(c for c in chain.candidates() if c.leg.trail.id == "b" and c.leg.end > c.leg.start)
+    spot = trails[1].coords_3d[3]
+    short = chain.shorten_to(fork, spot[1], spot[0])
+    assert short.leg.end == 3 and short.distance_m < fork.distance_m
+    chain.apply(short)
+    assert chain.legs[0].end == 6 and chain.legs[1].end == 3
+    more = next(c for c in chain.candidates() if c.continues)
+    assert more.trail_name == "Ridge Trail (via the ledges)" and more.leg.end == 8
+    chain.apply(more)
+    assert [leg.trail.id for leg in chain.legs] == ["a", "b"] and chain.legs[1].end == 8, "one leg, not two"
 
 
 def test_map_paths_fill_gaps_but_are_not_options() -> None:

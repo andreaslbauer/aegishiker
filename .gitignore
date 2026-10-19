@@ -14,3 +14,7 @@ dist/
 *.db-shm
 *.db-wal
 
+
+# .deb build staging (tools/build/build-deb.sh assembles the package tree inside debian/)
+debian/opt/
+debian/usr/bin/

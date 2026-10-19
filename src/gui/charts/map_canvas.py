@@ -123,6 +123,8 @@ class MapCanvas(BaseChartWidget):
         self.highlight_distance_m: Optional[float] = None
         self.preview_coords: List[Tuple[float, float]] = []  # (lat, lon) of a candidate segment
         self.candidate_paths: List[List[Tuple[float, float]]] = []  # pickable next segments
+        # The hike being built, segment by segment: (trail name, [(lat, lon), ...])
+        self.hike_legs: List[Tuple[str, List[Tuple[float, float]]]] = []
         # Photo thumbnails pinned on the map (Re-experience); otherwise small "P" markers
         self.show_photo_thumbnails = False
         self.selected_photo_id: Optional[str] = None
@@ -353,6 +355,10 @@ class MapCanvas(BaseChartWidget):
     def metres_per_pixel(self) -> float:
         return 1.0 / max(1e-9, self._px_per_m())
 
+    def set_hike_legs(self, legs: Optional[List[Tuple[str, List[Tuple[float, float]]]]]) -> None:
+        self.hike_legs = [(name, list(pts)) for name, pts in (legs or []) if len(pts) >= 2]
+        self.update()
+
     def set_preview(self, coords: Optional[List[Tuple[float, float]]]) -> None:
         """Show (or clear) a dashed preview of a segment the user is considering."""
         self.preview_coords = list(coords or [])
@@ -431,6 +437,7 @@ class MapCanvas(BaseChartWidget):
         self._draw_contour_labels(painter)
         self._draw_basemap_points(painter)
         self._draw_pois(painter)
+        self._draw_options(painter, xf)
         self._draw_active_route(painter, xf)
         self._draw_preview(painter, xf)
         self._draw_telemetry(painter)
@@ -714,7 +721,86 @@ class MapCanvas(BaseChartWidget):
             painter.setPen(QColor("#98B2A1"))
             painter.drawText(QPointF(pt.x() + 7, pt.y() + 3), poi.name)
 
+    HIKE_COLORS = ("#FF3D9A", "#B26BFF")  # alternate per segment; no trail difficulty uses these
+
+    def _draw_hike_legs(self, painter: QPainter, xf: QTransform) -> None:
+        """The hike being built: each segment in alternating colours over a white casing, numbered
+        where it starts, with arrows in the walking direction; the open end is ringed."""
+        legs = self.hike_legs
+        paths = []
+        for _name, pts in legs:
+            path = QPainterPath()
+            path.moveTo(self._w(pts[0][1], pts[0][0]))
+            for lat, lon in pts[1:]:
+                path.lineTo(self._w(lon, lat))
+            paths.append(path)
+        painter.save()
+        painter.setTransform(xf)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        for path in paths:
+            painter.setPen(self._cosmetic(QColor(11, 22, 16, 200), 10.0))
+            painter.drawPath(path)
+        for path in paths:
+            painter.setPen(self._cosmetic(QColor("#FFFFFF"), 7.0))
+            painter.drawPath(path)
+        for i, path in enumerate(paths):
+            painter.setPen(self._cosmetic(QColor(self.HIKE_COLORS[i % 2]), 4.2))
+            painter.drawPath(path)
+        painter.restore()
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        # Direction arrows every ~90 px along each segment
+        for i, (_name, pts) in enumerate(legs):
+            screen = [self.project(lat, lon) for lat, lon in pts]
+            run = 45.0
+            for a, b in zip(screen, screen[1:]):
+                dx, dy = b.x() - a.x(), b.y() - a.y()
+                seg = math.hypot(dx, dy)
+                if seg < 1e-6:
+                    continue
+                t = 0.0
+                while run + (seg - t) >= 90.0:
+                    t += 90.0 - run
+                    run = 0.0
+                    pos = QPointF(a.x() + dx * t / seg, a.y() + dy * t / seg)
+                    if not self._visible(pos):
+                        continue
+                    ux, uy = dx / seg, dy / seg
+                    tip = QPointF(pos.x() + ux * 5, pos.y() + uy * 5)
+                    left = QPointF(pos.x() - ux * 4 - uy * 4, pos.y() - uy * 4 + ux * 4)
+                    right = QPointF(pos.x() - ux * 4 + uy * 4, pos.y() - uy * 4 - ux * 4)
+                    painter.setPen(QPen(QColor("#FFFFFF"), 2.0))
+                    painter.drawPolyline([left, tip, right])
+                run += seg - t
+        # Numbered badges where each segment starts (skipped where they would overlap)
+        font = QFont("Sans Serif", 8, QFont.Weight.Bold)
+        painter.setFont(font)
+        placed: List[QPointF] = []
+        for i, (_name, pts) in enumerate(legs):
+            at = self.project(pts[0][0], pts[0][1])
+            if any(abs(at.x() - q.x()) < 20 and abs(at.y() - q.y()) < 20 for q in placed):
+                continue
+            placed.append(at)
+            painter.setPen(QPen(QColor("#FFFFFF"), 1.6))
+            painter.setBrush(QColor(self.HIKE_COLORS[i % 2]) if i else QColor("#2ECC71"))
+            painter.drawEllipse(at, 9.0, 9.0)
+            painter.setPen(QColor("#0B1610" if not i else "#FFFFFF"))
+            painter.drawText(QRectF(at.x() - 9, at.y() - 9, 18, 18), Qt.AlignmentFlag.AlignCenter, str(i + 1))
+        # Open end of the hike: where the next segment will continue from (unless it turns off earlier)
+        end = self.project(legs[-1][1][-1][0], legs[-1][1][-1][1])
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(11, 22, 16, 200), 5.0))
+        painter.drawEllipse(end, 8.0, 8.0)
+        painter.setPen(QPen(QColor(self.HIKE_COLORS[(len(legs) - 1) % 2]), 3.0))
+        painter.drawEllipse(end, 8.0, 8.0)
+        painter.restore()
+
     def _draw_active_route(self, painter: QPainter, xf: Optional[QTransform] = None) -> None:
+        xf = xf or self._view_transform()
+        if self.hike_legs:
+            self._draw_hike_legs(painter, xf)
+            return
         if not self.active_route or len(self.active_route.coordinates) < 2:
             return
         xf = xf or self._view_transform()
@@ -727,9 +813,11 @@ class MapCanvas(BaseChartWidget):
         painter.save()
         painter.setTransform(xf)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(self._cosmetic(QColor(46, 204, 113, 80), 8.0))
+        painter.setPen(self._cosmetic(QColor(11, 22, 16, 200), 9.0))
         painter.drawPath(path)
-        painter.setPen(self._cosmetic("#2ECC71", 3.8))
+        painter.setPen(self._cosmetic(QColor("#FFFFFF"), 6.5))
+        painter.drawPath(path)
+        painter.setPen(self._cosmetic(QColor(self.HIKE_COLORS[0]), 4.0))
         painter.drawPath(path)
         painter.restore()
 
@@ -742,7 +830,8 @@ class MapCanvas(BaseChartWidget):
         painter.setBrush(QBrush(QColor("#E74C3C")))
         painter.drawEllipse(end_pt, 6.0, 6.0)
 
-    def _draw_preview(self, painter: QPainter, xf: QTransform) -> None:
+    def _draw_options(self, painter: QPainter, xf: QTransform) -> None:
+        """Next-segment options (dashed yellow), under the hike so they never hide it."""
         if self.candidate_paths:
             painter.save()
             painter.setTransform(xf)
@@ -757,6 +846,8 @@ class MapCanvas(BaseChartWidget):
             painter.setPen(self._cosmetic(QColor(244, 208, 63, 220), 2.6, Qt.PenStyle.DashLine))
             painter.drawPath(options)
             painter.restore()
+
+    def _draw_preview(self, painter: QPainter, xf: QTransform) -> None:
         if len(self.preview_coords) < 2:
             return
         path = QPainterPath()

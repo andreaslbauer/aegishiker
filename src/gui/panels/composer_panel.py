@@ -209,6 +209,7 @@ class ComposerPanel(QWidget):
     def _on_draft_changed(self, route: Optional[ComposedRoute]) -> None:
         had_draft = self._draft is not None
         self._draft = route
+        self.map_canvas.set_hike_legs(self.segment_builder.hike_legs() if route is not None else [])
         if route is not None or had_draft:
             self.refresh_from_active_route()
         if route is not None:

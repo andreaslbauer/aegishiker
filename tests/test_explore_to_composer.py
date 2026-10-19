@@ -119,3 +119,30 @@ def test_trail_search_type_ahead(seeded_db: Database, tmp_path: Path) -> None:
     assert explore._selected_segment().name == "Crawford Path"
     assert explore.trail_table.selectionModel().selectedRows(), "the picked trail is selected"
     explore.deleteLater()
+
+
+def test_map_clicks_turn_off_at_the_junction_and_stop_at_the_click(seeded_db: Database, tmp_path: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.main_window import MainWindow
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    state.set_active_destination("fitchburg_state_forest")
+    win = MainWindow(app_state=state)
+    win.show()
+    composer = win.composer_panel
+    builder = composer.segment_builder
+    assert builder.start_on_trail("fitchburg_state_forest_crow_hill_trail")
+    by = {t.name: t for t in builder.chain.trails}
+    climb = by["Crow Hill Ledges North Climb"].coords_3d[-2]
+    assert builder.pick_at(climb[1], climb[0], 15.0)  # click the climb near its top
+    cht, nc = builder.chain.legs
+    assert cht.end < len(cht.trail.coords_3d) - 1, "Crow Hill Trail is left at the junction, not walked to its end"
+    assert nc.end == len(nc.trail.coords_3d) - 2, "the climb ends at the clicked spot"
+    app.processEvents()
+    legs = composer.map_canvas.hike_legs
+    assert [name for name, _pts in legs] == ["Crow Hill Trail", "Crow Hill Ledges North Climb"]
+    win.hide()
+    win.deleteLater()

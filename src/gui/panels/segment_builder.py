@@ -305,8 +305,12 @@ class SegmentBuilder(QWidget):
                 [(self._candidate_text(self._candidates[h], self._unit()).split("\n")[0], h) for h in hits]
             )
             if idx is not None:
-                self.cand_list.setCurrentRow(idx)
-                self.add_selected()
+                # Clicked on the map: the hike turns off at the junction and goes to the clicked spot
+                cand = self._candidates[idx]
+                if not cand.turnaround:
+                    cand = self.chain.shorten_to(cand, lat, lon)
+                self.chain.apply(cand)
+                self._refresh()
             return True
         trails = self.chain.trails_at(lat, lon, tol_m)
         if not trails:
@@ -374,7 +378,7 @@ class SegmentBuilder(QWidget):
             hits = self.chain.candidates_at(self._candidates, lat, lon, tol_m)
             if hits and hits[0] != self.cand_list.currentRow():
                 self.cand_list.setCurrentRow(hits[0])
-            msg = (f"Click to add: {self._candidates[hits[0]].trail_name}" + (f" (+{len(hits) - 1} more here)" if len(hits) > 1 else "")) if hits else ""
+            msg = (f"Click to walk {self._candidates[hits[0]].trail_name} to this spot" + (f" (+{len(hits) - 1} more here)" if len(hits) > 1 else "")) if hits else ""
         else:
             trails = self.chain.trails_at(lat, lon, tol_m)
             self.preview_changed.emit([(p[1], p[0]) for p in trails[0][0].coords_3d] if trails else None)
@@ -489,9 +493,17 @@ class SegmentBuilder(QWidget):
 
     def _emit_candidate_paths(self) -> None:
         chain = self.chain
+        # Turning around runs back over the hike itself: listed, previewed on hover, but not drawn
         self.candidates_changed.emit(
-            [] if not chain or chain.complete else [[(p[1], p[0]) for p in c.coords()] for c in self._candidates]
+            [] if not chain or chain.complete
+            else [[(p[1], p[0]) for p in c.coords()] for c in self._candidates if not c.turnaround]
         )
+
+    def hike_legs(self) -> List[tuple]:
+        """(trail name, [(lat, lon), ...]) of each segment of the hike being built, in order."""
+        if not self.chain:
+            return []
+        return [(leg.trail.name, [(p[1], p[0]) for p in leg.coords()]) for leg in self.chain.legs]
 
     def _show_candidates(self, select: Optional[Candidate] = None) -> None:
         """Rebuild the option list: map-picked options first, then the computed ones."""
@@ -541,6 +553,8 @@ class SegmentBuilder(QWidget):
                  f" / -{format_elevation(c.loss_m, unit)}")
         if c.turnaround:
             return f"↩ Turn around: back on {c.trail_name}{toward}\n    {stats}"
+        if c.continues:
+            return f"↑ Continue on {c.trail_name}{toward}\n    {stats}"
         return f"→ {c.trail_name}{toward}\n    at {at} · {stats}"
 
     def _sync_ui(self) -> None:
