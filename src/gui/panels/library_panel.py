@@ -1,10 +1,12 @@
 """Saved Routes & Hike History Library panel with .hike archive and PDF export."""
 from typing import Optional
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QMenu,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -17,13 +19,14 @@ from src.gui.app_state import AppState
 from src.gui.report import export_trailhead_pdf
 from src.gui.widgets import Card, SectionHeader, page_layout
 from src.hiking.hike_file import load_hike_archive, save_hike_archive
+from src.hiking.hike_info import hike_date_label, hike_title
 from src.hiking.units import format_distance, format_duration, format_duration_min, format_elevation
 from src.gui.busy import busy
 
 
 class LibraryPanel(QWidget):
     open_route_requested = Signal(str)
-    open_replay_requested = Signal(str)
+    open_replay_requested = Signal(str)  # session_id: show this recorded hike in Re-experience Hike
 
     def __init__(self, app_state: AppState, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -56,6 +59,7 @@ class LibraryPanel(QWidget):
         self.route_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.route_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.route_table.doubleClicked.connect(lambda _i: self._open_selected_route())
+        self.route_table.itemSelectionChanged.connect(self._sync_buttons)
         card.body.addWidget(self.route_table, 1)
 
         btn_row = QHBoxLayout()
@@ -67,12 +71,15 @@ class LibraryPanel(QWidget):
         pdf_btn.clicked.connect(self._export_pdf)
         save_hike_btn = QPushButton("Share as .hike…")
         save_hike_btn.clicked.connect(self._export_hike_bundle)
+        self.replay_btn = QPushButton("🎬  Re-experience Hike…")
+        self.replay_btn.setToolTip("Relive a recorded hike of this route: map, 3D replay and photos")
+        self.replay_btn.clicked.connect(self._reexperience_selected_route)
         open_btn = QPushButton("Open in Trail Composer  →")
         open_btn.setObjectName("PrimaryButton")
         open_btn.clicked.connect(self._open_selected_route)
         btn_row.addWidget(delete_btn)
         btn_row.addStretch(1)
-        for b in (pdf_btn, save_hike_btn, open_btn):
+        for b in (pdf_btn, save_hike_btn, self.replay_btn, open_btn):
             btn_row.addWidget(b)
         card.body.addLayout(btn_row)
         layout.addWidget(card, 1)
@@ -100,6 +107,42 @@ class LibraryPanel(QWidget):
             times, last = hike_stats.get(r.id, (0, ""))
             self.route_table.setItem(idx, 5, QTableWidgetItem(f"{times}×" if times else "—"))
             self.route_table.setItem(idx, 6, QTableWidgetItem(last[:10] if last else "Never"))
+        self._sync_buttons()
+
+    def _hikes_of(self, route_id: str):
+        """Recorded hikes of a route, newest first."""
+        return [s for s in self.app_state.db.list_sessions()
+                if s.route_id == route_id and s.status not in ("planned", "tracking")]
+
+    def _sync_buttons(self) -> None:
+        rows = self.route_table.selectionModel().selectedRows() if self.route_table.selectionModel() else []
+        route = self._routes[rows[0].row()] if rows and rows[0].row() < len(self._routes) else None
+        hikes = self._hikes_of(route.id) if route else []
+        self.replay_btn.setEnabled(bool(hikes))
+        self.replay_btn.setToolTip(
+            "Relive a recorded hike of this route: map, 3D replay and photos" if hikes
+            else "Select a route you have hiked (log it with “I Hiked This Trail”)"
+        )
+
+    def _choose_hike(self, route, hikes):
+        """Which of a route's hikes (newest first) to relive: a menu at the cursor."""
+        menu = QMenu(self)
+        menu.addSection(f"{route.name} — hiked {len(hikes)} times")
+        actions = {menu.addAction(f"{hike_date_label(h)} · {hike_title(h, route)}"): h for h in hikes}
+        picked = menu.exec(QCursor.pos())
+        return actions.get(picked) if picked is not None else None
+
+    def _reexperience_selected_route(self) -> None:
+        route = self._selected_route()
+        hikes = self._hikes_of(route.id) if route else []
+        if not hikes:
+            return
+        chosen = hikes[0] if len(hikes) == 1 else self._choose_hike(route, hikes)
+        if chosen is None:
+            return
+        self.app_state.set_active_route(route.id)
+        self.app_state.set_active_session(chosen.id)
+        self.open_replay_requested.emit(chosen.id)
 
     def _delete_selected_routes(self) -> None:
         rows = sorted({i.row() for i in self.route_table.selectionModel().selectedRows()})

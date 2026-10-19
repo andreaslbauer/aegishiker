@@ -30,7 +30,7 @@ from src.hiking.hike_report import build_hike_summary, leg_at, trail_legs
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.replay_plan import plan_photo_stops
-from src.hiking.terrain3d import LocalFrame, build_mesh, route_path
+from src.hiking.terrain3d import LAYER_STYLES, LocalFrame, build_mesh, replay_map_layers, route_path
 
 from . import paths
 
@@ -312,8 +312,18 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
                     z = mesh.height_at(x, y)
                     ele = f.ele_m if f.ele_m is not None else z / Z_EXAGGERATION
                     peaks.append([f.name, round(x, 1), round(y, 1), round(z, 1), round(ele, 1)])
+    layers = replay_map_layers(pack, mesh, route.trail_ids)
+    codes = {k: i for i, k in enumerate(LAYER_STYLES)}
     return {
         "zx": Z_EXAGGERATION,
+        # Other trails, paths, streams, rivers (segments draped on the terrain) and lakes (pieces per cell)
+        "layers": {
+            "names": list(LAYER_STYLES),
+            "kinds": [codes[k] for k in layers.kinds],
+            "segs": [round(v, 1) for seg in layers.segs for v in seg],
+            "water": [{"cell": [r, c], "ring": [round(v, 1) for pt in ring for v in pt]}
+                      for (r, c), rings in layers.water.items() for ring in rings],
+        },
         "mesh": {
             "x0": round(mesh.x0, 2), "y0": round(mesh.y0, 2), "cell": mesh.cell_m,
             "cols": mesh.cols, "rows": mesh.rows,

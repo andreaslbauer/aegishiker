@@ -99,6 +99,7 @@ class MainWindow(QMainWindow):
         self.explore_panel.start_at_place_requested.connect(self._start_hike_at_place)
         self.brainstorm_panel.route_selected_for_composer.connect(self._switch_to_composer)
         self.library_panel.open_route_requested.connect(self._switch_to_composer)
+        self.library_panel.open_replay_requested.connect(self._switch_to_reexperience)
         self.composer_panel.hike_logged_and_mapped.connect(self._switch_to_reexperience)
 
         self._build_menus()

@@ -744,6 +744,12 @@
   const APPROACH_M = 300, DEPART_M = 250, EASE_SHARE = 0.06, MIN_SPEED = 0.12;
   const BLEND_IN_S = 1.6, BLEND_OUT_S = 1.4, FIRST_HOLD_S = 5.0, NEXT_HOLD_S = 2.5, XFADE_S = 0.8;
   const SKY_TOP = [88, 140, 196], SKY_HORIZON = [196, 214, 226];
+  // Map layers on the terrain (as in the app): kind -> [rgb, pen width, fades out beyond this depth]
+  const LAYER_PENS = {
+    water_edge: [[76, 155, 214], 1.6, FOG_END], river: [[76, 155, 214], 2.8, FOG_END],
+    stream: [[110, 182, 232], 1.3, 3600], trail: [[214, 178, 112], 1.8, 4200], path: [[196, 168, 120], 1.0, 2400],
+  };
+  const WATER_RGB = [58, 116, 168];
   const lerpAngle = (a, b, t) => { const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return a + d * t; };
 
   function makeCamera(x, y, z, yaw, pitch, focal, cx, cy) { return { x, y, z, yaw, pitch, focal, cx, cy }; }
@@ -800,6 +806,23 @@
         const k = this.cellKey((this.px[i] + this.px[i + 1]) / 2, (this.py[i] + this.py[i + 1]) / 2);
         if (!this.trailCells.has(k)) this.trailCells.set(k, []);
         this.trailCells.get(k).push(i);
+      }
+      // Map layers: segments grouped by the terrain cell they lie on; lake pieces per cell
+      this.layerCells = new Map();
+      this.waterCells = new Map();
+      const L = R.layers || { names: [], kinds: [], segs: [], water: [] };
+      this.layerSegs = L.segs;
+      this.layerKinds = L.kinds.map(k => L.names[k]);
+      for (let i = 0; i < this.layerKinds.length; i++) {
+        const o = 6 * i;
+        const key = this.cellKey((L.segs[o] + L.segs[o + 3]) / 2, (L.segs[o + 1] + L.segs[o + 4]) / 2);
+        if (!this.layerCells.has(key)) this.layerCells.set(key, []);
+        this.layerCells.get(key).push(i);
+      }
+      for (const w of L.water) {
+        const key = w.cell[0] * 100000 + w.cell[1];
+        if (!this.waterCells.has(key)) this.waterCells.set(key, []);
+        this.waterCells.get(key).push(w.ring);
       }
       this.stops = R.stops.map(s => ({ photos: s.photos.map(i => H.photos[i]), hidden: s.hidden, along: s.along * this.scale, world: s.world }));
       this.stopCells = new Map();
@@ -1040,6 +1063,24 @@
         ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(cc[0], cc[1]); ctx.lineTo(d[0], d[1]); ctx.closePath();
         ctx.fill(); ctx.stroke();
         const key = r * 100000 + c;
+        const water = this.waterCells.get(key);
+        if (water) {
+          const wc = "rgb(" + Math.round(WATER_RGB[0] + (SKY_HORIZON[0] - WATER_RGB[0]) * f) + "," +
+            Math.round(WATER_RGB[1] + (SKY_HORIZON[1] - WATER_RGB[1]) * f) + "," + Math.round(WATER_RGB[2] + (SKY_HORIZON[2] - WATER_RGB[2]) * f) + ")";
+          ctx.fillStyle = wc; ctx.strokeStyle = wc; ctx.lineWidth = 1;
+          for (const ring of water) {
+            ctx.beginPath();
+            let ok = true;
+            for (let k = 0; k < ring.length; k += 3) {
+              const q = project(ring[k], ring[k + 1], ring[k + 2]);
+              if (!q) { ok = false; break; }
+              if (k) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]);
+            }
+            if (ok) { ctx.closePath(); ctx.fill(); ctx.stroke(); }
+          }
+        }
+        const lsegs = this.layerCells.get(key);
+        if (lsegs) this._layers(ctx, project, lsegs, depth);
         const segs = this.trailCells.get(key);
         if (segs) {
           for (const i of segs) {
@@ -1057,6 +1098,29 @@
             if (si > this.nextStop || (si === this.nextStop && !photoPhase)) this._marker(ctx, project, this.stops[si]);
           }
         }
+      }
+    }
+    _layers(ctx, project, ids, depth) {
+      const byKind = {};
+      for (const i of ids) {
+        const kind = this.layerKinds[i];
+        if (depth > LAYER_PENS[kind][2]) continue;
+        (byKind[kind] = byKind[kind] || []).push(i);
+      }
+      const S = this.layerSegs;
+      for (const kind in byKind) {
+        const [rgb, width, reach] = LAYER_PENS[kind];
+        const fade = depth <= FOG_START ? 1 : Math.max(0, 1 - (depth - FOG_START) / Math.max(1, reach - FOG_START));
+        if (fade < 0.08) continue;
+        ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(0.88 * fade).toFixed(3)})`;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        for (const i of byKind[kind]) {
+          const o = 6 * i;
+          const a = project(S[o], S[o + 1], S[o + 2]), b = project(S[o + 3], S[o + 4], S[o + 5]);
+          if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+        }
+        ctx.stroke();
       }
     }
     _markerRect(project, stop) {

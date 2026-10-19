@@ -4,8 +4,8 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .pytest_appdir/
-build/
-dist/
+/build/
+/dist/
 *.deb
 *.snap
 *.egg-info/
@@ -15,6 +15,6 @@ dist/
 *.db-wal
 
 
-# .deb build staging (tools/build/build-deb.sh assembles the package tree inside debian/)
+# .deb staging left inside debian/ by older versions of tools/build/build-deb.sh (it now uses build/deb-root)
 debian/opt/
 debian/usr/bin/

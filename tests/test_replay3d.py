@@ -143,3 +143,37 @@ def test_replay_plan_groups_by_distance_or_time() -> None:
     (big,) = plan_photo_stops(many, cap=6)
     assert len(big.shown) == 6 and big.hidden == 14 and any(p.is_starred for p in big.shown)
     assert [p.date_taken for p in big.shown] == sorted(p.date_taken for p in big.shown)
+
+
+def test_map_layers_are_draped_on_the_replay_terrain() -> None:
+    from src.hiking.models import DEMGrid, DestinationPack, MapFeature, TrailSegment
+    from src.hiking.terrain3d import LocalFrame, build_mesh, replay_map_layers
+
+    dem = DEMGrid(min_lat=44.0, max_lat=44.1, min_lon=-71.7, max_lon=-71.6, rows=3, cols=3,
+                  elevations_m=[[300, 400, 500]] * 3)
+    other = TrailSegment(id="other", name="Other Trail", coords_3d=[[-71.66, 44.04, 0], [-71.64, 44.06, 0]])
+    mine = TrailSegment(id="mine", name="My Trail", coords_3d=[[-71.66, 44.05, 0], [-71.64, 44.05, 0]])
+    pond = [[-71.652, 44.048], [-71.648, 44.048], [-71.648, 44.052], [-71.652, 44.052], [-71.652, 44.048]]
+    pack = DestinationPack(id="p", name="P", dem=dem, trails=[other, mine], features=[
+        MapFeature(kind="water", geom="area", name="Pond", coords=pond),
+        MapFeature(kind="stream", geom="line", coords=[[-71.66, 44.044], [-71.64, 44.044]]),
+        MapFeature(kind="path", geom="line", name="My Trail", coords=[[-71.66, 44.05], [-71.64, 44.05]]),
+        MapFeature(kind="path", geom="line", coords=[[-71.656, 44.055], [-71.656, 44.06]]),
+    ])
+    frame = LocalFrame(44.05, -71.65, 1.5)
+    mesh = build_mesh(dem, frame, (-1500, -1500, 1500, 1500), cell_m=120.0)
+    layers = replay_map_layers(pack, mesh, skip_trail_ids=["mine"])
+    assert {"trail", "stream", "path"} <= set(layers.kinds)
+    assert layers.kinds.count("path") > 0 and "water_edge" not in layers.kinds, "pond drawn as a surface"
+    # The path that is a piece of My Trail and the hike's own trail aren't drawn again
+    xs_trail = [s for s, k in zip(layers.segs, layers.kinds) if k == "trail"]
+    assert all(abs(s[1] - s[4]) > 0 for s in xs_trail), "only the diagonal Other Trail"
+    pieces = sum(len(r) for r in layers.water.values())
+    assert pieces >= 4, "the pond is cut into the terrain cells it covers"
+    for (r, c), rings in layers.water.items():
+        for ring in rings:
+            for x, y, z in ring:  # every piece lies within its cell, on the terrain
+                assert mesh.x0 + c * 120.0 - 1e-6 <= x <= mesh.x0 + (c + 1) * 120.0 + 1e-6
+                assert abs(z - (mesh.height_at(x, y) + 3.0)) < 1e-6
+    seg = layers.segs[0]
+    assert abs(seg[2] - (mesh.height_at(seg[0], seg[1]) + 6.0)) < 1e-6, "lines lie just above the ground"

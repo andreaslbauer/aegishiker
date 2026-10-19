@@ -54,13 +54,22 @@ def test_window_and_selections_restored_after_restart(seeded_db: Database, tmp_p
     app.processEvents()
     assert state2.active_destination_id == "mount_monadnock"
     assert state2.active_route_id == route_id
-    # within a few px: the headless test platform has no real frame/screen for Qt to restore against
-    assert abs(win2.width() - size[0]) <= 10 and abs(win2.height() - size[1]) <= 10
+    # within a few px: the headless test platform has no real frame/screen for Qt to restore against.
+    # Qt fits a restored window onto the screen (the offscreen one is 800 x 800), but never below the
+    # window's minimum size
+    avail = win2.screen().availableGeometry()
+    minimum = win2.minimumSizeHint()
+    expect_w = max(min(size[0], avail.width()), minimum.width())
+    expect_h = max(min(size[1], avail.height()), minimum.height())
+    assert abs(win2.width() - expect_w) <= 10 and abs(win2.height() - expect_h) <= 10, (win2.size(), expect_w, expect_h)
     assert win2.composer_panel.pace_combo.currentData() == "tobler"
     assert win2.composer_panel.pack_spin.value() == 9.5
     assert win2.explore_panel.cond_toggles[TrailCondition.ICY].isChecked()
-    restored = dict(win2._splitters())[key].sizes()
-    assert abs(restored[0] / sum(restored) - sizes[0] / sum(sizes)) < 0.02, (restored, sizes)
+    splitter2 = dict(win2._splitters())[key]
+    restored = splitter2.sizes()
+    # The saved proportion, except that a pane never shrinks below its minimum width
+    expected = max(sizes[0] / sum(sizes) * sum(restored), splitter2.widget(0).minimumSizeHint().width())
+    assert abs(restored[0] - expected) <= 0.02 * sum(restored), (restored, sizes, expected)
     for w in (win, win2):
         w.hide()
         w.deleteLater()

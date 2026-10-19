@@ -131,3 +131,59 @@ def test_library_shows_times_hiked_and_last_hiked(seeded_db: Database, test_sett
     cell = lambda name, col: panel.route_table.item(rows[name], col).text()  # noqa: E731
     assert (cell("Hiked twice", 5), cell("Hiked twice", 6)) == ("2×", "2026-09-14")
     assert (cell("Never hiked", 5), cell("Never hiked", 6)) == ("—", "Never")
+
+
+def test_library_opens_a_hiked_route_in_reexperience(seeded_db, tmp_path, monkeypatch) -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.core.settings import Settings
+    from src.gui.app_state import AppState
+    from src.gui.main_window import MainWindow
+    from src.hiking.models import HikeSession
+    from src.hiking.routing import route_from_trail_segment
+
+    app = QApplication.instance() or QApplication([])
+    trail = seeded_db.list_trails("white_mountains_nh")[0]
+    hiked, never = route_from_trail_segment(trail), route_from_trail_segment(trail)
+    never.name = "Not hiked yet"
+    for r in (hiked, never):
+        seeded_db.upsert_route(r)
+    first = HikeSession(route_id=hiked.id, title="First time", started_at="2025-07-01T09:00:00", status="completed")
+    seeded_db.save_session(first)
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    win = MainWindow(app_state=state)
+    win.show()
+    lib = win.library_panel
+    win.tabs.setCurrentWidget(lib)
+    lib.refresh_all()
+    row = {r.id: i for i, r in enumerate(lib._routes)}
+    lib.route_table.selectRow(row[never.id])
+    assert not lib.replay_btn.isEnabled(), "nothing to relive on a route never hiked"
+    lib.route_table.selectRow(row[hiked.id])
+    assert lib.replay_btn.isEnabled()
+    lib.replay_btn.click()
+    app.processEvents()
+    assert win.tabs.currentWidget() is win.reexperience_panel and state.active_session_id == first.id
+
+    # Hiked twice: the user picks which hike (here the older one)
+    second = HikeSession(route_id=hiked.id, title="Second time", started_at="2026-07-01T09:00:00", status="completed")
+    seeded_db.save_session(second)
+    win.tabs.setCurrentWidget(lib)
+    lib.refresh_all()
+    lib.route_table.selectRow({r.id: i for i, r in enumerate(lib._routes)}[hiked.id])
+    offered = []
+
+    def pick_oldest(route, hikes):
+        offered.extend(h.title for h in hikes)
+        return hikes[-1]
+
+    monkeypatch.setattr(lib, "_choose_hike", pick_oldest)
+    lib.replay_btn.click()
+    app.processEvents()
+    assert offered == ["Second time", "First time"], "the route's hikes, newest first"
+    assert state.active_session_id == first.id and win.tabs.currentWidget() is win.reexperience_panel
+    win.hide()
+    win.deleteLater()
