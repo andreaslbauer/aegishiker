@@ -383,6 +383,7 @@ def replay_map_layers(pack, mesh: TerrainMesh, skip_trail_ids: Sequence[str] = (
         return not (max(lons) < lon_lo or min(lons) > lon_hi or max(lats) < lat_lo or min(lats) > lat_hi)
 
     skip = set(skip_trail_ids)
+    trail_names = {t.name for t in pack.trails}
     lines: List[Tuple[str, Sequence[Sequence[float]]]] = []
     water: List[Sequence[Sequence[float]]] = []
     for f in pack.features:
@@ -390,11 +391,16 @@ def replay_map_layers(pack, mesh: TerrainMesh, skip_trail_ids: Sequence[str] = (
             continue
         if f.kind == "water":
             if f.geom == "area":
-                water.append(f.coords)
-            lines.append(("water_edge", f.coords))
+                water.append(f.coords)  # filled (its outline is the fill's edge)
+            else:
+                lines.append(("water_edge", f.coords))  # a shoreline cut by the region's edge
         elif f.kind in ("river", "stream"):
             lines.append((f.kind, f.coords))
         elif f.kind in ("path", "track") and f.geom == "line":
+            # Paths that are pieces of a listed trail are drawn as that trail
+            if f.name and any(n.strip() in trail_names or any(t.startswith(n.strip() + " (") for t in trail_names)
+                              for n in f.name.split("/")):
+                continue
             lines.append(("path", f.coords))
     for t in pack.trails:
         if t.id not in skip and len(t.coords_3d) >= 2 and near(t.coords_3d):
