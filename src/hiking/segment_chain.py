@@ -55,6 +55,8 @@ def map_paths_from_features(
         pts.append(list(f.coords[-1][:2]))
         coords = [[lon, lat, round(sample_dem(dem, lat, lon), 1)] for lon, lat in pts]
         unnamed = "Unnamed path" if f.kind == "path" else "Unnamed track"
+        if f.info:  # what the map says about it, e.g. "SAC T1 hiking", so it can be told apart
+            unnamed += f" ({f.info.split(' · ')[0].split(';')[0][:40]})"
         out.append(TrailSegment(
             id=f"mappath_{i}", pack_id=pack_id, name=f.name or unnamed, coords_3d=coords,
             tags=[MAP_PATH_TAG] + ([] if f.name else ["unnamed"]),
@@ -127,10 +129,22 @@ class Candidate:
 
 
 @dataclass
+class StopPoint:
+    """A point an option can be walked to: vertex k of its last segment."""
+
+    k: int
+    lat: float
+    lon: float
+    kind: str  # "junction" (other trails meet here) or "end" (the option's end)
+    names: List[str]  # the other trails meeting here
+    along_m: float  # walking distance from where the option leaves the hike
+
+
+@dataclass
 class SegmentChain:
     trails: Sequence[TrailSegment]
     places: Sequence[Place] = ()
-    map_paths: Sequence[TrailSegment] = ()  # pickable / routable, never offered as options themselves
+    map_paths: Sequence[TrailSegment] = ()  # the map's other paths: pickable, routable and offered too
     legs: List[Leg] = field(default_factory=list)
     ended: bool = False
     _history: List[Tuple[List[Leg], bool]] = field(default_factory=list)
@@ -149,6 +163,23 @@ class SegmentChain:
         for ti, t in enumerate(self.trails):
             for vi, p in enumerate(t.coords_3d):
                 self._grid[(int(p[0] / _CELL_DEG), int(p[1] / _CELL_DEG))].append((ti, vi))
+        # Named map paths lying on a listed trail are that trail's own OSM pieces: never offered
+        self._shadows = {ti for ti in range(self._n_named, len(self.trails)) if self._is_shadow(ti)}
+
+    def _is_shadow(self, ti: int) -> bool:
+        t = self.trails[ti]
+        if "unnamed" in t.tags or len(t.coords_3d) < 2:
+            return False
+        pts = t.coords_3d
+        for frac in (0.15, 0.5, 0.85):
+            p = pts[int(frac * (len(pts) - 1))]
+            if not any(tj < self._n_named and d <= JUNCTION_M for tj, _vj, d in self._near_vertices(p[0], p[1])):
+                return False
+        return True
+
+    def offered(self, ti: int) -> bool:
+        """Can trail ti be offered as a next segment / named at a junction?"""
+        return ti < self._n_named or ti not in self._shadows
 
     # ── building ──────────────────────────────────────────────────────────
 
@@ -268,7 +299,7 @@ class SegmentChain:
         touches: Dict[int, Dict[int, Tuple[int, float]]] = defaultdict(dict)  # trail -> k -> (vertex, d)
         for k in range(1, len(leg_pts)):
             for ti, vi, d in self._near_vertices(leg_pts[k][0], leg_pts[k][1]):
-                if ti >= self._n_named or self.trails[ti].id == last.trail.id:
+                if not self.offered(ti) or self.trails[ti].id == last.trail.id:
                     continue
                 prev = touches[ti].get(k)
                 if prev is None or d < prev[1]:
@@ -588,11 +619,16 @@ class SegmentChain:
 
     def shorten_to(self, cand: Candidate, lat: float, lon: float) -> Candidate:
         """The option ending at the point the user clicked on it, instead of at its trail's end."""
+        pts = ([cand.leg, *cand.extra_legs][-1]).coords()
+        k = min(range(len(pts)), key=lambda i: haversine_m(lat, lon, pts[i][1], pts[i][0]))
+        return self.shorten_at(cand, k)
+
+    def shorten_at(self, cand: Candidate, k: int) -> Candidate:
+        """The option ending at vertex k of its last segment (see stop_points)."""
         legs = [cand.leg, *cand.extra_legs]
         final = legs[-1]
-        pts = final.coords()
-        k = min(range(len(pts)), key=lambda i: haversine_m(lat, lon, pts[i][1], pts[i][0]))
-        if k == 0 or k == len(pts) - 1:
+        n = len(final.coords())
+        if k <= 0 or k >= n - 1:
             return cand
         legs[-1] = Leg(final.trail, final.start, final.start + k * final.step)
         coords: List[List[float]] = []
@@ -605,6 +641,56 @@ class SegmentChain:
             gain_m=stats["elevation_gain_m"], loss_m=stats["elevation_loss_m"],
             toward_place=self.place_near(end[0], end[1], 350.0),
         )
+
+    def stop_points(self, cand: Candidate) -> List[StopPoint]:
+        """Where the hike can stop on an option: each junction with another listed trail along its
+        last segment, and its end. Each is the vertex closest to where the trails meet."""
+        legs = [cand.leg, *cand.extra_legs]
+        final = legs[-1]
+        pts = final.coords()
+        before = cand.gap_m + sum(leg.stats()["distance_m"] for leg in legs[:-1])
+        cum = [0.0]
+        for a, b in zip(pts, pts[1:]):
+            cum.append(cum[-1] + haversine_m(a[1], a[0], b[1], b[0]))
+        # Where each other listed trail touches this segment (k -> distance), like candidates()
+        touches: Dict[str, Dict[int, float]] = defaultdict(dict)
+        for k in range(1, len(pts)):
+            for ti, _vi, d in self._near_vertices(pts[k][0], pts[k][1]):
+                other = self.trails[ti]
+                if not self.offered(ti) or other.id == final.trail.id:
+                    continue
+                if d < touches[other.name].get(k, math.inf):
+                    touches[other.name][k] = d
+        found: List[Tuple[int, str]] = []
+        for name, by_k in touches.items():
+            ks = sorted(by_k)
+            clusters: List[List[int]] = [[ks[0]]]
+            for k in ks[1:]:
+                if k - clusters[-1][-1] <= 2:
+                    clusters[-1].append(k)
+                else:
+                    clusters.append([k])
+            for cl in clusters:
+                on = [k for k in cl if by_k[k] <= 12.0]  # actually on the same path
+                if len(on) >= 2 and cum[on[-1]] - cum[on[0]] >= 60.0:
+                    found += [(on[0], name), (on[-1], name)]  # a shared stretch: where it begins and ends
+                else:
+                    found.append((min(cl, key=by_k.__getitem__), name))  # a crossing: closest point
+        out: List[StopPoint] = []
+        for k, name in sorted(found):
+            if cum[k] <= END_JUNCTION_M:
+                continue  # the junction the option starts from
+            if out and cum[k] - (out[-1].along_m - before) <= 40.0:
+                if name not in out[-1].names:
+                    out[-1].names.append(name)
+                continue
+            out.append(StopPoint(k, pts[k][1], pts[k][0], "junction", [name], before + cum[k]))
+        last = len(pts) - 1
+        if out and out[-1].k >= last - 1:
+            out[-1] = replace(out[-1], k=last, lat=pts[last][1], lon=pts[last][0], kind="end", along_m=before + cum[last])
+        elif last > 0:
+            out.append(StopPoint(last, pts[last][1], pts[last][0], "end", [], before + cum[last]))
+        return out
 
     def _multi_candidate(self, legs: List[Leg], gap_m: float, cut_at: Optional[int] = None) -> Optional[Candidate]:
         last = self.legs[-1]

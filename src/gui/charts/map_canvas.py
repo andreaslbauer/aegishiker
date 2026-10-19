@@ -125,6 +125,8 @@ class MapCanvas(BaseChartWidget):
         self.candidate_paths: List[List[Tuple[float, float]]] = []  # pickable next segments
         # The hike being built, segment by segment: (trail name, [(lat, lon), ...])
         self.hike_legs: List[Tuple[str, List[Tuple[float, float]]]] = []
+        # Points the next segment can be walked to: dicts with lat, lon, kind, selected, hover, label
+        self.stop_points: List[dict] = []
         # Photo thumbnails pinned on the map (Re-experience); otherwise small "P" markers
         self.show_photo_thumbnails = False
         self.selected_photo_id: Optional[str] = None
@@ -355,6 +357,10 @@ class MapCanvas(BaseChartWidget):
     def metres_per_pixel(self) -> float:
         return 1.0 / max(1e-9, self._px_per_m())
 
+    def set_stop_points(self, points: Optional[List[dict]]) -> None:
+        self.stop_points = list(points or [])
+        self.update()
+
     def set_hike_legs(self, legs: Optional[List[Tuple[str, List[Tuple[float, float]]]]]) -> None:
         self.hike_legs = [(name, list(pts)) for name, pts in (legs or []) if len(pts) >= 2]
         self.update()
@@ -440,6 +446,7 @@ class MapCanvas(BaseChartWidget):
         self._draw_options(painter, xf)
         self._draw_active_route(painter, xf)
         self._draw_preview(painter, xf)
+        self._draw_stop_points(painter)
         self._draw_telemetry(painter)
         self._draw_photo_pins(painter)
         self._draw_waypoints(painter)
@@ -720,6 +727,51 @@ class MapCanvas(BaseChartWidget):
             painter.drawEllipse(pt, 4.5, 4.5)
             painter.setPen(QColor("#98B2A1"))
             painter.drawText(QPointF(pt.x() + 7, pt.y() + 3), poi.name)
+
+    def _draw_stop_points(self, painter: QPainter) -> None:
+        """Junctions and ends the next segment can be walked to: click one to add that stretch.
+        The selected option's points are larger and labelled; the one under the cursor is ringed."""
+        if not self.stop_points:
+            return
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        font = QFont("Sans Serif", 8, QFont.Weight.Bold)
+        painter.setFont(font)
+        fm = painter.fontMetrics()
+        placed: List[QRectF] = []
+        ordered = sorted(self.stop_points, key=lambda sp: (sp.get("hover", False), sp.get("selected", False)))
+        for sp in ordered:
+            at = self.project(sp["lat"], sp["lon"])
+            if not self._visible(at, 30.0):
+                continue
+            sel, hov = sp.get("selected", False), sp.get("hover", False)
+            r = 9.0 if hov else (7.0 if sel else 5.0)
+            fill = QColor("#F4D03F") if sp.get("kind") == "end" else QColor("#FFFFFF")
+            if not sel and not hov:
+                fill.setAlpha(215)
+            if hov:
+                painter.setPen(QPen(QColor(244, 208, 63, 120), 6.0))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawEllipse(at, r + 4, r + 4)
+            painter.setPen(QPen(QColor("#0B1610"), 2.0 if (sel or hov) else 1.5))
+            painter.setBrush(fill)
+            painter.drawEllipse(at, r, r)
+            if sp.get("kind") != "end":
+                painter.setBrush(QColor("#0B1610"))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawEllipse(at, r * 0.35, r * 0.35)
+            if (sel or hov) and sp.get("label"):
+                text = fm.elidedText(sp["label"], Qt.TextElideMode.ElideRight, 220)
+                box = QRectF(at.x() + r + 5, at.y() - 9, fm.horizontalAdvance(text) + 10, 18)
+                if not hov and any(box.intersects(o) for o in placed):
+                    continue
+                placed.append(box)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(11, 22, 16, 215))
+                painter.drawRoundedRect(box, 5, 5)
+                painter.setPen(QColor("#F4D03F") if hov else QColor("#ECF5EE"))
+                painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+        painter.restore()
 
     HIKE_COLORS = ("#FF3D9A", "#B26BFF")  # alternate per segment; no trail difficulty uses these
 

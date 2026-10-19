@@ -26,8 +26,9 @@ from PySide6.QtWidgets import (
 
 from src.gui.app_state import AppState
 from src.gui.busy import busy
+from src.hiking.geo import haversine_m
 from src.hiking.models import ComposedRoute, DestinationPack
-from src.hiking.segment_chain import Candidate, SegmentChain, map_paths_from_features
+from src.hiking.segment_chain import Candidate, SegmentChain, StopPoint, map_paths_from_features
 from src.hiking.units import format_distance, format_elevation
 
 PLACE_KINDS = {"peak", "hut", "shelter", "trailhead", "parking", "waterfall", "viewpoint", "campsite", "saddle", "spring"}
@@ -39,6 +40,7 @@ class SegmentBuilder(QWidget):
     candidates_changed = Signal(object)  # List[List[(lat, lon)]] — pickable segments for the map
     route_saved = Signal(str)  # route_id
     focus_requested = Signal(object)  # List[(lat, lon)] — the user clicked a trail: zoom the map to it
+    stops_changed = Signal(object)  # List[dict] — points the next segment can be walked to (see _update_stops)
 
     def __init__(self, app_state: AppState, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -48,6 +50,8 @@ class SegmentBuilder(QWidget):
         self._candidates: List[Candidate] = []
         self._picked: List[Candidate] = []  # options added by clicking trails on the map
         self._name_edited = False
+        self._stops: List[tuple] = []  # (option index, StopPoint)
+        self._hover_stop: Optional[tuple] = None
         self.setMinimumWidth(320)
 
         col = QVBoxLayout(self)
@@ -88,7 +92,7 @@ class SegmentBuilder(QWidget):
         self.legs_list.itemClicked.connect(self._on_leg_clicked)
         col.addWidget(self.legs_list)
 
-        self.next_lbl = self._step("2 · Next segment — double-click, or click any trail on the map")
+        self.next_lbl = self._step("2 · Next segment — click a trail on the map, then a ● where you turned or stopped")
         col.addWidget(self.next_lbl)
         self.cand_list = QListWidget()
         self.cand_list.setObjectName("Inset")
@@ -104,13 +108,18 @@ class SegmentBuilder(QWidget):
         self.end_btn = QPushButton("End Here")
         self.end_btn.setToolTip("Finish the hike at the end of the current segment")
         self.end_btn.clicked.connect(self.end_here)
-        self.undo_btn = QPushButton("Undo")
+        self.undo_btn = QPushButton("Remove Last Segment")
+        self.undo_btn.setToolTip("Take the last segment off the hike")
         self.undo_btn.clicked.connect(self.undo)
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.clicked.connect(self.clear)
-        for b in (self.add_btn, self.end_btn, self.undo_btn, self.clear_btn):
+        for b in (self.add_btn, self.end_btn):
             btn_row.addWidget(b)
         col.addLayout(btn_row)
+        edit_row = QHBoxLayout()
+        edit_row.addWidget(self.undo_btn, 1)
+        edit_row.addWidget(self.clear_btn)
+        col.addLayout(edit_row)
 
         self.status_lbl = QLabel("")
         self.status_lbl.setWordWrap(True)
@@ -295,7 +304,11 @@ class SegmentBuilder(QWidget):
             return False
         if self.has_draft():
             if self.chain.complete:
-                self.app_state.status_message.emit("The hike is complete: save it, or Undo to keep building.")
+                self.app_state.status_message.emit("The hike is complete: save it, or Remove Last Segment to keep building.")
+                return True
+            stop = self._stop_at(lat, lon, tol_m * 1.5)
+            if stop is not None:
+                self.add_to_stop(*stop)
                 return True
             hits = self.chain.candidates_at(self._candidates, lat, lon, tol_m)
             if not hits:
@@ -305,12 +318,13 @@ class SegmentBuilder(QWidget):
                 [(self._candidate_text(self._candidates[h], self._unit()).split("\n")[0], h) for h in hits]
             )
             if idx is not None:
-                # Clicked on the map: the hike turns off at the junction and goes to the clicked spot
-                cand = self._candidates[idx]
-                if not cand.turnaround:
-                    cand = self.chain.shorten_to(cand, lat, lon)
-                self.chain.apply(cand)
-                self._refresh()
+                # Clicked an option: select it and show where it can be walked to
+                self.cand_list.setCurrentRow(idx)
+                n = sum(1 for i, _sp in self._stops if i == idx)
+                self.app_state.status_message.emit(
+                    f"{self._candidates[idx].trail_name}: click one of its {n} points (●) where you turned "
+                    "or stopped, or Add Segment for all of it."
+                )
             return True
         trails = self.chain.trails_at(lat, lon, tol_m)
         if not trails:
@@ -375,10 +389,24 @@ class SegmentBuilder(QWidget):
         if self.has_draft():
             if self.chain.complete:
                 return
-            hits = self.chain.candidates_at(self._candidates, lat, lon, tol_m)
-            if hits and hits[0] != self.cand_list.currentRow():
-                self.cand_list.setCurrentRow(hits[0])
-            msg = (f"Click to walk {self._candidates[hits[0]].trail_name} to this spot" + (f" (+{len(hits) - 1} more here)" if len(hits) > 1 else "")) if hits else ""
+            stop = self._stop_at(lat, lon, tol_m * 1.5)
+            hits = [] if stop else self.chain.candidates_at(self._candidates, lat, lon, tol_m)
+            hover = stop if stop else None
+            if hover != self._hover_stop:
+                self._hover_stop = hover
+                self._emit_stops()
+            if stop:
+                idx, sp = stop
+                cand = self.chain.shorten_at(self._candidates[idx], sp.k)
+                self.preview_changed.emit([(p[1], p[0]) for p in cand.coords()])
+                msg = f"Click to add: {self._stop_text(self._candidates[idx], sp)}"
+            elif hits:
+                self.preview_changed.emit([(p[1], p[0]) for p in self._candidates[hits[0]].coords()])
+                msg = (f"Click to select {self._candidates[hits[0]].trail_name} and see where it goes"
+                       + (f" (+{len(hits) - 1} more here)" if len(hits) > 1 else ""))
+            else:
+                self._on_candidate_highlighted(self.cand_list.currentRow())
+                msg = ""
         else:
             trails = self.chain.trails_at(lat, lon, tol_m)
             self.preview_changed.emit([(p[1], p[0]) for p in trails[0][0].coords_3d] if trails else None)
@@ -433,6 +461,73 @@ class SegmentBuilder(QWidget):
             self.preview_changed.emit([(p[1], p[0]) for p in self._candidates[row].coords()])
         else:
             self.preview_changed.emit(None)
+        if row != getattr(self, "_stops_row", None):
+            self._stops_row = row
+            self._update_stops()
+
+    # ── stop points: where the next segment can be walked to ─────────────
+
+    def _update_stops(self) -> None:
+        """Junctions and ends of every option (the selected turnaround's too). Where several options
+        reach the same spot, the shortest walk there is kept."""
+        stops: List[tuple] = []
+        chain = self.chain
+        selected = self.cand_list.currentRow()
+        if chain and chain.legs and not chain.complete:
+            for i, cand in enumerate(self._candidates):
+                if cand.turnaround and i != selected:
+                    continue
+                for sp in chain.stop_points(cand):
+                    dup = next((n for n, (_j, o) in enumerate(stops)
+                                if abs(o.lat - sp.lat) * 110540 < 15 and abs(o.lon - sp.lon) * 80000 < 15), None)
+                    if dup is None:
+                        stops.append((i, sp))
+                    elif i == selected or (stops[dup][0] != selected and sp.along_m < stops[dup][1].along_m):
+                        stops[dup] = (i, sp)
+        self._stops = stops
+        self._hover_stop = None
+        self._emit_stops()
+
+    def _emit_stops(self) -> None:
+        selected = self.cand_list.currentRow()
+        unit = self._unit()
+        self.stops_changed.emit([
+            {
+                "lat": sp.lat, "lon": sp.lon, "kind": sp.kind, "selected": i == selected,
+                "hover": self._hover_stop is not None and self._hover_stop[1] is sp,
+                "label": (", ".join(sp.names[:2]) + (f" +{len(sp.names) - 2}" if len(sp.names) > 2 else "")
+                          if sp.names else f"end · {format_distance(sp.along_m, unit)}"),
+            }
+            for i, sp in self._stops
+        ])
+
+    def _stop_at(self, lat: float, lon: float, tol_m: float) -> Optional[tuple]:
+        """The stop point under the cursor (the selected option's first), or None."""
+        selected = self.cand_list.currentRow()
+        best, best_key = None, None
+        for i, sp in self._stops:
+            d = haversine_m(lat, lon, sp.lat, sp.lon)
+            if d <= tol_m:
+                key = (i != selected, d)
+                if best_key is None or key < best_key:
+                    best, best_key = (i, sp), key
+        return best
+
+    def _stop_text(self, cand: Candidate, sp: StopPoint) -> str:
+        unit = self._unit()
+        where = (f"the junction with {', '.join(sp.names[:2])}" if sp.kind == "junction"
+                 else (f"its end at {', '.join(sp.names[:2])}" if sp.names else "its end"))
+        return f"{cand.trail_name}, {format_distance(sp.along_m, unit)} to {where}"
+
+    def add_to_stop(self, idx: int, sp: StopPoint) -> None:
+        """Add the stretch of option `idx` that leads to the stop point to the hike."""
+        if not self.chain or not (0 <= idx < len(self._candidates)):
+            return
+        cand = self._candidates[idx]
+        text = self._stop_text(cand, sp)
+        self.chain.apply(self.chain.shorten_at(cand, sp.k))
+        self._refresh()
+        self.app_state.status_message.emit(f"Added {text}.")
 
     # ── view ─────────────────────────────────────────────────────────────
 
@@ -469,15 +564,16 @@ class SegmentBuilder(QWidget):
                 + (f"<br><span style='color:#F39C12'>⚠ {'; '.join(draft.condition_warnings)}</span>" if draft.condition_warnings else "")
             )
             if chain.is_closed():
-                self.status_lbl.setText("✓ Back at the starting point — the hike is complete. Name it and save, or Undo to change it.")
+                self.status_lbl.setText("✓ Back at the starting point — the hike is complete. Name it and save, or Remove Last Segment to change it.")
             elif chain.ended:
-                self.status_lbl.setText("✓ Hike ends here. Name it and save, or Undo to keep going.")
+                self.status_lbl.setText("✓ Hike ends here. Name it and save, or Remove Last Segment to keep going.")
             elif not self._candidates:
-                self.status_lbl.setText("No listed trails continue from here: click any path on the map to go on, or End Here / Undo.")
+                self.status_lbl.setText("No listed trails continue from here: click any path on the map to go on, or End Here / Remove Last Segment.")
             else:
                 self.status_lbl.setText(
-                    "Pick where to go next. Trails are listed from the end of the current segment backwards. "
-                    "Missing one? Click it on the map, even an unnamed path, and the gap is filled in."
+                    "On the map, the dashed yellow trails are where you can go next and the dots (●) are their "
+                    "junctions and ends: click a trail to select it, then the dot where you turned or stopped. "
+                    "Double-click an option in the list to add all of it. Missing a trail? Click it on the map."
                 )
         else:
             self.summary_lbl.setText("")
@@ -489,6 +585,8 @@ class SegmentBuilder(QWidget):
         self._sync_ui()
         self.preview_changed.emit(None)
         self._emit_candidate_paths()
+        self._stops_row = self.cand_list.currentRow()
+        self._update_stops()
         self.draft_changed.emit(draft)
 
     def _emit_candidate_paths(self) -> None:
@@ -519,6 +617,7 @@ class SegmentBuilder(QWidget):
         self._fit_rows(self.cand_list)
         self._sync_ui()
         self._emit_candidate_paths()
+        self._update_stops()
         if select is not None:
             self.cand_list.setCurrentRow(self._candidates.index(select))
 

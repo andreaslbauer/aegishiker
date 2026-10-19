@@ -121,7 +121,7 @@ def test_trail_search_type_ahead(seeded_db: Database, tmp_path: Path) -> None:
     explore.deleteLater()
 
 
-def test_map_clicks_turn_off_at_the_junction_and_stop_at_the_click(seeded_db: Database, tmp_path: Path) -> None:
+def test_map_clicks_select_an_option_then_add_it_up_to_a_stop_point(seeded_db: Database, tmp_path: Path) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
@@ -134,15 +134,28 @@ def test_map_clicks_turn_off_at_the_junction_and_stop_at_the_click(seeded_db: Da
     win.show()
     composer = win.composer_panel
     builder = composer.segment_builder
+    canvas = composer.map_canvas
     assert builder.start_on_trail("fitchburg_state_forest_crow_hill_trail")
+    app.processEvents()
+    assert canvas.stop_points, "junctions and ends of the options are shown on the map"
+
     by = {t.name: t for t in builder.chain.trails}
-    climb = by["Crow Hill Ledges North Climb"].coords_3d[-2]
-    assert builder.pick_at(climb[1], climb[0], 15.0)  # click the climb near its top
+    mid = by["Crow Hill Ledges North Climb"].coords_3d[2]
+    assert builder.pick_at(mid[1], mid[0], 12.0)  # click the climb's line: selects it, adds nothing
+    assert len(builder.chain.legs) == 1
+    assert builder._candidates[builder.cand_list.currentRow()].trail_name == "Crow Hill Ledges North Climb"
+    selected = [sp for sp in canvas.stop_points if sp["selected"]]
+    assert selected and selected[-1]["kind"] == "end" and "Midstate" in selected[-1]["label"]
+
+    top = selected[-1]
+    builder.hover_at(top["lat"], top["lon"], 12.0)
+    assert canvas.preview_coords, "hovering a stop point previews the stretch that would be added"
+    assert builder.pick_at(top["lat"], top["lon"], 12.0)  # click its end point: added
     cht, nc = builder.chain.legs
     assert cht.end < len(cht.trail.coords_3d) - 1, "Crow Hill Trail is left at the junction, not walked to its end"
-    assert nc.end == len(nc.trail.coords_3d) - 2, "the climb ends at the clicked spot"
+    assert nc.trail.name == "Crow Hill Ledges North Climb" and nc.end == len(nc.trail.coords_3d) - 1
     app.processEvents()
-    legs = composer.map_canvas.hike_legs
-    assert [name for name, _pts in legs] == ["Crow Hill Trail", "Crow Hill Ledges North Climb"]
+    assert [name for name, _pts in canvas.hike_legs] == ["Crow Hill Trail", "Crow Hill Ledges North Climb"]
+    assert any("Midstate" in c.trail_name for c in builder._candidates), "the ridge trail is offered next"
     win.hide()
     win.deleteLater()

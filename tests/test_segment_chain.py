@@ -183,7 +183,8 @@ def test_map_paths_fill_gaps_but_are_not_options() -> None:
 
     chain = SegmentChain([a, far], [], map_paths=paths)
     chain.start(a)
-    assert all(c.leg.trail.id in ("a", "far") for c in chain.candidates()), "map paths are never listed"
+    offered = {c.trail_name for c in chain.candidates()}
+    assert "Unnamed path" in offered, "smaller paths off the trail are offered too"
     assert chain.trails_at(44.0, -70.975, 30)[0][0].name == "Unnamed path", "clickable where no trail is"
     assert chain.trails_at(44.0, -70.99, 30)[0][0].id == "a", "listed trails win where both are"
 
@@ -193,3 +194,35 @@ def test_map_paths_fill_gaps_but_are_not_options() -> None:
     chain.apply(cand)
     assert chain.proposed_name() == "Brook Trail → Far Trail", "unnamed paths stay out of the name"
     assert chain.to_route("", "p").trail_ids == ["a", "far"]
+
+
+def test_stop_points_are_junctions_and_ends() -> None:
+    trails, places = _network()
+    chain = SegmentChain(trails, places)
+    chain.start(trails[2])  # Return Path, from the ridge top down to the trailhead
+    turn = next(c for c in chain.candidates() if c.turnaround)
+    assert [sp.kind for sp in chain.stop_points(turn)] == ["end"]
+    chain.start(trails[1], reverse=True)  # Ridge Trail down to Brook Trail
+    brook = next(c for c in chain.candidates() if c.leg.trail.id == "a" and c.leg.end == 10)
+    stops = chain.stop_points(brook)
+    assert stops[-1].kind == "end" and stops[-1].k == len(brook.leg.coords()) - 1
+    short = chain.shorten_at(brook, stops[-1].k - 2)
+    assert short.leg.end == 8 and short.distance_m < brook.distance_m
+
+
+def test_map_path_copies_of_listed_trails_are_not_offered_twice() -> None:
+    from src.hiking.models import MapFeature
+    from src.hiking.segment_chain import map_paths_from_features
+
+    a = _line("a", "Brook Trail", [(-71.0 + i * 0.0015, 44.0, 300) for i in range(11)])
+    b = _line("b", "Ridge Trail", [(-70.991, 44.0 + i * 0.0015, 360 + i * 30) for i in range(9)])
+    feats = [
+        MapFeature(kind="path", geom="line", name="Ridge Trail", coords=[[-70.991, 44.0], [-70.991, 44.012]]),
+        MapFeature(kind="path", geom="line", name="", info="SAC T1 hiking",
+                   coords=[[-70.994, 44.0], [-70.994, 43.995]]),
+    ]
+    chain = SegmentChain([a, b], [], map_paths=map_paths_from_features(feats, None, "p"))
+    chain.start(a)
+    names = [c.trail_name for c in chain.candidates() if not c.turnaround]
+    assert names.count("Ridge Trail") == 1, names
+    assert "Unnamed path (SAC T1 hiking)" in names, "unnamed side paths are offered, told apart by their map info"
