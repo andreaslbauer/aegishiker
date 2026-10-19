@@ -123,3 +123,47 @@ def test_map_canvas_renders_bundled_basemap(seeded_db: Database) -> None:
     assert all(abs(a - b) < 1e-9 for a, b in zip(canvas.unproject(canvas.project(lat, lon)), (lat, lon)))
     assert not canvas.grab().isNull()
     app.processEvents()
+
+
+def test_map_reuses_its_rendered_base_while_panning() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from pathlib import Path
+
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QPixmap
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.charts.map_canvas import MapCanvas
+    from src.hiking.models import DestinationPack
+
+    app = QApplication.instance() or QApplication([])
+    pack_file = Path(__file__).resolve().parent.parent / "data" / "packs" / "mount_monadnock.json"
+    pack = DestinationPack.model_validate_json(pack_file.read_text(encoding="utf-8"))
+    canvas = MapCanvas()
+    canvas.resize(800, 500)
+    canvas.show()
+    canvas.set_basemap(pack)
+    canvas.set_scene_data(trails=pack.trails, pois=pack.pois)
+    renders = []
+    original = canvas._render_base
+    canvas._render_base = lambda xf, key: (renders.append(1), original(xf, key))
+    target = QPixmap(canvas.size())
+    canvas.render(target)
+    assert len(renders) == 1
+    canvas.set_preview([(42.86, -72.11), (42.87, -72.10)])  # overlays only: no re-render
+    canvas.render(target)
+    assert len(renders) == 1
+    canvas.pan_offset += QPointF(30, 12)
+    canvas._interacted()  # dragging: the cached map is shown moved
+    canvas.render(target)
+    assert len(renders) == 1
+    canvas._settled()  # the view settled: drawn sharp once
+    canvas.render(target)
+    assert len(renders) == 2
+    canvas.excluded_conditions = {"muddy"}  # what the base shows changed
+    canvas.render(target)
+    assert len(renders) == 3
+    canvas.deleteLater()
+    app.processEvents()
