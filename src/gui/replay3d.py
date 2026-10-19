@@ -50,6 +50,7 @@ from src.hiking.terrain3d import (
     chase_camera,
     lerp_angle,
     look_camera,
+    replay_map_layers,
     route_path,
     smoothstep,
 )
@@ -60,6 +61,14 @@ SKY_HORIZON = (196, 214, 226)
 VIEW_RADIUS_M = 4200.0  # terrain drawn around the hiker
 FOG_START, FOG_END = 1800.0, 5200.0
 Z_EXAGGERATION = 1.5
+# Map layers on the terrain: kind -> (rgb, pen width, fades out beyond this depth in metres)
+LAYER_PENS = {
+    "water_edge": ((76, 155, 214), 1.6, FOG_END),
+    "river": ((76, 155, 214), 2.8, FOG_END),
+    "stream": ((110, 182, 232), 1.3, 3600.0),
+    "trail": ((214, 178, 112), 1.8, 4200.0),  # tan: apart from the hike's own white / orange line
+    "path": ((196, 168, 120), 1.0, 2400.0),  # dense: only near the hiker
+}
 
 BASE_DURATION_S = 75.0  # whole route at 1x (photos excluded)
 
@@ -140,6 +149,8 @@ class Replay3DView(QWidget):
             (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad),
             cell_m=120.0, fallback_ele=fallback,
         )
+        # Other trails, paths, streams, rivers and lakes from the region's map
+        self.layers = replay_map_layers(pack, self.mesh, route.trail_ids)
         # Drape the trail slightly above the mesh so it stays visible on slopes
         self._trail = [(x, y, max(z, self.mesh.height_at(x, y)) + 6.0) for x, y, z in self.path.pts]
         self._trail_cells: Dict[Tuple[int, int], List[int]] = {}
@@ -454,6 +465,12 @@ class Replay3DView(QWidget):
             p.setPen(QPen(col, 1.0))
             p.setBrush(col)
             p.drawPolygon(QPolygonF([QPointF(a[0], a[1]), QPointF(b[0], b[1]), QPointF(cc[0], cc[1]), QPointF(d[0], d[1])]))
+            water = self.layers.water.get((r, c))
+            if water:
+                self._draw_water(p, project, water, f)
+            layer_segs = self.layers.cells.get((r, c))
+            if layer_segs:
+                self._draw_layers(p, project, layer_segs, depth)
             # Trail and photo markers on this cell are drawn now, so nearer terrain hides them
             for i in self._trail_cells.get((r, c), ()):
                 s0 = project(*self._trail[i])
@@ -467,6 +484,38 @@ class Replay3DView(QWidget):
                 # the stop being shown is drawn by the overlay (it grows out of this marker)
                 if si > self.next_stop or (si == self.next_stop and self.phase not in self.PHOTO_PHASES):
                     self._draw_photo_marker(p, project, self.stops[si])
+
+    @staticmethod
+    def _draw_water(p: QPainter, project, rings, fog: float) -> None:
+        """Lake / pond pieces on this cell, tinted toward the sky colour with distance like the terrain."""
+        r, g, b = 58, 116, 168
+        sr, sg, sb = SKY_HORIZON
+        col = QColor(int(r + (sr - r) * fog), int(g + (sg - g) * fog), int(b + (sb - b) * fog))
+        p.setPen(QPen(col, 1.0))
+        p.setBrush(col)
+        for ring in rings:
+            pts = [project(x, y, z) for x, y, z in ring]
+            if all(pts):
+                p.drawPolygon(QPolygonF([QPointF(q[0], q[1]) for q in pts]))
+
+    def _draw_layers(self, p: QPainter, project, seg_ids: List[int], depth: float) -> None:
+        """This cell's map lines (other trails, paths, water), fading out with distance."""
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        segs, kinds = self.layers.segs, self.layers.kinds
+        for i in seg_ids:
+            rgb, width, reach = LAYER_PENS[kinds[i]]
+            if depth > reach:
+                continue
+            fade = 1.0 if depth <= FOG_START else max(0.0, 1.0 - (depth - FOG_START) / max(1.0, reach - FOG_START))
+            if fade < 0.08:
+                continue
+            x0, y0, z0, x1, y1, z1 = segs[i]
+            s0 = project(x0, y0, z0)
+            s1 = project(x1, y1, z1)
+            if s0 and s1:
+                p.setPen(QPen(QColor(rgb[0], rgb[1], rgb[2], int(225 * fade)), width))
+                p.drawLine(QPointF(s0[0], s0[1]), QPointF(s1[0], s1[1]))
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
     @staticmethod
     def _marker_rect(project, stop: PhotoStop) -> Optional[Tuple[QPointF, QRectF]]:

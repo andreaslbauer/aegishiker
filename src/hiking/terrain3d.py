@@ -263,3 +263,156 @@ def smoothstep(t: float) -> float:
 def lerp_angle(a: float, b: float, t: float) -> float:
     d = (b - a + math.pi) % (2 * math.pi) - math.pi
     return a + d * t
+
+
+# ── map layers draped on the terrain (other trails, paths, streams, rivers, lakes) ────────────
+
+LAYER_STYLES = ("water_edge", "river", "stream", "trail", "path")  # drawing order, bottom to top
+DRAPE_STEP_M = 60.0  # lines are cut into pieces this long so they follow the terrain (cells are 120 m)
+DRAPE_LIFT_M = 4.0  # drawn this far above the ground so the terrain doesn't swallow them
+
+
+@dataclass
+class DrapedLayers:
+    """Map lines draped on the terrain mesh, as segments grouped by the mesh cell they lie in (the
+    3D view draws each cell's lines right after the cell, so nearer hills still hide them)."""
+
+    kinds: List[str] = field(default_factory=list)  # per segment
+    segs: List[Tuple[float, float, float, float, float, float]] = field(default_factory=list)  # x0,y0,z0,x1,y1,z1
+    cells: Dict[Tuple[int, int], List[int]] = field(default_factory=dict)  # (row, col) -> segment indices
+    # Water surfaces: per cell, the parts of lakes / ponds inside it as [(x, y, z), ...] rings
+    water: Dict[Tuple[int, int], List[List[Tuple[float, float, float]]]] = field(default_factory=dict)
+
+
+def _inside(bounds: Tuple[float, float, float, float], x: float, y: float) -> bool:
+    return bounds[0] <= x <= bounds[2] and bounds[1] <= y <= bounds[3]
+
+
+def drape_lines(mesh: TerrainMesh, lines: Sequence[Tuple[str, Sequence[Sequence[float]]]],
+                step_m: float = DRAPE_STEP_M, lift_m: float = DRAPE_LIFT_M) -> DrapedLayers:
+    """Drape (kind, [[lon, lat], ...]) lines on the mesh. Parts outside the mesh are dropped."""
+    frame = mesh.frame
+    bounds = (mesh.x0, mesh.y0, mesh.x0 + (mesh.cols - 1) * mesh.cell_m, mesh.y0 + (mesh.rows - 1) * mesh.cell_m)
+    out = DrapedLayers()
+    for kind, coords in lines:
+        pts = [frame.to_xy(c[1], c[0]) for c in coords]
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            if not (_inside(bounds, ax, ay) or _inside(bounds, bx, by)):
+                continue
+            n = max(1, int(math.hypot(bx - ax, by - ay) // step_m) + 1)
+            prev = None
+            for k in range(n + 1):
+                x, y = ax + (bx - ax) * k / n, ay + (by - ay) * k / n
+                cur = (x, y, mesh.height_at(x, y) + lift_m * frame.zx)
+                if prev is not None and _inside(bounds, x, y) and _inside(bounds, prev[0], prev[1]):
+                    idx = len(out.segs)
+                    out.segs.append((*prev, *cur))
+                    out.kinds.append(kind)
+                    out.cells.setdefault(mesh.cell_of((prev[0] + x) / 2, (prev[1] + y) / 2), []).append(idx)
+                prev = cur
+    return out
+
+
+def _point_in_ring(x: float, y: float, ring: Sequence[Tuple[float, float]]) -> bool:
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, yi = ring[i]
+        xj, yj = ring[j]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _clip_ring(ring: List[Tuple[float, float]], x0: float, y0: float, x1: float, y1: float) -> List[Tuple[float, float]]:
+    """Sutherland–Hodgman clip of a polygon to an axis-aligned rectangle."""
+    def clip(pts, inside, cross):
+        out = []
+        for i, cur in enumerate(pts):
+            prev = pts[i - 1]
+            if inside(cur):
+                if not inside(prev):
+                    out.append(cross(prev, cur))
+                out.append(cur)
+            elif inside(prev):
+                out.append(cross(prev, cur))
+        return out
+
+    def at_x(x):
+        return lambda a, b: (x, a[1] + (b[1] - a[1]) * (x - a[0]) / ((b[0] - a[0]) or 1e-12))
+
+    def at_y(y):
+        return lambda a, b: (a[0] + (b[0] - a[0]) * (y - a[1]) / ((b[1] - a[1]) or 1e-12), y)
+
+    pts = ring
+    for inside, cross in ((lambda p: p[0] >= x0, at_x(x0)), (lambda p: p[0] <= x1, at_x(x1)),
+                          (lambda p: p[1] >= y0, at_y(y0)), (lambda p: p[1] <= y1, at_y(y1))):
+        if not pts:
+            break
+        pts = clip(pts, inside, cross)
+    return pts
+
+
+def drape_water(mesh: TerrainMesh, polygons: Sequence[Sequence[Sequence[float]]], into: DrapedLayers,
+                lift_m: float = 2.0) -> None:
+    """Lakes and ponds ([[lon, lat], ...] outlines) cut into the mesh cells they cover, each piece
+    draped on its cell, so the 3D view can draw water with the terrain it lies on."""
+    frame = mesh.frame
+    for poly in polygons:
+        ring = [frame.to_xy(c[1], c[0]) for c in poly]
+        if len(ring) >= 2 and ring[0] == ring[-1]:
+            ring = ring[:-1]
+        if len(ring) < 3:
+            continue
+        xs = [p[0] for p in ring]
+        ys = [p[1] for p in ring]
+        r0, c0 = mesh.cell_of(min(xs), min(ys))
+        r1, c1 = mesh.cell_of(max(xs), max(ys))
+        for r in range(max(0, r0), min(mesh.rows - 2, r1) + 1):
+            for c in range(max(0, c0), min(mesh.cols - 2, c1) + 1):
+                cx0, cy0 = mesh.x0 + c * mesh.cell_m, mesh.y0 + r * mesh.cell_m
+                piece = _clip_ring(ring, cx0, cy0, cx0 + mesh.cell_m, cy0 + mesh.cell_m)
+                if len(piece) >= 3:
+                    into.water.setdefault((r, c), []).append(
+                        [(x, y, mesh.height_at(x, y) + lift_m * frame.zx) for x, y in piece])
+
+
+def replay_map_layers(pack, mesh: TerrainMesh, skip_trail_ids: Sequence[str] = ()) -> DrapedLayers:
+    """The region's other trails, paths and tracks, streams, rivers and lake shores on the terrain;
+    lakes and ponds also tint the terrain. `pack` is a DestinationPack (or None)."""
+    if pack is None:
+        return DrapedLayers()
+    frame = mesh.frame
+    x1 = mesh.x0 + (mesh.cols - 1) * mesh.cell_m
+    y1 = mesh.y0 + (mesh.rows - 1) * mesh.cell_m
+    lat_lo, lon_lo = frame.to_latlon(mesh.x0, mesh.y0)
+    lat_hi, lon_hi = frame.to_latlon(x1, y1)
+
+    def near(coords) -> bool:
+        lons = [c[0] for c in coords]
+        lats = [c[1] for c in coords]
+        return not (max(lons) < lon_lo or min(lons) > lon_hi or max(lats) < lat_lo or min(lats) > lat_hi)
+
+    skip = set(skip_trail_ids)
+    lines: List[Tuple[str, Sequence[Sequence[float]]]] = []
+    water: List[Sequence[Sequence[float]]] = []
+    for f in pack.features:
+        if len(f.coords) < 2 or not near(f.coords):
+            continue
+        if f.kind == "water":
+            if f.geom == "area":
+                water.append(f.coords)
+            lines.append(("water_edge", f.coords))
+        elif f.kind in ("river", "stream"):
+            lines.append((f.kind, f.coords))
+        elif f.kind in ("path", "track") and f.geom == "line":
+            lines.append(("path", f.coords))
+    for t in pack.trails:
+        if t.id not in skip and len(t.coords_3d) >= 2 and near(t.coords_3d):
+            lines.append(("trail", [c[:2] for c in t.coords_3d]))
+    order = {k: i for i, k in enumerate(LAYER_STYLES)}
+    lines.sort(key=lambda kl: order.get(kl[0], 0))
+    layers = drape_lines(mesh, lines)
+    drape_water(mesh, water, layers)
+    return layers
