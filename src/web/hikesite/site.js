@@ -141,6 +141,7 @@
     G.along = Float64Array.from(H.route_along);
     G.total = G.along[G.along.length - 1] || 1;
     G.legs = S.trails || [];
+    G.nights = (S.days || []).slice(0, -1).map((d, i) => ({ n: i + 1, along: d.to_m, name: d.overnight || "", day: d.day }));
     const bm = H.basemap || {};
     const conv = c => { const a = new Float64Array(c.length * 2); c.forEach((p, i) => { a[2 * i] = G.toX(p[0]); a[2 * i + 1] = G.toY(p[1]); }); return a; };
     G.contours = (bm.contours || []).map(f => ({ e: f.e, i: f.i, xy: conv(f.c) }));
@@ -541,6 +542,18 @@
       };
       if (!loop) dot(ex, ey, "#b94a3b", "■");
       dot(sx, sy, "#2f8a55", loop ? "⟲" : "▶");
+      for (const night of G.nights) {
+        const pt = pointAt(night.along), x = this.sx(pt.x), y = this.sy(pt.y);
+        ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2);
+        ctx.fillStyle = "#3b4b8f"; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = "#fff"; ctx.stroke();
+        ctx.font = "11px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
+        ctx.fillText("☾", x, y + 0.5);
+        const label = "Night " + night.n + (night.name ? ": " + night.name : "");
+        ctx.font = "600 11.5px sans-serif"; ctx.textAlign = "left";
+        ctx.strokeStyle = "rgba(250,250,244,0.95)"; ctx.lineWidth = 3; ctx.strokeText(label, x + 14, y);
+        ctx.fillStyle = "#26302a"; ctx.fillText(label, x + 14, y);
+        ctx.textBaseline = "alphabetic";
+      }
       if (this.cursor != null) {
         const pt = pointAt(this.cursor);
         const x = this.sx(pt.x), y = this.sy(pt.y);
@@ -690,6 +703,14 @@
       for (let i = 0; i < n; i += step) { const x = this.X(G.along[i]), y = this.Y(G.re[i]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
       ctx.lineTo(this.X(G.total), this.Y(G.re[n - 1]));
       ctx.strokeStyle = "#e0612b"; ctx.lineWidth = 2; ctx.stroke();
+      // nights of a multi-day hike
+      for (const night of G.nights) {
+        const x = this.X(night.along);
+        ctx.strokeStyle = "rgba(59,75,143,0.8)"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(x, this.t); ctx.lineTo(x, h - this.b); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = "#3b4b8f"; ctx.font = "600 11px sans-serif"; ctx.textAlign = "left";
+        ctx.fillText("☾ Night " + night.n, x + 4, h - this.b - 6);
+      }
       // photos
       for (const ph of H.photos) {
         const x = this.X(ph.along_m), y = this.Y(pointAt(ph.along_m).e);
@@ -1305,7 +1326,8 @@
     const shape = { loop: "Loop", out_and_back: "Out & back", one_way: "One way", segment: "One way" }[S.shape] || "";
     const hero = el("section", { class: "hero" });
     if (cover) hero.append(setImg(el("img", { class: "cover", alt: "" }), cover.src));
-    const span = S.start_iso && S.end_iso ? fmt.time(S.start_iso) + " – " + fmt.time(S.end_iso) : "";
+    const multiDay = S.days && S.days.length > 1;
+    const span = !multiDay && S.start_iso && S.end_iso ? fmt.time(S.start_iso) + " – " + fmt.time(S.end_iso) : "";
     hero.append(el("div", { class: "inner" },
       el("div", { class: "eyebrow", text: [S.date_label ? S.date_label.split(" · ")[0] : "", span].filter(Boolean).join(" · ") }),
       el("h1", { text: S.title }),
@@ -1313,6 +1335,7 @@
       el("div", { class: "chips" },
         el("span", { class: "chip", text: fmt.dist(S.distance_m) }),
         el("span", { class: "chip", text: "↗ " + fmt.ele(S.gain_m) }),
+        S.days && S.days.length > 1 ? el("span", { class: "chip", text: "☾ " + S.days.length + " days" }) : null,
         S.elapsed_min ? el("span", { class: "chip", text: "⏱ " + fmt.dur(S.elapsed_min) }) : null,
         shape ? el("span", { class: "chip", text: shape }) : null,
         S.people.length ? el("span", { class: "chip", text: "👥 " + S.people.length }) : null),
@@ -1328,7 +1351,8 @@
       stat("Elevation gain", "↗ " + fmt.ele(S.gain_m), "↘ " + fmt.ele(S.loss_m) + " descent"),
       stat("Highest point", fmt.ele(S.max_ele_m), S.high_place || ""),
       stat("Lowest point", fmt.ele(S.min_ele_m)),
-      S.elapsed_min ? stat("Time on the trail", fmt.dur(S.elapsed_min), span) : null,
+      S.elapsed_min ? stat("Time on the trail", fmt.dur(S.elapsed_min),
+        S.days && S.days.length > 1 ? "over " + S.days.length + " days, " + (S.days.length - 1) + " night" + (S.days.length > 2 ? "s" : "") + " out" : span) : null,
       S.estimated_min ? stat("Typical hiking time", fmt.dur(S.estimated_min), "Pace model estimate") : null,
       stat("Steepest grade", fmt.grade(S.max_grade_pct), "Average " + fmt.grade(S.avg_grade_pct)),
       stat("Photos", String(H.photos.length), S.first_photo_iso ? fmt.time(S.first_photo_iso) + " – " + fmt.time(S.last_photo_iso) : "")));
@@ -1346,6 +1370,23 @@
     const prof = new Profile(routeCard, { height: 150, onHover: a => map.setCursor(a), onPhoto: i => openPhoto(i) });
     const where = [S.start_place && (S.start_place === S.end_place || !S.end_place ? "Start & finish: " + S.start_place : "Start: " + S.start_place + " · Finish: " + (S.end_place || "—"))];
     if (where[0]) routeCard.append(el("p", { class: "muted small", style: { margin: "10px 0 0" }, text: where[0] }));
+
+    // day by day (multi-day hikes)
+    if (S.days && S.days.length > 1) {
+      const list = el("ol", { class: "legs" });
+      S.days.forEach((d, i) => {
+        const when = new Date(d.day + "T12:00");
+        const times = d.start_iso && d.end_iso ? fmt.time(d.start_iso) + " – " + fmt.time(d.end_iso) : "";
+        list.append(el("li", { class: "leg" },
+          el("span", { class: "dot", style: { background: legColor(i) } }),
+          el("div", { class: "name" }, "Day " + (i + 1) + " · " + when.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })),
+          el("div", { class: "meta", text: [fmt.dist(d.distance_m), "↗ " + fmt.ele(d.gain_m) + "  ↘ " + fmt.ele(d.loss_m), times,
+            d.hiking_min ? fmt.dur(d.hiking_min) + " on the trail" : ""].filter(Boolean).join(" · ") }),
+          el("div", { class: "desc", text: [d.from_place, i < S.days.length - 1 ? (d.overnight ? "☾ night at " + d.overnight : "☾ night out") : d.to_place]
+            .filter(Boolean).join(" → ") })));
+      });
+      left.append(el("div", { class: "card" }, el("h2", { text: S.days.length + " days on the trail" }), list));
+    }
 
     // trails taken
     if (S.trails.length) {

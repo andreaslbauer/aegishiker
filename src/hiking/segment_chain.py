@@ -166,16 +166,23 @@ class SegmentChain:
         # Named map paths lying on a listed trail are that trail's own OSM pieces: never offered
         self._shadows = {ti for ti in range(self._n_named, len(self.trails)) if self._is_shadow(ti)}
 
+    SHADOW_M = 12.0  # a map path this close to a listed trail all along is that trail's own path
+
     def _is_shadow(self, ti: int) -> bool:
+        """Is map path ti a piece of a listed trail (named or not: some listed trails are built from
+        unnamed OSM ways)? Sampled at three points, all on the same listed trail."""
         t = self.trails[ti]
-        if "unnamed" in t.tags or len(t.coords_3d) < 2:
+        if len(t.coords_3d) < 2:
             return False
         pts = t.coords_3d
-        for frac in (0.15, 0.5, 0.85):
-            p = pts[int(frac * (len(pts) - 1))]
-            if not any(tj < self._n_named and d <= JUNCTION_M for tj, _vj, d in self._near_vertices(p[0], p[1])):
-                return False
-        return True
+        samples = [pts[int(f * (len(pts) - 1))] for f in (0.15, 0.5, 0.85)]
+        for tj in range(self._n_named):
+            lo_lat, lo_lon, hi_lat, hi_lon = self._bounds[tj]
+            if all(lo_lat - 0.0002 <= p[1] <= hi_lat + 0.0002 and lo_lon - 0.0003 <= p[0] <= hi_lon + 0.0003 for p in samples):
+                line = self.trails[tj].coords_3d
+                if all(self._dist_to_line_m(p[1], p[0], line) <= self.SHADOW_M for p in samples):
+                    return True
+        return False
 
     def offered(self, ti: int) -> bool:
         """Can trail ti be offered as a next segment / named at a junction?"""
