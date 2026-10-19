@@ -338,6 +338,14 @@ class IHikedThisDialog(QDialog):
         self.save_btn.setText("Save Multi-Day Hike && Generate Interactive Map" if multi
                               else "Save Completed Hike(s) && Generate Interactive Maps")
         dated = sum(1 for g in self.day_groups if g.day is not None)
+        # Each day covering only part of the route is expected on a multi-day hike
+        self.days_list.blockSignals(True)
+        for i in range(self.days_list.count()):
+            item = self.days_list.item(i)
+            full = item.data(Qt.ItemDataRole.UserRole) or item.text()
+            item.setData(Qt.ItemDataRole.UserRole, full)
+            item.setText(full.replace(" (part of the route)", "") if multi else full)
+        self.days_list.blockSignals(False)
         if multi:
             self.days_lbl.setText(f"<b>Photos from {len(days)} consecutive days</b> — saved as one multi-day hike, "
                                   "a stage per day. Where did you spend the nights?")

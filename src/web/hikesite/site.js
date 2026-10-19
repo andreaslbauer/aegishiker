@@ -456,6 +456,7 @@
       this._points(ctx);
       this._route(ctx);
       if (this.showPhotos) this._photos(ctx);
+      this._nights(ctx);
       this._scale(ctx);
       ctx.fillStyle = "rgba(255,255,255,0.75)";
       ctx.fillRect(w - 214, h - 17, 214, 17);
@@ -542,6 +543,16 @@
       };
       if (!loop) dot(ex, ey, "#b94a3b", "■");
       dot(sx, sy, "#2f8a55", loop ? "⟲" : "▶");
+
+      if (this.cursor != null) {
+        const pt = pointAt(this.cursor);
+        const x = this.sx(pt.x), y = this.sy(pt.y);
+        ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fillStyle = "rgba(231,76,60,0.22)"; ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, 6.5, 0, Math.PI * 2); ctx.fillStyle = "#e74c3c"; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+      }
+    }
+    _nights(ctx) {
       for (const night of G.nights) {
         const pt = pointAt(night.along), x = this.sx(pt.x), y = this.sy(pt.y);
         ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2);
@@ -553,13 +564,6 @@
         ctx.strokeStyle = "rgba(250,250,244,0.95)"; ctx.lineWidth = 3; ctx.strokeText(label, x + 14, y);
         ctx.fillStyle = "#26302a"; ctx.fillText(label, x + 14, y);
         ctx.textBaseline = "alphabetic";
-      }
-      if (this.cursor != null) {
-        const pt = pointAt(this.cursor);
-        const x = this.sx(pt.x), y = this.sy(pt.y);
-        ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fillStyle = "rgba(231,76,60,0.22)"; ctx.fill();
-        ctx.beginPath(); ctx.arc(x, y, 6.5, 0, Math.PI * 2); ctx.fillStyle = "#e74c3c"; ctx.fill();
-        ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
       }
     }
     _photos(ctx) {
@@ -1355,7 +1359,7 @@
         S.days && S.days.length > 1 ? "over " + S.days.length + " days, " + (S.days.length - 1) + " night" + (S.days.length > 2 ? "s" : "") + " out" : span) : null,
       S.estimated_min ? stat("Typical hiking time", fmt.dur(S.estimated_min), "Pace model estimate") : null,
       stat("Steepest grade", fmt.grade(S.max_grade_pct), "Average " + fmt.grade(S.avg_grade_pct)),
-      stat("Photos", String(H.photos.length), S.first_photo_iso ? fmt.time(S.first_photo_iso) + " – " + fmt.time(S.last_photo_iso) : "")));
+      stat("Photos", String(H.photos.length), S.first_photo_iso && !multiDay ? fmt.time(S.first_photo_iso) + " – " + fmt.time(S.last_photo_iso) : "")));
 
     const left = el("div", { class: "stack" }), right = el("div", { class: "stack" });
     main.append(el("section", { class: "grid cols-2" }, left, right));
