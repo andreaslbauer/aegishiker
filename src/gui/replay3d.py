@@ -11,7 +11,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QLineF, QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -499,22 +499,28 @@ class Replay3DView(QWidget):
                 p.drawPolygon(QPolygonF([QPointF(q[0], q[1]) for q in pts]))
 
     def _draw_layers(self, p: QPainter, project, seg_ids: List[int], depth: float) -> None:
-        """This cell's map lines (other trails, paths, water), fading out with distance."""
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        """This cell's map lines (other trails, paths, water), fading out with distance: one pen and
+        one drawLines call per kind of line."""
         segs, kinds = self.layers.segs, self.layers.kinds
+        batches: Dict[str, List[QLineF]] = {}
         for i in seg_ids:
-            rgb, width, reach = LAYER_PENS[kinds[i]]
-            if depth > reach:
-                continue
-            fade = 1.0 if depth <= FOG_START else max(0.0, 1.0 - (depth - FOG_START) / max(1.0, reach - FOG_START))
-            if fade < 0.08:
+            kind = kinds[i]
+            if depth > LAYER_PENS[kind][2]:
                 continue
             x0, y0, z0, x1, y1, z1 = segs[i]
             s0 = project(x0, y0, z0)
             s1 = project(x1, y1, z1)
             if s0 and s1:
+                batches.setdefault(kind, []).append(QLineF(s0[0], s0[1], s1[0], s1[1]))
+        if not batches:
+            return
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        for kind, lines in batches.items():
+            rgb, width, reach = LAYER_PENS[kind]
+            fade = 1.0 if depth <= FOG_START else max(0.0, 1.0 - (depth - FOG_START) / max(1.0, reach - FOG_START))
+            if fade >= 0.08:
                 p.setPen(QPen(QColor(rgb[0], rgb[1], rgb[2], int(225 * fade)), width))
-                p.drawLine(QPointF(s0[0], s0[1]), QPointF(s1[0], s1[1]))
+                p.drawLines(lines)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
     @staticmethod

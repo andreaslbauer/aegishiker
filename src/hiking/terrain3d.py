@@ -313,18 +313,6 @@ def drape_lines(mesh: TerrainMesh, lines: Sequence[Tuple[str, Sequence[Sequence[
     return out
 
 
-def _point_in_ring(x: float, y: float, ring: Sequence[Tuple[float, float]]) -> bool:
-    inside = False
-    j = len(ring) - 1
-    for i in range(len(ring)):
-        xi, yi = ring[i]
-        xj, yj = ring[j]
-        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi:
-            inside = not inside
-        j = i
-    return inside
-
-
 def _clip_ring(ring: List[Tuple[float, float]], x0: float, y0: float, x1: float, y1: float) -> List[Tuple[float, float]]:
     """Sutherland–Hodgman clip of a polygon to an axis-aligned rectangle."""
     def clip(pts, inside, cross):
