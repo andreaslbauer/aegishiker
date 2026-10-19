@@ -12,6 +12,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .elevation import compute_gain_loss
 from .geo import haversine_m
+from .hike_days import stages_of
 from .hike_info import hike_date_label, hike_people, hike_start, hike_title, real_people
 from .models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession, TrailSegment
 
@@ -279,6 +280,22 @@ def build_hike_summary(
     elapsed_min = (end - start).total_seconds() / 60.0 if start and end and end > start else 0.0
     if session and not elapsed_min:
         elapsed_min = session.actual_duration_min
+    stages = stages_of(session) if session else []
+    if len(stages) > 1:  # several days: time walking, not the nights in between
+        elapsed_min = session.actual_duration_min
+    days = []
+    for st in stages:
+        pts = [c for c, d in zip(route.coords_3d, _cumulative(route.coords_3d)) if st.from_m - 1.0 <= d <= st.to_m + 1.0]
+        gain, loss = compute_gain_loss([c[2] if len(c) > 2 else 0.0 for c in pts]) if len(pts) > 1 else (0.0, 0.0)
+        days.append({
+            "day": st.day.isoformat(), "from_m": round(st.from_m, 1), "to_m": round(st.to_m, 1),
+            "distance_m": round(st.to_m - st.from_m, 1), "gain_m": gain, "loss_m": loss,
+            "start_iso": st.start.isoformat(timespec="minutes") if st.start else "",
+            "end_iso": st.end.isoformat(timespec="minutes") if st.end else "",
+            "hiking_min": round(st.hiking_min, 1), "overnight": st.overnight,
+            "from_place": place_near(places, pts[0][0], pts[0][1], 300.0) or "" if pts else "",
+            "to_place": st.overnight or (place_near(places, pts[-1][0], pts[-1][1], 300.0) or "" if pts else ""),
+        })
 
     details = hike_details(session)
     weather = {
@@ -300,6 +317,7 @@ def build_hike_summary(
         "first_photo_iso": first_photo.isoformat(timespec="minutes") if first_photo else "",
         "last_photo_iso": last_photo.isoformat(timespec="minutes") if last_photo else "",
         "elapsed_min": round(elapsed_min, 1),
+        "days": days if len(days) > 1 else [],
         "estimated_min": round(float(route.estimated_duration_min or 0.0), 1),
         "area": pack.name if pack else route.pack_id,
         "region": pack.region if pack else "",

@@ -41,6 +41,14 @@ def hike_date_label(session: HikeSession) -> str:
     start = hike_start(session)
     if start is None:
         return (session.started_at or "")[:10]
+    try:
+        last = datetime.fromisoformat(session.ended_at) if session.ended_at else None
+    except ValueError:
+        last = None
+    if last and last.date() > start.date():  # a multi-day hike
+        days = (last.date() - start.date()).days + 1
+        first = f"{start:%a %b %d}" + (f", {start:%Y}" if start.year != last.year else "")
+        return f"{first} – {last:%a %b %d, %Y} · {days} days"
     label = f"{start:%a %b %d, %Y}"
     if start.hour or start.minute:
         label += " · " + f"{start:%I:%M %p}".lstrip("0")

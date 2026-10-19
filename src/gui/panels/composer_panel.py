@@ -213,13 +213,9 @@ class ComposerPanel(QWidget):
         self.map_canvas.set_hike_legs(self.segment_builder.hike_legs() if route is not None else [])
         if route is not None or had_draft:
             self.refresh_from_active_route()
-        if route is not None:
-            # Fit the hike when it starts or runs off-screen; otherwise keep the view still so
-            # map clicks don't make the map jump under the cursor
-            rect = self.map_canvas.rect().adjusted(20, 20, -20, -20)
-            offscreen = any(not rect.contains(self.map_canvas.project(c[0], c[1]).toPoint()) for c in route.coordinates[::5])
-            if not had_draft or offscreen:
-                self.map_canvas.zoom_to_coordinates(route.coordinates)
+        if route is not None and not had_draft:
+            # Fit the hike when it starts; adding segments keeps the user's zoom and position
+            self.map_canvas.zoom_to_coordinates(route.coordinates)
 
     def start_hike_on_trail(self, trail_id: str) -> bool:
         """Preselect `trail_id` as the starting trail and start the hike there."""

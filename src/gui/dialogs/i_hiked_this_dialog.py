@@ -12,6 +12,8 @@ from typing import List, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDialog,
     QDoubleSpinBox,
     QFileDialog,
@@ -37,8 +39,17 @@ from src.gui.dialogs.hike_details_dialog import HikeDetailsForm
 from src.gui.dialogs.photo_review_dialog import PhotoReviewDialog
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import ComposedRoute, HikeSession, TrailPhotoPin
-from src.hiking.hike_days import PARTIAL_COVERAGE, HikeDay, build_day_session, group_pins_by_day
-from src.hiking.hike_report import set_hike_details
+from src.hiking.hike_days import (
+    PARTIAL_COVERAGE,
+    HikeDay,
+    build_day_session,
+    build_multi_day_session,
+    group_pins_by_day,
+    looks_multi_day,
+    overnight_candidates,
+    plan_stages,
+)
+from src.hiking.hike_report import named_places, set_hike_details
 from src.hiking.photo_matcher import photo_keys
 from src.hiking.units import format_distance
 from src.gui.busy import busy, run_in_background
@@ -127,7 +138,22 @@ class IHikedThisDialog(QDialog):
         layout.addWidget(self.days_lbl)
         self.days_list = QListWidget()
         self.days_list.setMaximumHeight(110)
+        self.days_list.itemChanged.connect(lambda _item: self._update_multi_day())
         layout.addWidget(self.days_list)
+
+        # Several consecutive days on the trail: one multi-day hike with nights at huts / tent sites
+        self.multi_chk = QCheckBox("These days are one multi-day hike (nights at huts, shelters or tent sites)")
+        self.multi_chk.setToolTip("Save the checked consecutive days as a single hike with a stage per day")
+        self.multi_chk.toggled.connect(lambda _on: self._update_multi_day(keep_choice=True))
+        layout.addWidget(self.multi_chk)
+        self.nights_box = QWidget()
+        self.nights_form = QFormLayout(self.nights_box)
+        self.nights_form.setContentsMargins(24, 0, 0, 0)
+        layout.addWidget(self.nights_box)
+        self.night_combos: List[QComboBox] = []
+        self._places = None
+        self.multi_chk.hide()
+        self.nights_box.hide()
 
         # Bottom action buttons
         btn_row = QHBoxLayout()
@@ -278,6 +304,69 @@ class IHikedThisDialog(QDialog):
         else:
             self.days_lbl.setText("No dated photos matched — the hike is saved on the date entered above.")
         self.days_list.setVisible(bool(self.day_groups))
+        self._update_multi_day(default=looks_multi_day(self.day_groups))
+
+    # ── multi-day hikes ──────────────────────────────────────────────────
+
+    def _region_places(self):
+        if self._places is None:
+            self._places = named_places(self.app_state.db.get_destination_pack(self.route.destination_id))
+        return self._places
+
+    def _consecutive_days(self) -> List[HikeDay]:
+        """The checked dated days, if there are several and they follow each other."""
+        dated = sorted((g for g in self._selected_groups() if g.day is not None), key=lambda g: g.day)
+        if len(dated) < 2 or any((b.day - a.day).days != 1 for a, b in zip(dated, dated[1:])):
+            return []
+        return dated
+
+    def _is_multi_day(self) -> bool:
+        return not self.multi_chk.isHidden() and self.multi_chk.isChecked() and bool(self._consecutive_days())
+
+    def _update_multi_day(self, default: Optional[bool] = None, keep_choice: bool = False) -> None:
+        days = self._consecutive_days()
+        self.multi_chk.setVisible(bool(days))
+        if default is not None:
+            self.multi_chk.blockSignals(True)
+            self.multi_chk.setChecked(default)
+            self.multi_chk.blockSignals(False)
+        while self.nights_form.rowCount():
+            self.nights_form.removeRow(0)
+        self.night_combos = []
+        multi = bool(days) and self.multi_chk.isChecked()
+        self.nights_box.setVisible(multi)
+        self.save_btn.setText("Save Multi-Day Hike && Generate Interactive Map" if multi
+                              else "Save Completed Hike(s) && Generate Interactive Maps")
+        dated = sum(1 for g in self.day_groups if g.day is not None)
+        if multi:
+            self.days_lbl.setText(f"<b>Photos from {len(days)} consecutive days</b> — saved as one multi-day hike, "
+                                  "a stage per day. Where did you spend the nights?")
+        elif dated > 1:
+            self.days_lbl.setText(f"<b>Photos from {dated} different days</b> — each checked day is saved as its own hike:")
+        if not multi:
+            return
+        unit = self._unit()
+        stages = plan_stages(self.route, days, self._region_places())
+        for n, st in enumerate(stages[:-1], 1):
+            combo = QComboBox()
+            combo.setEditable(True)
+            combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+            combo.lineEdit().setPlaceholderText("Hut, shelter or campsite (type any name)")
+            for name, d in overnight_candidates(self.route, st.to_m, self._region_places()):
+                combo.addItem(f"{name}  ({format_distance(d, unit)} from the trail)", name)
+            combo.addItem("Not recorded", "")
+            idx = combo.findData(st.overnight)
+            combo.setCurrentIndex(idx if idx >= 0 else combo.count() - 1)
+            self.nights_form.addRow(f"Night {n} · {st.day:%a %b %d}:", combo)
+            self.night_combos.append(combo)
+
+    def _overnights(self) -> List[str]:
+        out = []
+        for combo in self.night_combos:
+            text = combo.currentText().strip()
+            idx = combo.findText(text)
+            out.append(str(combo.itemData(idx)) if idx >= 0 else text)
+        return out
 
     def _selected_groups(self) -> List[HikeDay]:
         return [
@@ -295,6 +384,9 @@ class IHikedThisDialog(QDialog):
         except ValueError:
             fallback = date.today()
         unit = self._unit()
+        if self._is_multi_day():
+            self._save_multi_day()
+            return
         with busy(self, "Saving hike(s) and building replay maps…", title="Saving Hike", steps=len(groups)) as b:
             self.route.name = self.name_edit.text().strip() or self.route.name
             self.app_state.db.upsert_route(self.route)
@@ -339,5 +431,47 @@ class IHikedThisDialog(QDialog):
             self.app_state.status_message.emit(
                 f"Saved {len(self.created_sessions)} hike{'s' if len(self.created_sessions) != 1 else ''} of "
                 f"'{self.route.name}' with {n_photos} matched photos!"
+            )
+        self.accept()
+
+    def _save_multi_day(self) -> None:
+        """Save the checked consecutive days as one hike with a stage per day and its overnights."""
+        days = self._consecutive_days()
+        stages = plan_stages(self.route, days, self._region_places())
+        for st, name in zip(stages, self._overnights()):
+            st.overnight = name
+        with busy(self, "Saving the multi-day hike and building its replay map…", title="Saving Hike"):
+            self.route.name = self.name_edit.text().strip() or self.route.name
+            self.app_state.db.upsert_route(self.route)
+            dest = self.app_state.db.get_destination(self.route.destination_id)
+            first, last = days[0].day, days[-1].day
+            span = f"{first:%b %d}–{last:%d, %Y}" if first.month == last.month else f"{first:%b %d}–{last:%b %d, %Y}"
+            session = build_multi_day_session(self.route, days, stages, title=f"{self.route.name} — {span}",
+                                              notes=self.notes_edit.toPlainText().strip())
+            set_hike_details(session, self.details_form.details())
+            pins = [p for g in days for p in g.pins]
+            session.stats.photo_count = len(pins)
+            for pin in pins:
+                pin.session_id = session.id
+                pin.route_id = self.route.id
+            session.interactive_map_data = build_interactive_map_data(
+                route=self.route, session=session, photos=pins,
+                destination_name=dest.name if dest else self.route.destination_id,
+            )
+            self.app_state.db.save_session(session)
+            for pin in pins:
+                self.app_state.db.save_photo_pin(pin)
+            left_out = [p for p in self.matched_pins if p.id in self.left_out]
+            if left_out:
+                self.app_state.db.remove_photos_from_session(session.id, left_out)
+            export_interactive_hike_html(session.interactive_map_data, paths.get_hike_maps_dir() / f"{session.id}.html")
+            self.created_sessions = [session]
+            self.created_session = session
+            self.app_state.set_active_route(self.route.id)
+            self.app_state.set_active_session(session.id)
+            nights = [st.overnight for st in stages[:-1] if st.overnight]
+            self.app_state.status_message.emit(
+                f"Saved a {len(days)}-day hike of '{self.route.name}' with {len(pins)} photos"
+                + (f" (nights at {', '.join(nights)})" if nights else "") + "."
             )
         self.accept()
