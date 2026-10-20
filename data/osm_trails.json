@@ -369,7 +369,7 @@
       {
         "id": "wmnf_osm_franconia_ridge_full",
         "osm_name": "Franconia Ridge Trail",
-        "name": "Franconia Ridge Trail (Mt. Flume \u2013 Mt. Lafayette)",
+        "name": "Franconia Ridge Trail (Mt. Flume – Mt. Lafayette)",
         "code": "WMNF-FRF",
         "tags": [
           "appalachian_trail",
@@ -395,7 +395,7 @@
       "within": [
         44.095,
         -71.71,
-        44.385,
+        44.545,
         -70.95
       ],
       "exclude_regex": "^F ?R ?\\d|\\bRoad\\b|\\bLane\\b|\\bStreet\\b|Snowmobile|\\bITS \\d|Ski Trail|\\bX[Cc]\\b|Singletrack|Corridor|^(Howie Roll|Carry On|Hairball|Laughing Lion)( Trail)?$|Rail Trail|Not Maintained|Abandoned|Decomissioned|Decommissioned|CLOSED|Unmaintained|Bushwhack|sections missing|^eroded\\)$|^(Spur|Spur Path|Summit Spur|Old Path|New Path|Old Trail.*)$|Scenic vista spur|^Access from|Campground Ford|Pond Loops|Loop to Pond|Main Route to Pond|Hubs Loop|logging road|Pump Track|Summit Stairs|Viewing Platform|Bridge Removed|^(Nature Trail|Outlook|Short Trail|Upper Falls)$",
@@ -413,7 +413,7 @@
           "note": "Very steep, ledgy climbs over the Wildcat peaks from Pinkham Notch."
         },
         "Carter-Moriah Trail": {
-          "note": "Appalachian Trail along the Carter\u2013Moriah Range; exposed ledges on Mount Moriah."
+          "note": "Appalachian Trail along the Carter–Moriah Range; exposed ledges on Mount Moriah."
         }
       }
     }
@@ -476,7 +476,7 @@
             -71.9028
           ]
         ],
-        "name": "Midstate Trail (Ashburnham\u2013Westminster)",
+        "name": "Midstate Trail (Ashburnham–Westminster)",
         "code": "FSF-MST1",
         "tags": [
           "fitchburg",
@@ -758,6 +758,73 @@
       "Acton Minutemen Line of March, April 19 1775": {
         "note": "Route the Acton Minutemen took to the North Bridge in Concord on April 19, 1775."
       }
+    }
+  },
+  "pioneer_valley": {
+    "all_named": true,
+    "exclude_regex": "\\bRoad\\b|\\bRd\\b|\\bStreet\\b|\\bAvenue\\b|\\bLane\\b|\\bDrive\\b|\\bTurnpike\\b|\\bDriveway\\b|^(no name|No Name|need name)$|^((?i:light |dark )?(?i:blue|red|yellow|green|white|orange|purple|pink)( (?i:and|&) (?i:blue|red|yellow|green|white|orange))?( (?i:dot|blaze))?( (?i:trail|loop))?)$|^(Trail|Connector|Orange Connector|Bypass|Shortcut|Farm Path|Old [Cc]art [Pp]ath)$|^(New )?(Primary|Secondary) [Tt]rail\\b|AT&T|Right [Oo]f Way|\\bROW\\b|Utility Line|Easement|easement link|Snowmobile|snowmobile|Disc Golf|Fitness Trail|Flood Prone|Beach Walkway|Ledge Lot|[Pp]roposed|under construction|[Uu]nmaintained|[Uu]nmarked|[Ss]ocial trail|Likely Trail|Probable Trail|Closed|^\\((?i:yellow|orange|blue|red|white|green)\\)$|^(?i:orange|teal rectangle blaze)\\)$|^(?i:blue|green|orange|red|white|yellow) blazes$|^RFT Trail \\(white$|^(Access|Fire|Old) road$|^Old trail$|XC Course|^Hall$|^Amherst Conservation$|Donkey Punch",
+    "aliases": {
+      "RFT (Orange)": "RFT (orange)",
+      "Robert Frost": "Robert Frost Trail (orange)",
+      "broad brook loop": "Broad brook loop",
+      "BRoad brook loop": "Broad brook loop",
+      "Ken Cuddeback trail": "Ken Cuddeback Trail",
+      "Mount Pollux trail": "Mount Pollux Trail",
+      "Well-Away Farm Trail": "Well Away Farm Trail",
+      "Sweet Alice": "Sweet Alice Trail",
+      "Trolley Bed": "Trolley Bed Trail",
+      "Old Telephone Line": "Old Telephone Line Trail"
+    },
+    "code_prefix": "PV",
+    "tags": [
+      "pioneer_valley",
+      "connecticut_river"
+    ],
+    "defaults": {
+      "min_length_m": 200,
+      "alpine_above_m": 5000
+    },
+    "overrides": {
+      "M&M Trail (white)": {
+        "note": "New England National Scenic Trail (white blazes): rugged traprock ridge walking with many short, steep climbs."
+      },
+      "NET": {
+        "note": "New England National Scenic Trail (white blazes): rugged traprock ridge walking with many short, steep climbs."
+      },
+      "M&M": {
+        "note": "New England National Scenic Trail (white blazes): rugged traprock ridge walking with many short, steep climbs."
+      },
+      "RFT (orange)": {
+        "note": "Robert Frost Trail (orange blazes), a long-distance footpath from the Holyoke Range to Mt. Toby through Amherst conservation land."
+      },
+      "Robert Frost Trail (orange)": {
+        "note": "Robert Frost Trail (orange blazes), a long-distance footpath from the Holyoke Range to Mt. Toby through Amherst conservation land."
+      },
+      "Robert Frost Trail (Orange)": {
+        "note": "Robert Frost Trail (orange blazes), a long-distance footpath from the Holyoke Range to Mt. Toby through Amherst conservation land."
+      },
+      "Robert Frost Trail": {
+        "note": "Robert Frost Trail (orange blazes), a long-distance footpath from the Holyoke Range to Mt. Toby through Amherst conservation land."
+      }
+    },
+    "rename": {
+      "M&M Trail (white)": "Metacomet-Monadnock Trail (Mt. Tom Range)",
+      "NET": "Metacomet-Monadnock Trail (Holyoke Range)",
+      "M&M": "Metacomet-Monadnock Trail (Long Mountain)",
+      "M&M Trail (Old Route)": "M&M Trail Old Route (south)",
+      "M&M Trail (old route)": "M&M Trail Old Route (north)",
+      "old NET Trail": "Old New England Trail",
+      "RFT (orange)": "Robert Frost Trail (Holyoke Range west)",
+      "RFT (Yellow": "Robert Frost Trail (Mt. Holyoke, yellow)",
+      "Robert Frost Trail (orange)": "Robert Frost Trail (Holyoke Range east)",
+      "Robert Frost Trail (Orange)": "Robert Frost Trail (East Amherst)",
+      "Robert Frost Trail": "Robert Frost Trail (North Amherst)",
+      "Border Trail (green": "Border Trail (green)",
+      "Broad brook loop": "Broad Brook Loop",
+      "Whsipering Winds Loop": "Whispering Winds Loop",
+      "Crannberry Pond Trail": "Cranberry Pond Trail",
+      "Midde Trail": "Middle Trail",
+      "Sasafras Trail": "Sassafras Trail"
     }
   }
 }

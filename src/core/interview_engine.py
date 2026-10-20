@@ -36,6 +36,7 @@ Valid pack_id values:
 - rocky_mountain_bear_lake (Rocky Mountain National Park, CO)
 - zion_canyon (Zion Canyon, UT)
 - mount_rainier_paradise (Mount Rainier Paradise, WA)
+- pioneer_valley (Pioneer Valley, MA: Mt. Tom, Holyoke Range, Mt. Sugarloaf, Mt. Toby)
 
 Convert distances to kilometers (`max_distance_km`, 1 mile = 1.61 km) and elevation gain to meters
 (`max_elevation_gain_m`, 1000 ft = 305 m). Only populate fields the user mentioned or clearly implied.
@@ -64,6 +65,8 @@ def _heuristic_extract(user_text: str, brief: HikeBrief, packs: List[Destination
         "rocky_mountain_bear_lake": ("rocky mountain", "bear lake", "emerald lake", "sky pond", "flattop", "colorado"),
         "zion_canyon": ("zion", "scout lookout", "angels landing", "watchman", "utah"),
         "mount_rainier_paradise": ("rainier", "paradise", "skyline", "nisqually", "washington state"),
+        "pioneer_valley": ("pioneer valley", "holyoke", "norwottuck", "mt tom", "mount tom", "sugarloaf", "mount toby",
+                           "mt toby", "northampton", "amherst"),
     }
     for pid, kws in pack_keywords.items():
         if any(kw in text_l for kw in kws):

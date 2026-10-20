@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic builder for AegisHiker's 10 bundled regional destination packs.
+"""Deterministic builder for AegisHiker's 11 bundled regional destination packs.
 
 Generates:
   - data/destinations_catalog.json
@@ -13,6 +13,7 @@ Generates:
   - data/packs/mount_monadnock.json
   - data/packs/fitchburg_state_forest.json
   - data/packs/acton_boxborough_harvard.json
+  - data/packs/pioneer_valley.json
 
 Usage: build_starter_packs.py [pack_id ...]   (no ids = rebuild all)
 """
@@ -352,14 +353,15 @@ def build_white_mountains_nh() -> DestinationPack:
         POI(id="poi_wm_greenleaf", pack_id=pid, name="AMC Greenleaf Hut", kind="hut", lat=44.1602, lon=-71.6538, ele_m=1280.0, note="Potable water, restrooms, and weather postings"),
         POI(id="poi_wm_pinkham", pack_id=pid, name="AMC Pinkham Notch Visitor Center", kind="trailhead", lat=44.2573, lon=-71.2528, ele_m=619.0, note="Base camp for Mt. Washington & Tuckerman Ravine"),
         POI(id="poi_wm_washington", pack_id=pid, name="Mount Washington Summit (6,288 ft)", kind="peak", lat=44.2705, lon=-71.3032, ele_m=1917.0, note="Highest peak in the Northeast; Mount Washington Observatory"),
+        POI(id="poi_wm_cabot", pack_id=pid, name="Mount Cabot Summit", kind="peak", lat=44.5056, lon=-71.4167, ele_m=1271.0, note="Northernmost 4,000-footer (4,170 ft) in the Pliny Range; Cabot Cabin just below the summit"),
         POI(id="poi_wm_lakes_clouds", pack_id=pid, name="AMC Lakes of the Clouds Hut", kind="hut", lat=44.2588, lon=-71.3188, ele_m=1540.0, note="Highest AMC hut on the shoulder of Mt. Monroe & Mt. Washington"),
     ]
 
     # South to the Flume Slide Trail (Franconia Notch), north to Randolph for the Howker Ridge
     # Trail and the Northern Presidentials, east to the Maine border (Wildcats, Carters, Baldfaces,
-    # Evans Notch)
+    # Evans Notch), north to the Pliny / Kilkenny Range for Mount Cabot, The Horn and Unknown Pond
     # (-70.95: just past the state line so Evans Notch trails that cross it, e.g. Bickford Brook, stay whole)
-    min_lat, max_lat, min_lon, max_lon = 44.095, 44.385, -71.710, -70.950
+    min_lat, max_lat, min_lon, max_lon = 44.095, 44.545, -71.710, -70.950
     dem, contours = _generate_dem_and_contours(
         min_lat,
         max_lat,
@@ -367,15 +369,15 @@ def build_white_mountains_nh() -> DestinationPack:
         max_lon,
         520.0,
         1917.0,
-        [(-71.3032, 44.2705, 1917.0), (-71.6409, 44.1607, 1600.0), (-71.6418, 44.1488, 1551.0)],
+        [(-71.3032, 44.2705, 1917.0), (-71.6409, 44.1607, 1600.0), (-71.6418, 44.1488, 1551.0), (-71.4167, 44.5056, 1271.0)],
     )
     return DestinationPack(
         id=pid,
         name="New Hampshire White Mountains",
         state_or_region="New Hampshire (White Mountain National Forest)",
         agency="USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
-        summary="Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border.",
-        pack_version="1.4",  # 1.1: Flume Slide / Howker Ridge; 1.2: east to the Maine border; 1.3: + connector trails, Lost Pond; 1.4: every named trail in the region (Presidentials)
+        summary="Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border, and north to Mount Cabot.",
+        pack_version="1.5",  # 1.1: Flume Slide / Howker Ridge; 1.2: east to the Maine border; 1.3: + connector trails, Lost Pond; 1.4: every named trail in the region (Presidentials); 1.5: north to Mount Cabot
         min_lat=min_lat,
         max_lat=max_lat,
         min_lon=min_lon,
@@ -899,6 +901,47 @@ def build_acton_boxborough_harvard() -> DestinationPack:
     )
 
 
+def build_pioneer_valley() -> DestinationPack:
+    """Pioneer Valley (MA): the Connecticut River valley from Mt. Tom and the Holyoke Range north past
+    Northampton and Amherst to Mt. Sugarloaf and Mt. Toby, crossed by the New England Trail
+    (Metacomet-Monadnock) and the Robert Frost Trail. Trails come from OpenStreetMap (data/osm_trails.json)."""
+    pid = "pioneer_valley"
+    pois = [
+        # Mt. Tom Range
+        POI(id="poi_pv_mt_tom", pack_id=pid, name="Mount Tom", kind="peak", lat=42.2465, lon=-72.6337, ele_m=366.0, note="Highest point of the Mt. Tom Range (1,202 ft); basalt cliffs above the Connecticut River"),
+        POI(id="poi_pv_goat_peak", pack_id=pid, name="Goat Peak Lookout", kind="viewpoint", lat=42.2620, lon=-72.6290, ele_m=250.0, note="Observation tower on the Metacomet-Monadnock Trail; hawk-watching in autumn"),
+        POI(id="poi_pv_bray_lake", pack_id=pid, name="Lake Bray", kind="trailhead", lat=42.2630, lon=-72.6200, ele_m=140.0, note="Mt. Tom State Reservation, Route 5 entrance: parking, fishing pond and trail access"),
+        # Holyoke Range
+        POI(id="poi_pv_mt_holyoke", pack_id=pid, name="Mount Holyoke", kind="peak", lat=42.3005, lon=-72.5880, ele_m=285.0, note="Skinner State Park; the historic Summit House looks over the Oxbow (935 ft)"),
+        POI(id="poi_pv_summit_house", pack_id=pid, name="Summit House", kind="viewpoint", lat=42.3002, lon=-72.5878, ele_m=285.0, note="1851 summit hotel, now a museum (seasonal); summit road open in season"),
+        POI(id="poi_pv_norwottuck", pack_id=pid, name="Mount Norwottuck", kind="peak", lat=42.3025, lon=-72.5258, ele_m=337.0, note="Highest peak of the Holyoke Range (1,106 ft)"),
+        POI(id="poi_pv_horse_caves", pack_id=pid, name="Horse Caves", kind="viewpoint", lat=42.3010, lon=-72.5235, ele_m=290.0, note="Overhanging ledges below Norwottuck, said to have hidden Shays' Rebellion horses"),
+        POI(id="poi_pv_bare_mtn", pack_id=pid, name="Bare Mountain", kind="peak", lat=42.3040, lon=-72.5380, ele_m=310.0, note="Short, steep climb from the Notch with wide views north over Amherst"),
+        POI(id="poi_pv_notch", pack_id=pid, name="Notch Visitor Center", kind="ranger", lat=42.3035, lon=-72.5290, ele_m=180.0, note="Holyoke Range State Park, Route 116: parking, restrooms and trail maps"),
+        # Northampton & Easthampton
+        POI(id="poi_pv_arcadia", pack_id=pid, name="Arcadia Wildlife Sanctuary", kind="trailhead", lat=42.2960, lon=-72.6560, ele_m=40.0, note="Mass Audubon sanctuary on the Oxbow marshes (fee for non-members)"),
+        POI(id="poi_pv_look_park", pack_id=pid, name="Look Park", kind="trailhead", lat=42.3360, lon=-72.6600, ele_m=60.0, note="Northampton city park on the Mill River"),
+        # Sugarloaf & Toby
+        POI(id="poi_pv_sugarloaf", pack_id=pid, name="Mount Sugarloaf", kind="peak", lat=42.4707, lon=-72.5947, ele_m=199.0, note="Mount Sugarloaf State Reservation: sandstone cliffs and an observation tower over the river (652 ft)"),
+        POI(id="poi_pv_mt_toby", pack_id=pid, name="Mount Toby", kind="peak", lat=42.4920, lon=-72.5305, ele_m=389.0, note="High point of the area (1,269 ft); fire tower on the summit, Robert Frost Trail"),
+        POI(id="poi_pv_roaring_falls", pack_id=pid, name="Roaring Falls", kind="waterfall", lat=42.4985, lon=-72.5160, ele_m=170.0, note="Cascades on Roaring Brook, Mt. Toby State Forest"),
+    ]
+    return DestinationPack(
+        id=pid,
+        name="Pioneer Valley",
+        state_or_region="Massachusetts (Connecticut River valley — Mt. Tom, Holyoke Range, Northampton, Amherst, Mt. Sugarloaf & Mt. Toby)",
+        agency="MA DCR, Mass Audubon, Kestrel Land Trust, USGS 3DEP & OpenStreetMap Contributors",
+        summary="Traprock ridges above the Connecticut River: the cliffs of Mt. Tom, the Holyoke Range traverse from "
+                "Mt. Holyoke's Summit House to Norwottuck and the Horse Caves, and north past Northampton and "
+                "Amherst to Mt. Sugarloaf and the Mt. Toby fire tower, linked by the New England Trail and the "
+                "Robert Frost Trail.",
+        min_lat=42.205, max_lat=42.520, min_lon=-72.720, max_lon=-72.440,
+        base_ele_m=30.0, max_ele_m=390.0,
+        emergency_contact="911",
+        trails=[], pois=pois,
+    )
+
+
 def build_all(only: List[str] | None = None) -> None:
     packs = [
         build_white_mountains_nh(),
@@ -911,6 +954,7 @@ def build_all(only: List[str] | None = None) -> None:
         build_mount_monadnock(),
         build_fitchburg_state_forest(),
         build_acton_boxborough_harvard(),
+        build_pioneer_valley(),
     ]
     if only:
         packs = [p for p in packs if p.id in only]

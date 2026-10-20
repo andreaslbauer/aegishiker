@@ -8,17 +8,17 @@
       "state_or_region": "New Hampshire (White Mountain National Forest)",
       "agency": "USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
       "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
-      "summary": "Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border.",
+      "summary": "Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border, and north to Mount Cabot.",
       "bbox": [
         -71.71,
         44.095,
         -70.95,
-        44.385
+        44.545
       ],
       "base_ele_m": 520.0,
       "max_ele_m": 1917.0,
-      "trail_count": 387,
-      "poi_count": 9,
+      "trail_count": 483,
+      "poi_count": 10,
       "bundled_file": "packs/white_mountains_nh.json"
     },
     {
@@ -191,6 +191,25 @@
       "trail_count": 171,
       "poi_count": 23,
       "bundled_file": "packs/acton_boxborough_harvard.json"
+    },
+    {
+      "id": "pioneer_valley",
+      "name": "Pioneer Valley",
+      "state_or_region": "Massachusetts (Connecticut River valley \u2014 Mt. Tom, Holyoke Range, Northampton, Amherst, Mt. Sugarloaf & Mt. Toby)",
+      "agency": "MA DCR, Mass Audubon, Kestrel Land Trust, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Traprock ridges above the Connecticut River: the cliffs of Mt. Tom, the Holyoke Range traverse from Mt. Holyoke's Summit House to Norwottuck and the Horse Caves, and north past Northampton and Amherst to Mt. Sugarloaf and the Mt. Toby fire tower, linked by the New England Trail and the Robert Frost Trail.",
+      "bbox": [
+        -72.72,
+        42.205,
+        -72.44,
+        42.52
+      ],
+      "base_ele_m": 30.0,
+      "max_ele_m": 390.0,
+      "trail_count": 275,
+      "poi_count": 14,
+      "bundled_file": "packs/pioneer_valley.json"
     }
   ]
 }

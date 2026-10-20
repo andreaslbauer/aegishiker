@@ -15,6 +15,7 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
         "mount_rainier_paradise",
         "mount_monadnock",
         "acton_boxborough_harvard",
+        "pioneer_valley",
     }
     assert expected.issubset(pack_ids)
 
@@ -35,8 +36,14 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
     assert sum(1 for n in fsf_names if n.startswith("Midstate Trail (")) == 5
     assert fsf.min_lat <= 42.395 and fsf.min_lon <= -71.965, "covers all of Princeton"
 
+    pv = seeded_db.get_destination("pioneer_valley")
+    assert pv is not None and len(pv.trails) >= 50
+    assert any(t.name.startswith("Metacomet-Monadnock") or "New England" in t.name for t in pv.trails)
+    assert {"Mount Tom", "Mount Holyoke", "Mount Toby"} <= {p.name for p in pv.pois}
+
     nh = seeded_db.get_destination("white_mountains_nh")
     assert nh is not None
+    assert nh.max_lat >= 44.51, "reaches north to Mount Cabot"
     assert "White Mountains" in nh.name
     assert len(nh.trails) >= 6
     assert len(nh.pois) >= 5
