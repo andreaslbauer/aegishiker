@@ -1,0 +1,185 @@
+{
+  "id": "joshua_tree",
+  "name": "Joshua Tree National Park",
+  "state_or_region": "California (Joshua Tree National Park \u2014 Mojave & Colorado deserts)",
+  "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+  "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+  "summary": "The whole park where the Mojave meets the Colorado Desert: Joshua tree forests, granite boulder piles, fan-palm oases, the Little San Bernardino Mountains and the wide Pinto Basin. No water in the park's backcountry \u2014 carry at least a gallon per person per day.",
+  "min_lat": 33.66,
+  "max_lat": 34.14,
+  "min_lon": -116.48,
+  "max_lon": -115.24,
+  "base_ele_m": 300.0,
+  "max_ele_m": 1773.0,
+  "emergency_contact": "Joshua Tree NP emergency: 911 / (909) 383-5651",
+  "pack_version": "1.0",
+  "installed_at": "2026-10-19T21:23:00",
+  "trails": [],
+  "pois": [
+    {
+      "id": "poi_jt_ryan_mtn",
+      "pack_id": "joshua_tree",
+      "name": "Ryan Mountain",
+      "kind": "peak",
+      "lat": 33.989,
+      "lon": -116.137,
+      "ele_m": 1653.0,
+      "note": "Steep 1.5-mile climb with views over the park's valleys"
+    },
+    {
+      "id": "poi_jt_quail_mtn",
+      "pack_id": "joshua_tree",
+      "name": "Quail Mountain",
+      "kind": "peak",
+      "lat": 34.023,
+      "lon": -116.256,
+      "ele_m": 1773.0,
+      "note": "Highest point in the park; cross-country route"
+    },
+    {
+      "id": "poi_jt_keys_view",
+      "pack_id": "joshua_tree",
+      "name": "Keys View",
+      "kind": "viewpoint",
+      "lat": 33.927,
+      "lon": -116.187,
+      "ele_m": 1580.0,
+      "note": "View over the Coachella Valley and San Andreas Fault"
+    },
+    {
+      "id": "poi_jt_hidden_valley",
+      "pack_id": "joshua_tree",
+      "name": "Hidden Valley",
+      "kind": "trailhead",
+      "lat": 34.012,
+      "lon": -116.168,
+      "ele_m": 1260.0,
+      "note": "Loop through a boulder-ringed valley"
+    },
+    {
+      "id": "poi_jt_barker_dam",
+      "pack_id": "joshua_tree",
+      "name": "Barker Dam",
+      "kind": "water",
+      "lat": 34.024,
+      "lon": -116.143,
+      "ele_m": 1290.0,
+      "note": ""
+    },
+    {
+      "id": "poi_jt_skull_rock",
+      "pack_id": "joshua_tree",
+      "name": "Skull Rock",
+      "kind": "viewpoint",
+      "lat": 33.998,
+      "lon": -116.061,
+      "ele_m": 1310.0,
+      "note": ""
+    },
+    {
+      "id": "poi_jt_arch_rock",
+      "pack_id": "joshua_tree",
+      "name": "Arch Rock",
+      "kind": "viewpoint",
+      "lat": 33.984,
+      "lon": -116.017,
+      "ele_m": 1180.0,
+      "note": "White Tank campground"
+    },
+    {
+      "id": "poi_jt_cholla_garden",
+      "pack_id": "joshua_tree",
+      "name": "Cholla Cactus Garden",
+      "kind": "viewpoint",
+      "lat": 33.925,
+      "lon": -115.929,
+      "ele_m": 690.0,
+      "note": "Stay on the path \u2014 the cholla spines detach at a touch"
+    },
+    {
+      "id": "poi_jt_joshua_tree_vc",
+      "pack_id": "joshua_tree",
+      "name": "Joshua Tree Visitor Center",
+      "kind": "ranger",
+      "lat": 34.135,
+      "lon": -116.313,
+      "ele_m": 830.0,
+      "note": "West entrance, town of Joshua Tree"
+    },
+    {
+      "id": "poi_jt_oasis_vc",
+      "pack_id": "joshua_tree",
+      "name": "Oasis Visitor Center",
+      "kind": "ranger",
+      "lat": 34.122,
+      "lon": -116.04,
+      "ele_m": 600.0,
+      "note": "Oasis of Mara, Twentynine Palms"
+    },
+    {
+      "id": "poi_jt_cottonwood_vc",
+      "pack_id": "joshua_tree",
+      "name": "Cottonwood Visitor Center",
+      "kind": "ranger",
+      "lat": 33.747,
+      "lon": -115.823,
+      "ele_m": 920.0,
+      "note": "South entrance; water available"
+    },
+    {
+      "id": "poi_jt_lost_palms",
+      "pack_id": "joshua_tree",
+      "name": "Lost Palms Oasis",
+      "kind": "water",
+      "lat": 33.73,
+      "lon": -115.788,
+      "ele_m": 800.0,
+      "note": "Largest fan-palm oasis in the park"
+    },
+    {
+      "id": "poi_jt_forty_nine_palms",
+      "pack_id": "joshua_tree",
+      "name": "Fortynine Palms Oasis",
+      "kind": "water",
+      "lat": 34.102,
+      "lon": -116.104,
+      "ele_m": 860.0,
+      "note": ""
+    },
+    {
+      "id": "poi_jt_lost_horse_mine",
+      "pack_id": "joshua_tree",
+      "name": "Lost Horse Mine",
+      "kind": "viewpoint",
+      "lat": 33.952,
+      "lon": -116.164,
+      "ele_m": 1550.0,
+      "note": ""
+    },
+    {
+      "id": "poi_jt_black_rock",
+      "pack_id": "joshua_tree",
+      "name": "Black Rock Canyon Visitor Center",
+      "kind": "ranger",
+      "lat": 34.073,
+      "lon": -116.39,
+      "ele_m": 1220.0,
+      "note": "Northwest corner near Yucca Valley"
+    },
+    {
+      "id": "poi_jt_indian_cove",
+      "pack_id": "joshua_tree",
+      "name": "Indian Cove Campground",
+      "kind": "camp",
+      "lat": 34.094,
+      "lon": -116.156,
+      "ele_m": 970.0,
+      "note": ""
+    }
+  ],
+  "contours": [],
+  "contour_interval_m": 0.0,
+  "dem": null,
+  "features": [],
+  "map_attribution": ""
+}

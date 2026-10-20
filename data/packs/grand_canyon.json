@@ -1,0 +1,245 @@
+{
+  "id": "grand_canyon",
+  "name": "Grand Canyon National Park",
+  "state_or_region": "Arizona (Grand Canyon National Park \u2014 South Rim, North Rim, Inner Canyon & Marble Canyon)",
+  "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+  "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+  "summary": "The whole canyon from Lees Ferry and Marble Canyon to the Grand Wash Cliffs: South and North Rim, the Bright Angel, Kaibab and Grandview corridors, Phantom Ranch and the remote inner-canyon routes. Extreme heat below the rim \u2014 a rim-to-river day hike is not recommended.",
+  "min_lat": 35.85,
+  "max_lat": 36.88,
+  "min_lon": -113.97,
+  "max_lon": -111.57,
+  "base_ele_m": 360.0,
+  "max_ele_m": 2800.0,
+  "emergency_contact": "Grand Canyon NP emergency: 911 (from park phones) / (928) 638-7805",
+  "pack_version": "1.0",
+  "installed_at": "2026-10-19T21:23:00",
+  "trails": [],
+  "pois": [
+    {
+      "id": "poi_gc_gc_village",
+      "pack_id": "grand_canyon",
+      "name": "Grand Canyon Village",
+      "kind": "ranger",
+      "lat": 36.0544,
+      "lon": -112.1401,
+      "ele_m": 2100.0,
+      "note": "South Rim: lodges, shuttles and the Rim Trail"
+    },
+    {
+      "id": "poi_gc_visitor_center",
+      "pack_id": "grand_canyon",
+      "name": "Grand Canyon Visitor Center",
+      "kind": "ranger",
+      "lat": 36.059,
+      "lon": -112.109,
+      "ele_m": 2130.0,
+      "note": "Main South Rim visitor center near Mather Point"
+    },
+    {
+      "id": "poi_gc_mather_point",
+      "pack_id": "grand_canyon",
+      "name": "Mather Point",
+      "kind": "viewpoint",
+      "lat": 36.0617,
+      "lon": -112.1078,
+      "ele_m": 2170.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gc_bright_angel_th",
+      "pack_id": "grand_canyon",
+      "name": "Bright Angel Trailhead",
+      "kind": "trailhead",
+      "lat": 36.0577,
+      "lon": -112.1439,
+      "ele_m": 2090.0,
+      "note": "Rest houses with seasonal water at 1.5 and 3 miles; Havasupai Gardens"
+    },
+    {
+      "id": "poi_gc_south_kaibab_th",
+      "pack_id": "grand_canyon",
+      "name": "South Kaibab Trailhead",
+      "kind": "trailhead",
+      "lat": 36.0531,
+      "lon": -112.0839,
+      "ele_m": 2200.0,
+      "note": "Steep ridge trail with no water; shuttle access only"
+    },
+    {
+      "id": "poi_gc_ooh_aah",
+      "pack_id": "grand_canyon",
+      "name": "Ooh Aah Point",
+      "kind": "viewpoint",
+      "lat": 36.047,
+      "lon": -112.085,
+      "ele_m": 1980.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gc_havasupai_gardens",
+      "pack_id": "grand_canyon",
+      "name": "Havasupai Gardens",
+      "kind": "camp",
+      "lat": 36.079,
+      "lon": -112.126,
+      "ele_m": 1160.0,
+      "note": "Campground and ranger station on the Bright Angel Trail (formerly Indian Garden)"
+    },
+    {
+      "id": "poi_gc_phantom_ranch",
+      "pack_id": "grand_canyon",
+      "name": "Phantom Ranch",
+      "kind": "hut",
+      "lat": 36.105,
+      "lon": -112.095,
+      "ele_m": 750.0,
+      "note": "Lodge at the canyon bottom (lottery reservations)"
+    },
+    {
+      "id": "poi_gc_bright_angel_cg",
+      "pack_id": "grand_canyon",
+      "name": "Bright Angel Campground",
+      "kind": "camp",
+      "lat": 36.101,
+      "lon": -112.094,
+      "ele_m": 750.0,
+      "note": "Backcountry permit required"
+    },
+    {
+      "id": "poi_gc_plateau_point",
+      "pack_id": "grand_canyon",
+      "name": "Plateau Point",
+      "kind": "viewpoint",
+      "lat": 36.092,
+      "lon": -112.117,
+      "ele_m": 1170.0,
+      "note": "Overlook of the Colorado River from the Tonto Platform"
+    },
+    {
+      "id": "poi_gc_desert_view",
+      "pack_id": "grand_canyon",
+      "name": "Desert View Watchtower",
+      "kind": "viewpoint",
+      "lat": 36.044,
+      "lon": -111.826,
+      "ele_m": 2270.0,
+      "note": "Eastern end of the South Rim"
+    },
+    {
+      "id": "poi_gc_grandview",
+      "pack_id": "grand_canyon",
+      "name": "Grandview Point",
+      "kind": "trailhead",
+      "lat": 35.999,
+      "lon": -111.987,
+      "ele_m": 2256.0,
+      "note": "Grandview Trail to Horseshoe Mesa"
+    },
+    {
+      "id": "poi_gc_hermits_rest",
+      "pack_id": "grand_canyon",
+      "name": "Hermits Rest",
+      "kind": "trailhead",
+      "lat": 36.059,
+      "lon": -112.211,
+      "ele_m": 2030.0,
+      "note": "West end of Hermit Road; Hermit Trail"
+    },
+    {
+      "id": "poi_gc_north_rim_lodge",
+      "pack_id": "grand_canyon",
+      "name": "Grand Canyon Lodge (North Rim)",
+      "kind": "ranger",
+      "lat": 36.198,
+      "lon": -112.052,
+      "ele_m": 2500.0,
+      "note": "North Rim (open mid-May to mid-October)"
+    },
+    {
+      "id": "poi_gc_north_kaibab_th",
+      "pack_id": "grand_canyon",
+      "name": "North Kaibab Trailhead",
+      "kind": "trailhead",
+      "lat": 36.217,
+      "lon": -112.057,
+      "ele_m": 2510.0,
+      "note": "Only maintained trail from the North Rim to the river"
+    },
+    {
+      "id": "poi_gc_roaring_springs",
+      "pack_id": "grand_canyon",
+      "name": "Roaring Springs",
+      "kind": "water",
+      "lat": 36.196,
+      "lon": -112.035,
+      "ele_m": 1570.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gc_cottonwood_cg",
+      "pack_id": "grand_canyon",
+      "name": "Cottonwood Campground",
+      "kind": "camp",
+      "lat": 36.167,
+      "lon": -112.041,
+      "ele_m": 1240.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gc_ribbon_falls",
+      "pack_id": "grand_canyon",
+      "name": "Ribbon Falls",
+      "kind": "waterfall",
+      "lat": 36.148,
+      "lon": -112.045,
+      "ele_m": 1100.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gc_point_imperial",
+      "pack_id": "grand_canyon",
+      "name": "Point Imperial",
+      "kind": "viewpoint",
+      "lat": 36.278,
+      "lon": -111.977,
+      "ele_m": 2683.0,
+      "note": "Highest viewpoint on the North Rim"
+    },
+    {
+      "id": "poi_gc_cape_royal",
+      "pack_id": "grand_canyon",
+      "name": "Cape Royal",
+      "kind": "viewpoint",
+      "lat": 36.118,
+      "lon": -111.948,
+      "ele_m": 2400.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gc_lees_ferry",
+      "pack_id": "grand_canyon",
+      "name": "Lees Ferry",
+      "kind": "trailhead",
+      "lat": 36.865,
+      "lon": -111.587,
+      "ele_m": 950.0,
+      "note": "Start of Colorado River trips; Cathedral Wash and Spencer trails"
+    },
+    {
+      "id": "poi_gc_toroweap",
+      "pack_id": "grand_canyon",
+      "name": "Toroweap Overlook",
+      "kind": "viewpoint",
+      "lat": 36.215,
+      "lon": -113.058,
+      "ele_m": 1400.0,
+      "note": "Remote North Rim overlook 3,000 ft straight above the river; high-clearance road"
+    }
+  ],
+  "contours": [],
+  "contour_interval_m": 0.0,
+  "dem": null,
+  "features": [],
+  "map_attribution": ""
+}

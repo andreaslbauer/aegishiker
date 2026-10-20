@@ -1,0 +1,195 @@
+{
+  "id": "grand_teton",
+  "name": "Grand Teton National Park",
+  "state_or_region": "Wyoming (Grand Teton National Park & John D. Rockefeller, Jr. Memorial Parkway)",
+  "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+  "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+  "summary": "The whole park and the Rockefeller Parkway to Yellowstone: the Teton Range above Jenny, Jackson and the other glacial lakes, Cascade and Paintbrush canyons, the Teton Crest, and the sagebrush flats of Jackson Hole. Carry bear spray.",
+  "min_lat": 43.58,
+  "max_lat": 44.16,
+  "min_lon": -110.96,
+  "max_lon": -110.39,
+  "base_ele_m": 1900.0,
+  "max_ele_m": 4199.0,
+  "emergency_contact": "Grand Teton NP emergency: 911 / (307) 739-3301",
+  "pack_version": "1.0",
+  "installed_at": "2026-10-19T21:23:00",
+  "trails": [],
+  "pois": [
+    {
+      "id": "poi_gt_grand_teton",
+      "pack_id": "grand_teton",
+      "name": "Grand Teton",
+      "kind": "peak",
+      "lat": 43.7412,
+      "lon": -110.8024,
+      "ele_m": 4199.0,
+      "note": "Technical climb only; no hiking route to the summit"
+    },
+    {
+      "id": "poi_gt_jenny_lake_vc",
+      "pack_id": "grand_teton",
+      "name": "Jenny Lake Visitor Center",
+      "kind": "ranger",
+      "lat": 43.752,
+      "lon": -110.722,
+      "ele_m": 2070.0,
+      "note": "Shuttle boat across the lake to Hidden Falls and Inspiration Point"
+    },
+    {
+      "id": "poi_gt_hidden_falls",
+      "pack_id": "grand_teton",
+      "name": "Hidden Falls",
+      "kind": "waterfall",
+      "lat": 43.761,
+      "lon": -110.74,
+      "ele_m": 2150.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gt_inspiration_point",
+      "pack_id": "grand_teton",
+      "name": "Inspiration Point",
+      "kind": "viewpoint",
+      "lat": 43.763,
+      "lon": -110.743,
+      "ele_m": 2200.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gt_lake_solitude",
+      "pack_id": "grand_teton",
+      "name": "Lake Solitude",
+      "kind": "water",
+      "lat": 43.793,
+      "lon": -110.849,
+      "ele_m": 2750.0,
+      "note": "Head of Cascade Canyon's north fork"
+    },
+    {
+      "id": "poi_gt_amphitheater_lake",
+      "pack_id": "grand_teton",
+      "name": "Amphitheater Lake",
+      "kind": "water",
+      "lat": 43.729,
+      "lon": -110.778,
+      "ele_m": 2930.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gt_lupine_meadows",
+      "pack_id": "grand_teton",
+      "name": "Lupine Meadows Trailhead",
+      "kind": "trailhead",
+      "lat": 43.734,
+      "lon": -110.742,
+      "ele_m": 2090.0,
+      "note": "Garnet Canyon, Surprise and Amphitheater lakes"
+    },
+    {
+      "id": "poi_gt_craig_thomas",
+      "pack_id": "grand_teton",
+      "name": "Craig Thomas Discovery & Visitor Center",
+      "kind": "ranger",
+      "lat": 43.656,
+      "lon": -110.716,
+      "ele_m": 1990.0,
+      "note": "Moose; main park visitor center"
+    },
+    {
+      "id": "poi_gt_taggart_lake_th",
+      "pack_id": "grand_teton",
+      "name": "Taggart Lake Trailhead",
+      "kind": "trailhead",
+      "lat": 43.693,
+      "lon": -110.733,
+      "ele_m": 2030.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gt_death_canyon_th",
+      "pack_id": "grand_teton",
+      "name": "Death Canyon Trailhead",
+      "kind": "trailhead",
+      "lat": 43.656,
+      "lon": -110.782,
+      "ele_m": 2110.0,
+      "note": "Phelps Lake overlook and Death Canyon"
+    },
+    {
+      "id": "poi_gt_phelps_lake",
+      "pack_id": "grand_teton",
+      "name": "Phelps Lake",
+      "kind": "water",
+      "lat": 43.645,
+      "lon": -110.798,
+      "ele_m": 2015.0,
+      "note": "Laurance S. Rockefeller Preserve"
+    },
+    {
+      "id": "poi_gt_lsr_preserve",
+      "pack_id": "grand_teton",
+      "name": "Laurance S. Rockefeller Preserve Center",
+      "kind": "ranger",
+      "lat": 43.626,
+      "lon": -110.772,
+      "ele_m": 2020.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gt_string_lake",
+      "pack_id": "grand_teton",
+      "name": "String Lake Trailhead",
+      "kind": "trailhead",
+      "lat": 43.786,
+      "lon": -110.729,
+      "ele_m": 2090.0,
+      "note": "Paintbrush Canyon and Holly Lake"
+    },
+    {
+      "id": "poi_gt_colter_bay",
+      "pack_id": "grand_teton",
+      "name": "Colter Bay Visitor Center",
+      "kind": "ranger",
+      "lat": 43.903,
+      "lon": -110.642,
+      "ele_m": 2070.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gt_signal_mtn",
+      "pack_id": "grand_teton",
+      "name": "Signal Mountain Summit",
+      "kind": "viewpoint",
+      "lat": 43.843,
+      "lon": -110.565,
+      "ele_m": 2350.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gt_teton_village",
+      "pack_id": "grand_teton",
+      "name": "Teton Village (Aerial Tram)",
+      "kind": "trailhead",
+      "lat": 43.588,
+      "lon": -110.828,
+      "ele_m": 1930.0,
+      "note": "Tram to Rendezvous Mountain for the Teton Crest Trail"
+    },
+    {
+      "id": "poi_gt_flagg_ranch",
+      "pack_id": "grand_teton",
+      "name": "Headwaters Lodge at Flagg Ranch",
+      "kind": "ranger",
+      "lat": 44.105,
+      "lon": -110.668,
+      "ele_m": 2060.0,
+      "note": "Rockefeller Parkway, near Yellowstone's south entrance"
+    }
+  ],
+  "contours": [],
+  "contour_interval_m": 0.0,
+  "dem": null,
+  "features": [],
+  "map_attribution": ""
+}

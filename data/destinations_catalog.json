@@ -210,6 +210,101 @@
       "trail_count": 275,
       "poi_count": 14,
       "bundled_file": "packs/pioneer_valley.json"
+    },
+    {
+      "id": "great_smoky_mountains",
+      "name": "Great Smoky Mountains National Park",
+      "state_or_region": "Tennessee & North Carolina (Great Smoky Mountains National Park)",
+      "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "The whole of America's most-visited national park: misty ridges along the Appalachian Trail from Fontana Dam to Davenport Gap, Clingmans Dome and Mount Le Conte, old-growth coves, waterfalls, Cades Cove and Cataloochee.",
+      "bbox": [
+        -84.03,
+        35.42,
+        -82.98,
+        35.8
+      ],
+      "base_ele_m": 260.0,
+      "max_ele_m": 2025.0,
+      "trail_count": 0,
+      "poi_count": 17,
+      "bundled_file": "packs/great_smoky_mountains.json"
+    },
+    {
+      "id": "grand_canyon",
+      "name": "Grand Canyon National Park",
+      "state_or_region": "Arizona (Grand Canyon National Park \u2014 South Rim, North Rim, Inner Canyon & Marble Canyon)",
+      "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "The whole canyon from Lees Ferry and Marble Canyon to the Grand Wash Cliffs: South and North Rim, the Bright Angel, Kaibab and Grandview corridors, Phantom Ranch and the remote inner-canyon routes. Extreme heat below the rim \u2014 a rim-to-river day hike is not recommended.",
+      "bbox": [
+        -113.97,
+        35.85,
+        -111.57,
+        36.88
+      ],
+      "base_ele_m": 360.0,
+      "max_ele_m": 2800.0,
+      "trail_count": 0,
+      "poi_count": 22,
+      "bundled_file": "packs/grand_canyon.json"
+    },
+    {
+      "id": "yellowstone",
+      "name": "Yellowstone National Park",
+      "state_or_region": "Wyoming, Montana & Idaho (Yellowstone National Park)",
+      "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "The whole park: geyser basins and boardwalks, the Grand Canyon of the Yellowstone, Yellowstone Lake, the Lamar Valley and the Absaroka, Gallatin and Washburn ranges. Stay on boardwalks in thermal areas; carry bear spray.",
+      "bbox": [
+        -111.17,
+        44.12,
+        -109.81,
+        45.12
+      ],
+      "base_ele_m": 1600.0,
+      "max_ele_m": 3462.0,
+      "trail_count": 0,
+      "poi_count": 18,
+      "bundled_file": "packs/yellowstone.json"
+    },
+    {
+      "id": "grand_teton",
+      "name": "Grand Teton National Park",
+      "state_or_region": "Wyoming (Grand Teton National Park & John D. Rockefeller, Jr. Memorial Parkway)",
+      "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "The whole park and the Rockefeller Parkway to Yellowstone: the Teton Range above Jenny, Jackson and the other glacial lakes, Cascade and Paintbrush canyons, the Teton Crest, and the sagebrush flats of Jackson Hole. Carry bear spray.",
+      "bbox": [
+        -110.96,
+        43.58,
+        -110.39,
+        44.16
+      ],
+      "base_ele_m": 1900.0,
+      "max_ele_m": 4199.0,
+      "trail_count": 0,
+      "poi_count": 17,
+      "bundled_file": "packs/grand_teton.json"
+    },
+    {
+      "id": "joshua_tree",
+      "name": "Joshua Tree National Park",
+      "state_or_region": "California (Joshua Tree National Park \u2014 Mojave & Colorado deserts)",
+      "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "The whole park where the Mojave meets the Colorado Desert: Joshua tree forests, granite boulder piles, fan-palm oases, the Little San Bernardino Mountains and the wide Pinto Basin. No water in the park's backcountry \u2014 carry at least a gallon per person per day.",
+      "bbox": [
+        -116.48,
+        33.66,
+        -115.24,
+        34.14
+      ],
+      "base_ele_m": 300.0,
+      "max_ele_m": 1773.0,
+      "trail_count": 0,
+      "poi_count": 16,
+      "bundled_file": "packs/joshua_tree.json"
     }
   ]
 }

@@ -16,6 +16,11 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
         "mount_monadnock",
         "acton_boxborough_harvard",
         "pioneer_valley",
+        "great_smoky_mountains",
+        "grand_canyon",
+        "yellowstone",
+        "grand_teton",
+        "joshua_tree",
     }
     assert expected.issubset(pack_ids)
 
@@ -40,6 +45,21 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
     assert pv is not None and len(pv.trails) >= 50
     assert any(t.name.startswith("Metacomet-Monadnock") or "New England" in t.name for t in pv.trails)
     assert {"Mount Tom", "Mount Holyoke", "Mount Toby"} <= {p.name for p in pv.pois}
+
+    # Whole-park national park packs: (pack id, a point near each corner of the park, a well-known trail)
+    parks = {
+        "great_smoky_mountains": ([(35.45, -83.80), (35.76, -83.10), (35.57, -84.00)], "Alum Cave"),
+        "grand_canyon": ([(36.86, -111.59), (36.06, -113.90), (36.22, -112.06)], "Bright Angel"),
+        "yellowstone": ([(45.10, -110.70), (44.15, -110.67), (44.90, -110.00)], "Mount Washburn"),
+        "grand_teton": ([(43.60, -110.80), (44.13, -110.67)], "Cascade Canyon"),
+        "joshua_tree": ([(34.12, -116.45), (33.68, -115.80), (34.00, -115.30)], "Ryan Mountain"),
+    }
+    for pid, (corners, trail) in parks.items():
+        park = seeded_db.get_destination(pid)
+        assert park is not None and len(park.trails) >= 20, pid
+        assert all(park.min_lat <= lat <= park.max_lat and park.min_lon <= lon <= park.max_lon for lat, lon in corners), pid
+        assert any(t.name.startswith(trail) for t in park.trails), f"{pid}: {trail}"
+        assert not all(t.dogs_allowed for t in park.trails), pid
 
     nh = seeded_db.get_destination("white_mountains_nh")
     assert nh is not None

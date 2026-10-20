@@ -37,6 +37,11 @@ Valid pack_id values:
 - zion_canyon (Zion Canyon, UT)
 - mount_rainier_paradise (Mount Rainier Paradise, WA)
 - pioneer_valley (Pioneer Valley, MA: Mt. Tom, Holyoke Range, Mt. Sugarloaf, Mt. Toby)
+- great_smoky_mountains (Great Smoky Mountains National Park, TN/NC)
+- grand_canyon (Grand Canyon National Park, AZ)
+- yellowstone (Yellowstone National Park, WY/MT/ID)
+- grand_teton (Grand Teton National Park, WY)
+- joshua_tree (Joshua Tree National Park, CA)
 
 Convert distances to kilometers (`max_distance_km`, 1 mile = 1.61 km) and elevation gain to meters
 (`max_elevation_gain_m`, 1000 ft = 305 m). Only populate fields the user mentioned or clearly implied.
@@ -65,6 +70,11 @@ def _heuristic_extract(user_text: str, brief: HikeBrief, packs: List[Destination
         "rocky_mountain_bear_lake": ("rocky mountain", "bear lake", "emerald lake", "sky pond", "flattop", "colorado"),
         "zion_canyon": ("zion", "scout lookout", "angels landing", "watchman", "utah"),
         "mount_rainier_paradise": ("rainier", "paradise", "skyline", "nisqually", "washington state"),
+        "great_smoky_mountains": ("smoky", "smokies", "clingmans", "le conte", "leconte", "cades cove", "gatlinburg"),
+        "grand_canyon": ("grand canyon", "bright angel", "kaibab", "phantom ranch", "arizona"),
+        "yellowstone": ("yellowstone", "old faithful", "grand prismatic", "lamar valley", "mount washburn"),
+        "grand_teton": ("teton", "jenny lake", "cascade canyon", "jackson hole", "wyoming"),
+        "joshua_tree": ("joshua tree", "ryan mountain", "keys view", "mojave"),
         "pioneer_valley": ("pioneer valley", "holyoke", "norwottuck", "mt tom", "mount tom", "sugarloaf", "mount toby",
                            "mt toby", "northampton", "amherst"),
     }

@@ -1,0 +1,205 @@
+{
+  "id": "yellowstone",
+  "name": "Yellowstone National Park",
+  "state_or_region": "Wyoming, Montana & Idaho (Yellowstone National Park)",
+  "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+  "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+  "summary": "The whole park: geyser basins and boardwalks, the Grand Canyon of the Yellowstone, Yellowstone Lake, the Lamar Valley and the Absaroka, Gallatin and Washburn ranges. Stay on boardwalks in thermal areas; carry bear spray.",
+  "min_lat": 44.12,
+  "max_lat": 45.12,
+  "min_lon": -111.17,
+  "max_lon": -109.81,
+  "base_ele_m": 1600.0,
+  "max_ele_m": 3462.0,
+  "emergency_contact": "Yellowstone NP emergency: 911 / (307) 344-7381",
+  "pack_version": "1.0",
+  "installed_at": "2026-10-19T21:23:00",
+  "trails": [],
+  "pois": [
+    {
+      "id": "poi_ys_old_faithful",
+      "pack_id": "yellowstone",
+      "name": "Old Faithful",
+      "kind": "viewpoint",
+      "lat": 44.4605,
+      "lon": -110.8281,
+      "ele_m": 2245.0,
+      "note": "Geyser erupting about every 60\u2013110 minutes; Upper Geyser Basin boardwalks"
+    },
+    {
+      "id": "poi_ys_old_faithful_vc",
+      "pack_id": "yellowstone",
+      "name": "Old Faithful Visitor Education Center",
+      "kind": "ranger",
+      "lat": 44.4597,
+      "lon": -110.83,
+      "ele_m": 2240.0,
+      "note": ""
+    },
+    {
+      "id": "poi_ys_grand_prismatic",
+      "pack_id": "yellowstone",
+      "name": "Grand Prismatic Spring",
+      "kind": "viewpoint",
+      "lat": 44.525,
+      "lon": -110.8382,
+      "ele_m": 2210.0,
+      "note": "Midway Geyser Basin; overlook via the Fairy Falls trailhead"
+    },
+    {
+      "id": "poi_ys_fairy_falls",
+      "pack_id": "yellowstone",
+      "name": "Fairy Falls",
+      "kind": "waterfall",
+      "lat": 44.528,
+      "lon": -110.869,
+      "ele_m": 2220.0,
+      "note": ""
+    },
+    {
+      "id": "poi_ys_artist_point",
+      "pack_id": "yellowstone",
+      "name": "Artist Point",
+      "kind": "viewpoint",
+      "lat": 44.7203,
+      "lon": -110.4794,
+      "ele_m": 2390.0,
+      "note": "Classic view of the Lower Falls in the Grand Canyon of the Yellowstone"
+    },
+    {
+      "id": "poi_ys_lower_falls",
+      "pack_id": "yellowstone",
+      "name": "Lower Falls of the Yellowstone",
+      "kind": "waterfall",
+      "lat": 44.7178,
+      "lon": -110.4964,
+      "ele_m": 2290.0,
+      "note": "308 ft waterfall"
+    },
+    {
+      "id": "poi_ys_canyon_vc",
+      "pack_id": "yellowstone",
+      "name": "Canyon Visitor Education Center",
+      "kind": "ranger",
+      "lat": 44.735,
+      "lon": -110.489,
+      "ele_m": 2400.0,
+      "note": ""
+    },
+    {
+      "id": "poi_ys_mount_washburn",
+      "pack_id": "yellowstone",
+      "name": "Mount Washburn",
+      "kind": "peak",
+      "lat": 44.7975,
+      "lon": -110.4342,
+      "ele_m": 3122.0,
+      "note": "Fire lookout; Dunraven Pass and Chittenden Road trails"
+    },
+    {
+      "id": "poi_ys_mammoth",
+      "pack_id": "yellowstone",
+      "name": "Mammoth Hot Springs",
+      "kind": "viewpoint",
+      "lat": 44.969,
+      "lon": -110.704,
+      "ele_m": 1900.0,
+      "note": "Travertine terraces and park headquarters"
+    },
+    {
+      "id": "poi_ys_albright_vc",
+      "pack_id": "yellowstone",
+      "name": "Albright Visitor Center",
+      "kind": "ranger",
+      "lat": 44.9765,
+      "lon": -110.699,
+      "ele_m": 1890.0,
+      "note": ""
+    },
+    {
+      "id": "poi_ys_norris",
+      "pack_id": "yellowstone",
+      "name": "Norris Geyser Basin",
+      "kind": "viewpoint",
+      "lat": 44.727,
+      "lon": -110.703,
+      "ele_m": 2290.0,
+      "note": "Hottest geyser basin; Steamboat Geyser"
+    },
+    {
+      "id": "poi_ys_lamar_valley",
+      "pack_id": "yellowstone",
+      "name": "Lamar Valley",
+      "kind": "viewpoint",
+      "lat": 44.898,
+      "lon": -110.225,
+      "ele_m": 2000.0,
+      "note": "Wolf and bison watching at dawn and dusk"
+    },
+    {
+      "id": "poi_ys_west_thumb",
+      "pack_id": "yellowstone",
+      "name": "West Thumb Geyser Basin",
+      "kind": "viewpoint",
+      "lat": 44.417,
+      "lon": -110.573,
+      "ele_m": 2365.0,
+      "note": "Hot springs on the shore of Yellowstone Lake"
+    },
+    {
+      "id": "poi_ys_lake_village",
+      "pack_id": "yellowstone",
+      "name": "Lake Village",
+      "kind": "ranger",
+      "lat": 44.549,
+      "lon": -110.401,
+      "ele_m": 2360.0,
+      "note": ""
+    },
+    {
+      "id": "poi_ys_eagle_peak",
+      "pack_id": "yellowstone",
+      "name": "Eagle Peak",
+      "kind": "peak",
+      "lat": 44.2364,
+      "lon": -109.915,
+      "ele_m": 3462.0,
+      "note": "Highest point in the park, in the remote Absaroka Range"
+    },
+    {
+      "id": "poi_ys_electric_peak",
+      "pack_id": "yellowstone",
+      "name": "Electric Peak",
+      "kind": "peak",
+      "lat": 45.0058,
+      "lon": -110.8358,
+      "ele_m": 3343.0,
+      "note": "Highest peak in the Gallatin Range inside the park"
+    },
+    {
+      "id": "poi_ys_bunsen_peak",
+      "pack_id": "yellowstone",
+      "name": "Bunsen Peak",
+      "kind": "peak",
+      "lat": 44.9289,
+      "lon": -110.718,
+      "ele_m": 2610.0,
+      "note": ""
+    },
+    {
+      "id": "poi_ys_lone_star",
+      "pack_id": "yellowstone",
+      "name": "Lone Star Geyser",
+      "kind": "viewpoint",
+      "lat": 44.418,
+      "lon": -110.805,
+      "ele_m": 2310.0,
+      "note": "Cone geyser at the end of a flat old road / bike path"
+    }
+  ],
+  "contours": [],
+  "contour_interval_m": 0.0,
+  "dem": null,
+  "features": [],
+  "map_attribution": ""
+}

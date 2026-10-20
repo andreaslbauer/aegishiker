@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic builder for AegisHiker's 11 bundled regional destination packs.
+"""Deterministic builder for AegisHiker's 16 bundled regional destination packs.
 
 Generates:
   - data/destinations_catalog.json
@@ -14,6 +14,11 @@ Generates:
   - data/packs/fitchburg_state_forest.json
   - data/packs/acton_boxborough_harvard.json
   - data/packs/pioneer_valley.json
+  - data/packs/great_smoky_mountains.json
+  - data/packs/grand_canyon.json
+  - data/packs/yellowstone.json
+  - data/packs/grand_teton.json
+  - data/packs/joshua_tree.json
 
 Usage: build_starter_packs.py [pack_id ...]   (no ids = rebuild all)
 """
@@ -942,6 +947,194 @@ def build_pioneer_valley() -> DestinationPack:
     )
 
 
+def _national_park(pid: str, name: str, region: str, agency: str, summary: str, bbox: Tuple[float, float, float, float],
+                   base_ele_m: float, max_ele_m: float, emergency: str, pois: List[POI]) -> DestinationPack:
+    """A whole-park pack: bbox (min_lat, min_lon, max_lat, max_lon) around the full park boundary; every
+    named trail is added from OpenStreetMap by tools/fetch_map_details.py (see data/osm_trails.json)."""
+    min_lat, min_lon, max_lat, max_lon = bbox
+    return DestinationPack(
+        id=pid, name=name, state_or_region=region, agency=agency, summary=summary,
+        min_lat=min_lat, max_lat=max_lat, min_lon=min_lon, max_lon=max_lon,
+        base_ele_m=base_ele_m, max_ele_m=max_ele_m, emergency_contact=emergency,
+        trails=[], pois=pois,
+    )
+
+
+def build_great_smoky_mountains() -> DestinationPack:
+    pid = "great_smoky_mountains"
+    poi = lambda i, n, k, lat, lon, e, note="": POI(id=f"poi_gsm_{i}", pack_id=pid, name=n, kind=k, lat=lat, lon=lon, ele_m=e, note=note)  # noqa: E731
+    return _national_park(
+        pid, "Great Smoky Mountains National Park",
+        "Tennessee & North Carolina (Great Smoky Mountains National Park)",
+        "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+        "The whole of America's most-visited national park: misty ridges along the Appalachian Trail from "
+        "Fontana Dam to Davenport Gap, Clingmans Dome and Mount Le Conte, old-growth coves, waterfalls, "
+        "Cades Cove and Cataloochee.",
+        (35.420, -84.030, 35.800, -82.980), 260.0, 2025.0,
+        "Great Smoky Mountains NP dispatch: (865) 436-1230 / 911",
+        [
+            poi("clingmans", "Clingmans Dome", "peak", 35.5628, -83.4985, 2025.0, "Highest point in the park and in Tennessee (6,643 ft); observation tower"),
+            poi("leconte", "Mount Le Conte", "peak", 35.6544, -83.4369, 2010.0, "Third-highest peak in the Smokies; LeConte Lodge just below the summit"),
+            poi("leconte_lodge", "LeConte Lodge", "hut", 35.6545, -83.4334, 1950.0, "Hike-in lodge (reservations); reached only on foot"),
+            poi("newfound_gap", "Newfound Gap", "trailhead", 35.6111, -83.4250, 1538.0, "Appalachian Trail crossing of US 441 on the TN/NC line"),
+            poi("charlies_bunion", "Charlies Bunion", "viewpoint", 35.6370, -83.3770, 1680.0, "Rocky outcrop on the Appalachian Trail with sheer drop-offs"),
+            poi("alum_cave", "Alum Cave Trailhead", "trailhead", 35.6290, -83.4513, 1170.0, "US 441: Arch Rock, Inspiration Point and Alum Cave Bluffs on the way to Mount Le Conte"),
+            poi("sugarlands", "Sugarlands Visitor Center", "ranger", 35.6856, -83.5363, 445.0, "Main Tennessee visitor center near Gatlinburg"),
+            poi("oconaluftee", "Oconaluftee Visitor Center", "ranger", 35.5131, -83.3066, 620.0, "North Carolina visitor center near Cherokee"),
+            poi("cades_cove", "Cades Cove Visitor Center", "ranger", 35.5875, -83.8448, 535.0, "Historic valley on the 11-mile loop road"),
+            poi("abrams_falls", "Abrams Falls", "waterfall", 35.5910, -83.8530, 400.0),
+            poi("laurel_falls", "Laurel Falls", "waterfall", 35.6782, -83.5949, 760.0, "Paved, very busy trail from Fighting Creek Gap"),
+            poi("rainbow_falls", "Rainbow Falls", "waterfall", 35.6640, -83.4740, 1300.0),
+            poi("ramsey_cascades", "Ramsey Cascades", "waterfall", 35.7020, -83.3530, 1330.0, "Tallest waterfall in the park, in old-growth forest"),
+            poi("mount_cammerer", "Mount Cammerer Lookout", "viewpoint", 35.7633, -83.1617, 1503.0, "Stone fire lookout at the park's northeast corner"),
+            poi("gregory_bald", "Gregory Bald", "viewpoint", 35.5186, -83.8584, 1517.0, "Grassy bald famous for its June flame azaleas"),
+            poi("fontana_dam", "Fontana Dam", "trailhead", 35.4510, -83.8050, 520.0, "Southern entry of the Appalachian Trail into the park"),
+            poi("cataloochee", "Cataloochee Valley", "trailhead", 35.6290, -83.0770, 800.0, "Remote historic valley; elk often in the fields at dawn and dusk"),
+        ],
+    )
+
+
+def build_grand_canyon() -> DestinationPack:
+    pid = "grand_canyon"
+    poi = lambda i, n, k, lat, lon, e, note="": POI(id=f"poi_gc_{i}", pack_id=pid, name=n, kind=k, lat=lat, lon=lon, ele_m=e, note=note)  # noqa: E731
+    return _national_park(
+        pid, "Grand Canyon National Park",
+        "Arizona (Grand Canyon National Park — South Rim, North Rim, Inner Canyon & Marble Canyon)",
+        "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+        "The whole canyon from Lees Ferry and Marble Canyon to the Grand Wash Cliffs: South and North Rim, "
+        "the Bright Angel, Kaibab and Grandview corridors, Phantom Ranch and the remote inner-canyon routes. "
+        "Extreme heat below the rim — a rim-to-river day hike is not recommended.",
+        (35.850, -113.970, 36.880, -111.570), 360.0, 2800.0,
+        "Grand Canyon NP emergency: 911 (from park phones) / (928) 638-7805",
+        [
+            poi("gc_village", "Grand Canyon Village", "ranger", 36.0544, -112.1401, 2100.0, "South Rim: lodges, shuttles and the Rim Trail"),
+            poi("visitor_center", "Grand Canyon Visitor Center", "ranger", 36.0590, -112.1090, 2130.0, "Main South Rim visitor center near Mather Point"),
+            poi("mather_point", "Mather Point", "viewpoint", 36.0617, -112.1078, 2170.0),
+            poi("bright_angel_th", "Bright Angel Trailhead", "trailhead", 36.0577, -112.1439, 2090.0, "Rest houses with seasonal water at 1.5 and 3 miles; Havasupai Gardens"),
+            poi("south_kaibab_th", "South Kaibab Trailhead", "trailhead", 36.0531, -112.0839, 2200.0, "Steep ridge trail with no water; shuttle access only"),
+            poi("ooh_aah", "Ooh Aah Point", "viewpoint", 36.0470, -112.0850, 1980.0),
+            poi("havasupai_gardens", "Havasupai Gardens", "camp", 36.0790, -112.1260, 1160.0, "Campground and ranger station on the Bright Angel Trail (formerly Indian Garden)"),
+            poi("phantom_ranch", "Phantom Ranch", "hut", 36.1050, -112.0950, 750.0, "Lodge at the canyon bottom (lottery reservations)"),
+            poi("bright_angel_cg", "Bright Angel Campground", "camp", 36.1010, -112.0940, 750.0, "Backcountry permit required"),
+            poi("plateau_point", "Plateau Point", "viewpoint", 36.0920, -112.1170, 1170.0, "Overlook of the Colorado River from the Tonto Platform"),
+            poi("desert_view", "Desert View Watchtower", "viewpoint", 36.0440, -111.8260, 2270.0, "Eastern end of the South Rim"),
+            poi("grandview", "Grandview Point", "trailhead", 35.9990, -111.9870, 2256.0, "Grandview Trail to Horseshoe Mesa"),
+            poi("hermits_rest", "Hermits Rest", "trailhead", 36.0590, -112.2110, 2030.0, "West end of Hermit Road; Hermit Trail"),
+            poi("north_rim_lodge", "Grand Canyon Lodge (North Rim)", "ranger", 36.1980, -112.0520, 2500.0, "North Rim (open mid-May to mid-October)"),
+            poi("north_kaibab_th", "North Kaibab Trailhead", "trailhead", 36.2170, -112.0570, 2510.0, "Only maintained trail from the North Rim to the river"),
+            poi("roaring_springs", "Roaring Springs", "water", 36.1960, -112.0350, 1570.0),
+            poi("cottonwood_cg", "Cottonwood Campground", "camp", 36.1670, -112.0410, 1240.0),
+            poi("ribbon_falls", "Ribbon Falls", "waterfall", 36.1480, -112.0450, 1100.0),
+            poi("point_imperial", "Point Imperial", "viewpoint", 36.2780, -111.9770, 2683.0, "Highest viewpoint on the North Rim"),
+            poi("cape_royal", "Cape Royal", "viewpoint", 36.1180, -111.9480, 2400.0),
+            poi("lees_ferry", "Lees Ferry", "trailhead", 36.8650, -111.5870, 950.0, "Start of Colorado River trips; Cathedral Wash and Spencer trails"),
+            poi("toroweap", "Toroweap Overlook", "viewpoint", 36.2150, -113.0580, 1400.0, "Remote North Rim overlook 3,000 ft straight above the river; high-clearance road"),
+        ],
+    )
+
+
+def build_yellowstone() -> DestinationPack:
+    pid = "yellowstone"
+    poi = lambda i, n, k, lat, lon, e, note="": POI(id=f"poi_ys_{i}", pack_id=pid, name=n, kind=k, lat=lat, lon=lon, ele_m=e, note=note)  # noqa: E731
+    return _national_park(
+        pid, "Yellowstone National Park",
+        "Wyoming, Montana & Idaho (Yellowstone National Park)",
+        "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+        "The whole park: geyser basins and boardwalks, the Grand Canyon of the Yellowstone, Yellowstone Lake, "
+        "the Lamar Valley and the Absaroka, Gallatin and Washburn ranges. Stay on boardwalks in thermal areas; "
+        "carry bear spray.",
+        (44.120, -111.170, 45.120, -109.810), 1600.0, 3462.0,
+        "Yellowstone NP emergency: 911 / (307) 344-7381",
+        [
+            poi("old_faithful", "Old Faithful", "viewpoint", 44.4605, -110.8281, 2245.0, "Geyser erupting about every 60–110 minutes; Upper Geyser Basin boardwalks"),
+            poi("old_faithful_vc", "Old Faithful Visitor Education Center", "ranger", 44.4597, -110.8300, 2240.0),
+            poi("grand_prismatic", "Grand Prismatic Spring", "viewpoint", 44.5250, -110.8382, 2210.0, "Midway Geyser Basin; overlook via the Fairy Falls trailhead"),
+            poi("fairy_falls", "Fairy Falls", "waterfall", 44.5280, -110.8690, 2220.0),
+            poi("artist_point", "Artist Point", "viewpoint", 44.7203, -110.4794, 2390.0, "Classic view of the Lower Falls in the Grand Canyon of the Yellowstone"),
+            poi("lower_falls", "Lower Falls of the Yellowstone", "waterfall", 44.7178, -110.4964, 2290.0, "308 ft waterfall"),
+            poi("canyon_vc", "Canyon Visitor Education Center", "ranger", 44.7350, -110.4890, 2400.0),
+            poi("mount_washburn", "Mount Washburn", "peak", 44.7975, -110.4342, 3122.0, "Fire lookout; Dunraven Pass and Chittenden Road trails"),
+            poi("mammoth", "Mammoth Hot Springs", "viewpoint", 44.9690, -110.7040, 1900.0, "Travertine terraces and park headquarters"),
+            poi("albright_vc", "Albright Visitor Center", "ranger", 44.9765, -110.6990, 1890.0),
+            poi("norris", "Norris Geyser Basin", "viewpoint", 44.7270, -110.7030, 2290.0, "Hottest geyser basin; Steamboat Geyser"),
+            poi("lamar_valley", "Lamar Valley", "viewpoint", 44.8980, -110.2250, 2000.0, "Wolf and bison watching at dawn and dusk"),
+            poi("west_thumb", "West Thumb Geyser Basin", "viewpoint", 44.4170, -110.5730, 2365.0, "Hot springs on the shore of Yellowstone Lake"),
+            poi("lake_village", "Lake Village", "ranger", 44.5490, -110.4010, 2360.0),
+            poi("eagle_peak", "Eagle Peak", "peak", 44.2364, -109.9150, 3462.0, "Highest point in the park, in the remote Absaroka Range"),
+            poi("electric_peak", "Electric Peak", "peak", 45.0058, -110.8358, 3343.0, "Highest peak in the Gallatin Range inside the park"),
+            poi("bunsen_peak", "Bunsen Peak", "peak", 44.9289, -110.7180, 2610.0),
+            poi("lone_star", "Lone Star Geyser", "viewpoint", 44.4180, -110.8050, 2310.0, "Cone geyser at the end of a flat old road / bike path"),
+        ],
+    )
+
+
+def build_grand_teton() -> DestinationPack:
+    pid = "grand_teton"
+    poi = lambda i, n, k, lat, lon, e, note="": POI(id=f"poi_gt_{i}", pack_id=pid, name=n, kind=k, lat=lat, lon=lon, ele_m=e, note=note)  # noqa: E731
+    return _national_park(
+        pid, "Grand Teton National Park",
+        "Wyoming (Grand Teton National Park & John D. Rockefeller, Jr. Memorial Parkway)",
+        "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+        "The whole park and the Rockefeller Parkway to Yellowstone: the Teton Range above Jenny, Jackson and "
+        "the other glacial lakes, Cascade and Paintbrush canyons, the Teton Crest, and the sagebrush flats of "
+        "Jackson Hole. Carry bear spray.",
+        (43.580, -110.960, 44.160, -110.390), 1900.0, 4199.0,
+        "Grand Teton NP emergency: 911 / (307) 739-3301",
+        [
+            poi("grand_teton", "Grand Teton", "peak", 43.7412, -110.8024, 4199.0, "Technical climb only; no hiking route to the summit"),
+            poi("jenny_lake_vc", "Jenny Lake Visitor Center", "ranger", 43.7520, -110.7220, 2070.0, "Shuttle boat across the lake to Hidden Falls and Inspiration Point"),
+            poi("hidden_falls", "Hidden Falls", "waterfall", 43.7610, -110.7400, 2150.0),
+            poi("inspiration_point", "Inspiration Point", "viewpoint", 43.7630, -110.7430, 2200.0),
+            poi("lake_solitude", "Lake Solitude", "water", 43.7930, -110.8490, 2750.0, "Head of Cascade Canyon's north fork"),
+            poi("amphitheater_lake", "Amphitheater Lake", "water", 43.7290, -110.7780, 2930.0),
+            poi("lupine_meadows", "Lupine Meadows Trailhead", "trailhead", 43.7340, -110.7420, 2090.0, "Garnet Canyon, Surprise and Amphitheater lakes"),
+            poi("craig_thomas", "Craig Thomas Discovery & Visitor Center", "ranger", 43.6560, -110.7160, 1990.0, "Moose; main park visitor center"),
+            poi("taggart_lake_th", "Taggart Lake Trailhead", "trailhead", 43.6930, -110.7330, 2030.0),
+            poi("death_canyon_th", "Death Canyon Trailhead", "trailhead", 43.6560, -110.7820, 2110.0, "Phelps Lake overlook and Death Canyon"),
+            poi("phelps_lake", "Phelps Lake", "water", 43.6450, -110.7980, 2015.0, "Laurance S. Rockefeller Preserve"),
+            poi("lsr_preserve", "Laurance S. Rockefeller Preserve Center", "ranger", 43.6260, -110.7720, 2020.0),
+            poi("string_lake", "String Lake Trailhead", "trailhead", 43.7860, -110.7290, 2090.0, "Paintbrush Canyon and Holly Lake"),
+            poi("colter_bay", "Colter Bay Visitor Center", "ranger", 43.9030, -110.6420, 2070.0),
+            poi("signal_mtn", "Signal Mountain Summit", "viewpoint", 43.8430, -110.5650, 2350.0),
+            poi("teton_village", "Teton Village (Aerial Tram)", "trailhead", 43.5880, -110.8280, 1930.0, "Tram to Rendezvous Mountain for the Teton Crest Trail"),
+            poi("flagg_ranch", "Headwaters Lodge at Flagg Ranch", "ranger", 44.1050, -110.6680, 2060.0, "Rockefeller Parkway, near Yellowstone's south entrance"),
+        ],
+    )
+
+
+def build_joshua_tree() -> DestinationPack:
+    pid = "joshua_tree"
+    poi = lambda i, n, k, lat, lon, e, note="": POI(id=f"poi_jt_{i}", pack_id=pid, name=n, kind=k, lat=lat, lon=lon, ele_m=e, note=note)  # noqa: E731
+    return _national_park(
+        pid, "Joshua Tree National Park",
+        "California (Joshua Tree National Park — Mojave & Colorado deserts)",
+        "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+        "The whole park where the Mojave meets the Colorado Desert: Joshua tree forests, granite boulder "
+        "piles, fan-palm oases, the Little San Bernardino Mountains and the wide Pinto Basin. No water in "
+        "the park's backcountry — carry at least a gallon per person per day.",
+        (33.660, -116.480, 34.140, -115.240), 300.0, 1773.0,
+        "Joshua Tree NP emergency: 911 / (909) 383-5651",
+        [
+            poi("ryan_mtn", "Ryan Mountain", "peak", 33.9890, -116.1370, 1653.0, "Steep 1.5-mile climb with views over the park's valleys"),
+            poi("quail_mtn", "Quail Mountain", "peak", 34.0230, -116.2560, 1773.0, "Highest point in the park; cross-country route"),
+            poi("keys_view", "Keys View", "viewpoint", 33.9270, -116.1870, 1580.0, "View over the Coachella Valley and San Andreas Fault"),
+            poi("hidden_valley", "Hidden Valley", "trailhead", 34.0120, -116.1680, 1260.0, "Loop through a boulder-ringed valley"),
+            poi("barker_dam", "Barker Dam", "water", 34.0240, -116.1430, 1290.0),
+            poi("skull_rock", "Skull Rock", "viewpoint", 33.9980, -116.0610, 1310.0),
+            poi("arch_rock", "Arch Rock", "viewpoint", 33.9840, -116.0170, 1180.0, "White Tank campground"),
+            poi("cholla_garden", "Cholla Cactus Garden", "viewpoint", 33.9250, -115.9290, 690.0, "Stay on the path — the cholla spines detach at a touch"),
+            poi("joshua_tree_vc", "Joshua Tree Visitor Center", "ranger", 34.1350, -116.3130, 830.0, "West entrance, town of Joshua Tree"),
+            poi("oasis_vc", "Oasis Visitor Center", "ranger", 34.1220, -116.0400, 600.0, "Oasis of Mara, Twentynine Palms"),
+            poi("cottonwood_vc", "Cottonwood Visitor Center", "ranger", 33.7470, -115.8230, 920.0, "South entrance; water available"),
+            poi("lost_palms", "Lost Palms Oasis", "water", 33.7300, -115.7880, 800.0, "Largest fan-palm oasis in the park"),
+            poi("forty_nine_palms", "Fortynine Palms Oasis", "water", 34.1020, -116.1040, 860.0),
+            poi("lost_horse_mine", "Lost Horse Mine", "viewpoint", 33.9520, -116.1640, 1550.0),
+            poi("black_rock", "Black Rock Canyon Visitor Center", "ranger", 34.0730, -116.3900, 1220.0, "Northwest corner near Yucca Valley"),
+            poi("indian_cove", "Indian Cove Campground", "camp", 34.0940, -116.1560, 970.0),
+        ],
+    )
+
+
 def build_all(only: List[str] | None = None) -> None:
     packs = [
         build_white_mountains_nh(),
@@ -955,6 +1148,11 @@ def build_all(only: List[str] | None = None) -> None:
         build_fitchburg_state_forest(),
         build_acton_boxborough_harvard(),
         build_pioneer_valley(),
+        build_great_smoky_mountains(),
+        build_grand_canyon(),
+        build_yellowstone(),
+        build_grand_teton(),
+        build_joshua_tree(),
     ]
     if only:
         packs = [p for p in packs if p.id in only]

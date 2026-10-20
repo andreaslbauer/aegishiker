@@ -55,6 +55,26 @@ def test_build_features_classifies_hiker_details() -> None:
     assert "bench" not in feats and len(feats) == 5
 
 
+def test_whole_park_packs_get_coarser_landcover() -> None:
+    assert md.landcover_simplify_m((44.0, -71.7, 44.4, -71.0)) == 4.0, "regional packs keep full detail"
+    assert md.landcover_simplify_m((35.85, -113.97, 36.88, -111.57)) > 40.0  # Grand Canyon NP
+
+    wiggly = [(-71.0 + i * 0.0005, 44.0 + (0.0001 if i % 2 else 0.0)) for i in range(41)]
+    small_wood = [(-71.0, 44.01), (-71.0005, 44.01), (-71.0005, 44.0105), (-71.0, 44.01)]  # ~40 m square
+    big_wood = [(-71.0, 44.02), (-70.98, 44.02), (-70.98, 44.04), (-71.0, 44.02)]
+    elements = [
+        _way(1, wiggly, highway="path", name="Wiggly Path"),
+        _way(2, wiggly, waterway="stream", name="Wiggly Brook"),
+        _way(3, small_wood, natural="wood", name="Copse"),
+        _way(4, big_wood, natural="wood", name="Big Woods"),
+    ]
+    fine = {f.name: f for f in md.build_features(elements, 44.0)}
+    coarse = {f.name: f for f in md.build_features(elements, 44.0, coarse_m=50.0)}
+    assert len(coarse["Wiggly Path"].coords) == len(fine["Wiggly Path"].coords) == 41, "trails keep full detail"
+    assert len(coarse["Wiggly Brook"].coords) == 2 < len(fine["Wiggly Brook"].coords)
+    assert "Copse" in fine and "Copse" not in coarse and "Big Woods" in coarse
+
+
 def test_align_trail_follows_named_osm_path_and_moves_poi() -> None:
     # Real "Falls Trail" curves north; the sketch is a straight line 150 m south of it
     real = [(-71.0 + i * 0.001, 44.0 + 0.0015 * math.sin(i / 10 * math.pi)) for i in range(11)]

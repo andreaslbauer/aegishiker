@@ -1,0 +1,195 @@
+{
+  "id": "great_smoky_mountains",
+  "name": "Great Smoky Mountains National Park",
+  "state_or_region": "Tennessee & North Carolina (Great Smoky Mountains National Park)",
+  "agency": "National Park Service, USGS 3DEP & OpenStreetMap Contributors",
+  "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+  "summary": "The whole of America's most-visited national park: misty ridges along the Appalachian Trail from Fontana Dam to Davenport Gap, Clingmans Dome and Mount Le Conte, old-growth coves, waterfalls, Cades Cove and Cataloochee.",
+  "min_lat": 35.42,
+  "max_lat": 35.8,
+  "min_lon": -84.03,
+  "max_lon": -82.98,
+  "base_ele_m": 260.0,
+  "max_ele_m": 2025.0,
+  "emergency_contact": "Great Smoky Mountains NP dispatch: (865) 436-1230 / 911",
+  "pack_version": "1.0",
+  "installed_at": "2026-10-19T21:23:00",
+  "trails": [],
+  "pois": [
+    {
+      "id": "poi_gsm_clingmans",
+      "pack_id": "great_smoky_mountains",
+      "name": "Clingmans Dome",
+      "kind": "peak",
+      "lat": 35.5628,
+      "lon": -83.4985,
+      "ele_m": 2025.0,
+      "note": "Highest point in the park and in Tennessee (6,643 ft); observation tower"
+    },
+    {
+      "id": "poi_gsm_leconte",
+      "pack_id": "great_smoky_mountains",
+      "name": "Mount Le Conte",
+      "kind": "peak",
+      "lat": 35.6544,
+      "lon": -83.4369,
+      "ele_m": 2010.0,
+      "note": "Third-highest peak in the Smokies; LeConte Lodge just below the summit"
+    },
+    {
+      "id": "poi_gsm_leconte_lodge",
+      "pack_id": "great_smoky_mountains",
+      "name": "LeConte Lodge",
+      "kind": "hut",
+      "lat": 35.6545,
+      "lon": -83.4334,
+      "ele_m": 1950.0,
+      "note": "Hike-in lodge (reservations); reached only on foot"
+    },
+    {
+      "id": "poi_gsm_newfound_gap",
+      "pack_id": "great_smoky_mountains",
+      "name": "Newfound Gap",
+      "kind": "trailhead",
+      "lat": 35.6111,
+      "lon": -83.425,
+      "ele_m": 1538.0,
+      "note": "Appalachian Trail crossing of US 441 on the TN/NC line"
+    },
+    {
+      "id": "poi_gsm_charlies_bunion",
+      "pack_id": "great_smoky_mountains",
+      "name": "Charlies Bunion",
+      "kind": "viewpoint",
+      "lat": 35.637,
+      "lon": -83.377,
+      "ele_m": 1680.0,
+      "note": "Rocky outcrop on the Appalachian Trail with sheer drop-offs"
+    },
+    {
+      "id": "poi_gsm_alum_cave",
+      "pack_id": "great_smoky_mountains",
+      "name": "Alum Cave Trailhead",
+      "kind": "trailhead",
+      "lat": 35.629,
+      "lon": -83.4513,
+      "ele_m": 1170.0,
+      "note": "US 441: Arch Rock, Inspiration Point and Alum Cave Bluffs on the way to Mount Le Conte"
+    },
+    {
+      "id": "poi_gsm_sugarlands",
+      "pack_id": "great_smoky_mountains",
+      "name": "Sugarlands Visitor Center",
+      "kind": "ranger",
+      "lat": 35.6856,
+      "lon": -83.5363,
+      "ele_m": 445.0,
+      "note": "Main Tennessee visitor center near Gatlinburg"
+    },
+    {
+      "id": "poi_gsm_oconaluftee",
+      "pack_id": "great_smoky_mountains",
+      "name": "Oconaluftee Visitor Center",
+      "kind": "ranger",
+      "lat": 35.5131,
+      "lon": -83.3066,
+      "ele_m": 620.0,
+      "note": "North Carolina visitor center near Cherokee"
+    },
+    {
+      "id": "poi_gsm_cades_cove",
+      "pack_id": "great_smoky_mountains",
+      "name": "Cades Cove Visitor Center",
+      "kind": "ranger",
+      "lat": 35.5875,
+      "lon": -83.8448,
+      "ele_m": 535.0,
+      "note": "Historic valley on the 11-mile loop road"
+    },
+    {
+      "id": "poi_gsm_abrams_falls",
+      "pack_id": "great_smoky_mountains",
+      "name": "Abrams Falls",
+      "kind": "waterfall",
+      "lat": 35.591,
+      "lon": -83.853,
+      "ele_m": 400.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gsm_laurel_falls",
+      "pack_id": "great_smoky_mountains",
+      "name": "Laurel Falls",
+      "kind": "waterfall",
+      "lat": 35.6782,
+      "lon": -83.5949,
+      "ele_m": 760.0,
+      "note": "Paved, very busy trail from Fighting Creek Gap"
+    },
+    {
+      "id": "poi_gsm_rainbow_falls",
+      "pack_id": "great_smoky_mountains",
+      "name": "Rainbow Falls",
+      "kind": "waterfall",
+      "lat": 35.664,
+      "lon": -83.474,
+      "ele_m": 1300.0,
+      "note": ""
+    },
+    {
+      "id": "poi_gsm_ramsey_cascades",
+      "pack_id": "great_smoky_mountains",
+      "name": "Ramsey Cascades",
+      "kind": "waterfall",
+      "lat": 35.702,
+      "lon": -83.353,
+      "ele_m": 1330.0,
+      "note": "Tallest waterfall in the park, in old-growth forest"
+    },
+    {
+      "id": "poi_gsm_mount_cammerer",
+      "pack_id": "great_smoky_mountains",
+      "name": "Mount Cammerer Lookout",
+      "kind": "viewpoint",
+      "lat": 35.7633,
+      "lon": -83.1617,
+      "ele_m": 1503.0,
+      "note": "Stone fire lookout at the park's northeast corner"
+    },
+    {
+      "id": "poi_gsm_gregory_bald",
+      "pack_id": "great_smoky_mountains",
+      "name": "Gregory Bald",
+      "kind": "viewpoint",
+      "lat": 35.5186,
+      "lon": -83.8584,
+      "ele_m": 1517.0,
+      "note": "Grassy bald famous for its June flame azaleas"
+    },
+    {
+      "id": "poi_gsm_fontana_dam",
+      "pack_id": "great_smoky_mountains",
+      "name": "Fontana Dam",
+      "kind": "trailhead",
+      "lat": 35.451,
+      "lon": -83.805,
+      "ele_m": 520.0,
+      "note": "Southern entry of the Appalachian Trail into the park"
+    },
+    {
+      "id": "poi_gsm_cataloochee",
+      "pack_id": "great_smoky_mountains",
+      "name": "Cataloochee Valley",
+      "kind": "trailhead",
+      "lat": 35.629,
+      "lon": -83.077,
+      "ele_m": 800.0,
+      "note": "Remote historic valley; elk often in the fields at dawn and dusk"
+    }
+  ],
+  "contours": [],
+  "contour_interval_m": 0.0,
+  "dem": null,
+  "features": [],
+  "map_attribution": ""
+}

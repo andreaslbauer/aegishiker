@@ -563,13 +563,36 @@ def _stitch_rings(member_lines: List[List[Tuple[float, float]]]) -> List[List[Tu
     return rings
 
 
-def build_features(elements: Sequence[Dict[str, Any]], mid_lat: float, simplify_m: float = 4.0) -> List[MapFeature]:
+COARSE_KINDS = ("forest", "open", "bare_rock", "scree", "wetland", "stream")
+COARSE_FROM_M = 80000.0  # packs wider than this get coarser landcover (whole national parks)
+
+
+def landcover_simplify_m(bbox: Bbox) -> float:
+    """Simplification tolerance for landcover and streams: 4 m, or ~1/4000 of the pack's extent for
+    very large packs, whose terrain grid is ~100 m anyway (keeps whole-park packs to a sane size)."""
+    min_lat, min_lon, max_lat, max_lon = bbox
+    kx = math.cos(math.radians(0.5 * (min_lat + max_lat)))
+    extent = max((max_lat - min_lat) * _M_PER_DEG_LAT, (max_lon - min_lon) * _M_PER_DEG_LON_EQ * kx)
+    return 4.0 if extent <= COARSE_FROM_M else extent / 4000.0
+
+
+def build_features(
+    elements: Sequence[Dict[str, Any]], mid_lat: float, simplify_m: float = 4.0, coarse_m: Optional[float] = None
+) -> List[MapFeature]:
+    """`coarse_m` (default `simplify_m`) simplifies COARSE_KINDS; with it, landcover patches smaller
+    than about (6 * coarse_m)^2 are left out."""
     kx = math.cos(math.radians(mid_lat))
     tol = simplify_m / _M_PER_DEG_LAT
+    coarse_tol = (coarse_m or simplify_m) / _M_PER_DEG_LAT
+    min_area_deg2 = (6.0 * coarse_m / _M_PER_DEG_LAT) ** 2 if coarse_m and coarse_m > simplify_m else 0.0
 
-    def finish(pts: List[Tuple[float, float]]) -> List[List[float]]:
+    def finish(pts: List[Tuple[float, float]], kind: str = "") -> List[List[float]]:
         planar = [(lon * kx, lat) for lon, lat in pts]
-        simp = _simplify(planar, tol)
+        if min_area_deg2 and kind in COARSE_KINDS and kind != "stream" and pts[0] == pts[-1]:
+            area = 0.5 * abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(planar, planar[1:])))
+            if area < min_area_deg2:
+                return []
+        simp = _simplify(planar, coarse_tol if kind in COARSE_KINDS else tol)
         return [[round(x / kx, 5), round(y, 5)] for x, y in simp]
 
     features: List[MapFeature] = []
@@ -607,7 +630,7 @@ def build_features(elements: Sequence[Dict[str, Any]], mid_lat: float, simplify_
                 # Area way cut by the bbox: keep water as a shoreline and reserves as a boundary line
                 if kind not in ("water", "reserve"):
                     continue
-            coords = finish(pts)
+            coords = finish(pts, kind)
             if len(coords) >= 2:
                 features.append(MapFeature(kind=kind, geom="area" if is_area else "line", name=name, info=info, coords=coords))
         elif etype == "relation":
@@ -617,7 +640,7 @@ def build_features(elements: Sequence[Dict[str, Any]], mid_lat: float, simplify_
                 if m.get("type") == "way" and m.get("role") in ("outer", "")
             ]
             for ring in _stitch_rings(outers):
-                coords = finish(ring)
+                coords = finish(ring, kind)
                 if len(coords) >= 3:
                     features.append(MapFeature(
                         kind=kind, geom="area" if ring[0] == ring[-1] else "line", name=name, info=info, coords=coords,
@@ -1298,7 +1321,7 @@ def enrich_pack(
         if progress:
             progress("querying OpenStreetMap (Overpass)")
         elements = fetch_osm_elements(bbox, session=session)
-        feats = build_features(elements, 0.5 * (pack.min_lat + pack.max_lat))
+        feats = build_features(elements, 0.5 * (pack.min_lat + pack.max_lat), coarse_m=landcover_simplify_m(bbox))
         for f in feats:
             if f.geom == "point" and f.ele_m is None and f.kind in ("peak", "saddle", "hut", "shelter", "spring", "viewpoint"):
                 e = sample_dem(pack.dem, f.coords[0][1], f.coords[0][0])
