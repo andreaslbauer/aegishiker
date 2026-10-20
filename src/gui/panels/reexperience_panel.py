@@ -9,8 +9,9 @@ from typing import List, Optional
 import webbrowser
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -158,8 +159,23 @@ class ReexperiencePanel(QWidget):
         right_col = right_frame.body
 
         self.photo_list = QListWidget()
+        self.photo_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.photo_list.currentRowChanged.connect(self._on_photo_row_selected)
+        self.photo_list.itemSelectionChanged.connect(self._update_remove_btn)
+        self.photo_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.photo_list.customContextMenuRequested.connect(self._photo_list_menu)
+        remove_sc = QShortcut(QKeySequence.StandardKey.Delete, self.photo_list)
+        remove_sc.setContext(Qt.ShortcutContext.WidgetShortcut)
+        remove_sc.activated.connect(self.remove_selected_photos)
         right_col.addWidget(self.photo_list, 1)
+
+        self.remove_photo_btn = QPushButton("Remove from Hike")
+        self.remove_photo_btn.setObjectName("FlatButton")
+        self.remove_photo_btn.setToolTip("Leave the selected photos out of this hike (Delete). "
+                                         "The photo files and AegisPhotoVoyager are not touched.")
+        self.remove_photo_btn.clicked.connect(self.remove_selected_photos)
+        self.remove_photo_btn.setEnabled(False)
+        right_col.addWidget(self.remove_photo_btn, 0, Qt.AlignmentFlag.AlignRight)
 
         self.thumb_lbl = QLabel("Select or scrub to a photo pin along the trail")
         self.thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -258,9 +274,44 @@ class ReexperiencePanel(QWidget):
         dlg = PhotoReviewDialog(self.photo_pins, unit, hike_title(session, route), self)
         removed = dlg.removed_pins() if dlg.exec() else []
         dlg.deleteLater()
-        if not removed:
+        self._remove_photos(removed)
+
+    def remove_selected_photos(self) -> None:
+        session, _route = self._active()
+        rows = sorted({self.photo_list.row(i) for i in self.photo_list.selectedItems()})
+        pins = [self.photo_pins[r] for r in rows if 0 <= r < len(self.photo_pins)]
+        if session is None or not pins:
             return
-        with busy(self, "Updating the hike's photos…", title="Review Photos"):
+        what = (f"“{pins[0].caption or pins[0].filename}”" if len(pins) == 1 else f"these {len(pins)} photos")
+        answer = QMessageBox.question(
+            self, "Remove Photos",
+            f"Remove {what} from this hike?\n\nThe photo files and AegisPhotoVoyager are not touched, "
+            "and a rescan will leave them out.",
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._remove_photos(pins)
+
+    def _photo_list_menu(self, pos) -> None:
+        item = self.photo_list.itemAt(pos)
+        if item is None or self.app_state.get_active_session() is None:
+            return
+        if not item.isSelected():
+            self.photo_list.setCurrentItem(item)
+        n = len(self.photo_list.selectedItems())
+        menu = QMenu(self)
+        menu.addAction(f"Remove {'Photo' if n == 1 else f'{n} Photos'} from Hike…", self.remove_selected_photos)
+        menu.exec(self.photo_list.viewport().mapToGlobal(pos))
+
+    def _update_remove_btn(self) -> None:
+        self.remove_photo_btn.setEnabled(
+            bool(self.photo_list.selectedItems()) and self.app_state.get_active_session() is not None
+        )
+
+    def _remove_photos(self, removed: List[TrailPhotoPin]) -> None:
+        session, route = self._active()
+        if session is None or not removed:
+            return
+        with busy(self, "Updating the hike's photos…", title="Remove Photos"):
             self.app_state.db.remove_photos_from_session(session.id, removed)
             session = self.app_state.db.get_session(session.id) or session
             if route is not None:

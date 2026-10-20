@@ -112,6 +112,39 @@ def test_reexperience_fills_missing_people(seeded_db: Database, test_settings: S
     assert "Alice" in panel.hike_lbl.text()
 
 
+def test_reexperience_removes_selected_photos(seeded_db: Database, test_settings: Settings, monkeypatch) -> None:
+    _qt()
+    from PySide6.QtWidgets import QMessageBox
+
+    from src.gui.panels.reexperience_panel import ReexperiencePanel
+
+    state = AppState(db=seeded_db, settings=test_settings)
+    s = _session(seeded_db, "Photo hike", "2025-07-04T08:00:00", people=[["A"], ["B"], ["C"]])
+    state.set_active_session(s.id)
+    panel = ReexperiencePanel(state)
+    assert panel.photo_list.count() == 3
+    assert panel.remove_photo_btn.isEnabled(), "the first photo is selected on load"
+    panel.photo_list.clearSelection()
+    assert not panel.remove_photo_btn.isEnabled()
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+    panel.photo_list.item(0).setSelected(True)
+    panel.photo_list.item(2).setSelected(True)
+    assert panel.remove_photo_btn.isEnabled()
+    panel.remove_selected_photos()
+    assert len(seeded_db.get_photo_pins(s.id)) == 3, "declining keeps the photos"
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    panel.photo_list.clearSelection()
+    panel.photo_list.item(0).setSelected(True)
+    panel.photo_list.item(2).setSelected(True)
+    panel.remove_selected_photos()
+    left = seeded_db.get_photo_pins(s.id)
+    assert [p.people for p in left] == [["B"]]
+    assert panel.photo_list.count() == 1 and seeded_db.get_session(s.id).stats.photo_count == 1
+    assert len(seeded_db.excluded_photo_keys(s.id)) >= 2, "a rescan leaves them out"
+
+
 def test_library_shows_times_hiked_and_last_hiked(seeded_db: Database, test_settings: Settings) -> None:
     _qt()
     from src.gui.panels.library_panel import LibraryPanel
