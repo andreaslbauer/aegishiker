@@ -189,7 +189,7 @@ class ExplorePanel(QWidget):
     def restore_ui_state(self, state: dict) -> None:
         if isinstance(state.get("region_state"), str):
             self._state = state["region_state"]
-            self._fill_region_combos()
+            self._fill_region_combos()  # a saved state that no longer holds the current region is dropped
         avoid = state.get("avoid_conditions")
         if not isinstance(avoid, list):
             return
@@ -257,8 +257,9 @@ class ExplorePanel(QWidget):
                 self.trail_table.scrollToItem(self.trail_table.item(row, 0))
                 break
 
-    def _fill_region_combos(self) -> None:
-        """State list (with region counts), then the chosen state's regions sorted by name."""
+    def _fill_region_combos(self, follow_region: bool = True) -> None:
+        """State list (with region counts), then the chosen state's regions sorted by name. With
+        `follow_region`, a state that doesn't hold the current region switches to the region's state."""
         destinations = self.app_state.db.list_destinations()
         active = next((d for d in destinations if d.id == self.app_state.active_destination_id), None)
         counts: dict = {}
@@ -266,7 +267,8 @@ class ExplorePanel(QWidget):
             for st in d.states:
                 counts[st] = counts.get(st, 0) + 1
         # Keep the chosen state while it still holds the current region; otherwise follow the region
-        if self._state is None or (self._state and (self._state not in counts or (active and self._state not in active.states))):
+        if self._state is None or (self._state and (
+                self._state not in counts or (follow_region and active and self._state not in active.states))):
             self._state = active.states[0] if active else ""
 
         self.state_combo.blockSignals(True)
@@ -292,7 +294,7 @@ class ExplorePanel(QWidget):
 
     def _on_state_combo_changed(self) -> None:
         self._state = str(self.state_combo.currentData() or "")
-        self._fill_region_combos()
+        self._fill_region_combos(follow_region=False)
         # The current region isn't in the chosen state: open the state's first region
         if self.dest_combo.count() and self.dest_combo.currentData() != self.app_state.active_destination_id:
             self._on_dest_combo_changed()

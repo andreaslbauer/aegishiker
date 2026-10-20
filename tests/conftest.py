@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 import pytest
 
+from src.core import paths
 from src.core.database import Database
 from src.core.pack_manager import seed_packs_into_db
 from src.core.settings import Settings
@@ -17,10 +18,28 @@ def temp_app_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return app_dir
 
 
+@pytest.fixture(scope="session")
+def _seeded_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """All bundled packs seeded once per test run (that takes ~20 s); each test gets a copy."""
+    base = tmp_path_factory.mktemp("seeded")
+    template = base / "template.db"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(paths, "PACKS_USER_DIR", base / "packs")  # bundled packs only, never ~/.aegishiker
+        db = Database(template)
+        seed_packs_into_db(db)
+        db.close()
+    return template
+
+
 @pytest.fixture()
-def seeded_db(temp_app_dir: Path) -> Database:
-    db = Database(temp_app_dir / "test.db")
-    seed_packs_into_db(db)
+def seeded_db(temp_app_dir: Path, _seeded_template: Path) -> Database:
+    target = temp_app_dir / "test.db"
+    src = sqlite3.connect(str(_seeded_template))
+    dst = sqlite3.connect(str(target))
+    src.backup(dst)
+    dst.close()
+    src.close()
+    db = Database(target)
     yield db
     db.close()
 

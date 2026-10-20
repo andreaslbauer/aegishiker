@@ -283,7 +283,7 @@
       ],
       "base_ele_m": 1900.0,
       "max_ele_m": 4199.0,
-      "trail_count": 0,
+      "trail_count": 269,
       "poi_count": 17,
       "bundled_file": "packs/grand_teton.json"
     },
@@ -302,7 +302,7 @@
       ],
       "base_ele_m": 300.0,
       "max_ele_m": 1773.0,
-      "trail_count": 0,
+      "trail_count": 170,
       "poi_count": 16,
       "bundled_file": "packs/joshua_tree.json"
     }
