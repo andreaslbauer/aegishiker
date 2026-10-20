@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AegisHiker
+GenericName=Hike Planner
+Comment=Offline-first hike planner, route composer, photo matcher & mobile companion
+Icon=${SNAP}/meta/gui/icon.svg
+Exec=aegishiker %U
+Terminal=false
+Categories=Utility;Education;Geography;
+Keywords=hiking;trail;map;route;offline;
+StartupNotify=true
+StartupWMClass=AegisHiker

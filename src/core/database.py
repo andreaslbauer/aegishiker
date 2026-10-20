@@ -412,16 +412,26 @@ class Database:
             rows = self._conn.execute(
                 "SELECT id FROM destination_pack ORDER BY name ASC"
             ).fetchall()
-            return [p for r in rows if (p := self.get_destination_pack(r["id"])) is not None]
+            # Lists (region pickers, the agent, the phone app) never draw maps: skip the multi-MB map
+            # data, which took seconds to parse for all packs; get_destination_pack loads it.
+            return [p for r in rows if (p := self.get_destination_pack(r["id"], with_map=False)) is not None]
 
-    def get_destination_pack(self, pack_id: str) -> Optional[DestinationPack]:
+    def get_destination_pack(self, pack_id: str, with_map: bool = True) -> Optional[DestinationPack]:
+        """A region pack with its trails and POIs; `with_map` adds contours, DEM and map features."""
         with self._lock:
+            cols = "*" if with_map else (
+                "id, name, state_or_region, agency, license, summary, min_lat, max_lat, min_lon, max_lon, "
+                "base_ele_m, max_ele_m, emergency_contact, pack_version, installed_at"
+            )
             row = self._conn.execute(
-                "SELECT * FROM destination_pack WHERE id=?", (pack_id,)
+                f"SELECT {cols} FROM destination_pack WHERE id=?", (pack_id,)
             ).fetchone()
             if not row:
                 return None
-            contours, dem, features, extra = self._parsed_map_data(pack_id, row["data"] or "{}")
+            if with_map:
+                contours, dem, features, extra = self._parsed_map_data(pack_id, row["data"] or "{}")
+            else:
+                contours, dem, features, extra = [], None, [], {}
             trails = self.list_trails(pack_id)
             pois = self.list_pois(pack_id)
             return DestinationPack(

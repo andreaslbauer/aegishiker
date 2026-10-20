@@ -1,11 +1,8 @@
 name: aegishiker
 base: core24
 icon: src/assets/appicon.svg
-adopt-info: code
+adopt-info: aegishiker
 
-lint:
-  ignore:
-    - library
 compression: xz
 title: AegisHiker
 contact: mailto:maintainer@example.com
@@ -14,19 +11,24 @@ issues: https://example.com/support
 website: https://example.com
 summary: Offline-first hike planner, route composer, photo matcher & mobile companion
 description: |
-  aegishiker is a high-performance desktop application.
+  AegisHiker plans, records and relives hikes, entirely offline. Explore bundled
+  region packs (White Mountains, Pioneer Valley, Great Smoky Mountains, Grand Canyon,
+  Yellowstone, Grand Teton, Joshua Tree and more) with topographic maps and every
+  named trail, compose routes trail by trail with elevation and timing, brainstorm
+  hikes with a local AI (Ollama), sync a phone companion over your own Wi-Fi, and
+  re-experience past hikes on the map and in 3D with your geotagged photos.
 
 grade: stable
 confinement: strict
 
 apps:
   aegishiker:
-    command: bin/aegishiker
+    command: bin/aegishiker-launcher
     extensions: [gnome]
-    desktop: usr/share/applications/aegishiker.desktop
     plugs:
       - home
       - network
+      - network-bind  # LAN server for the phone companion
       - opengl
       - removable-media
       - desktop
@@ -35,56 +37,39 @@ apps:
       - wayland
       - gsettings
       - audio-playback
-    environment:
-      QTWEBENGINE_DISABLE_SANDBOX: "1"
 
 parts:
   aegishiker:
-    plugin: dump
-    source: dist/
-    organize:
-      opt/aegishiker/aegishiker: bin/aegishiker
-    prime:
-      - bin/aegishiker
-      - usr/lib/*
-      - lib/*
-    stage-packages:
-      - libgl1
-      - libxkbcommon0
-      - libxcb-cursor0
-      - libasound2
-      - libdbus-1-3
-    build-packages:
-      - build-essential
-      - python3
-      - python3-pip
-      - python3-venv
-      - python3-dev
-
-  code:
-    plugin: dump
+    plugin: python
     source: .
+    python-requirements:
+      - requirements.txt
+    stage-packages:
+      # Python interpreter (core24 has none) and what Qt's xcb/wayland platform plugins load
+      - python3.12-minimal
+      - libpython3.12-minimal
+      - libpython3.12-stdlib
+      - python3-venv
+      - libxcb-cursor0
+      - libxcb-icccm4
+      - libxcb-image0
+      - libxcb-keysyms1
+      - libxcb-render-util0
+      - libxcb-shape0
+      - libxcb-xinerama0
+      - libxcb-xkb1
+      - libxkbcommon-x11-0
+      - libegl1
+      - libopengl0
+      - libgl1
     override-build: |
       craftctl default
-      # Get version for adopt-info
-      if [ -f version.txt ]; then
-        VERSION=$(cat version.txt | tr -d '[:space:]')
-        craftctl set version=$VERSION
-      fi
-      # Security & prune cleanup
-      rm -rf $CRAFT_PART_INSTALL/tests
-    prime:
-      - version.txt
-      - main.py
-      - src
-    stage:
-      - main.py
-      - src
-      - version.txt
-
-  desktop-assets:
-    plugin: dump
-    source: debian/
-    prime:
-      - usr/share/applications/aegishiker.desktop
-      - usr/share/icons/hicolor/*/apps/aegishiker.png
+      craftctl set version="$(tr -d '[:space:]' < version.txt)"
+      # The application itself, next to the Python environment the plugin built
+      mkdir -p "$CRAFT_PART_INSTALL/app"
+      cp -r main.py src data config version.txt LICENSES.html "$CRAFT_PART_INSTALL/app/"
+      find "$CRAFT_PART_INSTALL/app" -type d -name "__pycache__" -exec rm -rf {} +
+      install -Dm755 snap/local/launcher.sh "$CRAFT_PART_INSTALL/bin/aegishiker-launcher"
+      # The venv's pyvenv.cfg points at the build machine's SDK interpreter, which an installed snap
+      # can't see; the launcher sets PYTHONHOME/PYTHONPATH to the bundled interpreter instead
+      rm -f "$CRAFT_PART_INSTALL/pyvenv.cfg"
