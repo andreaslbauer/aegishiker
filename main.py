@@ -21,7 +21,7 @@ if sys.platform == "linux":
         )
 
 import shiboken6
-from PySide6.QtCore import QEvent
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication
 
 from src.core.about import APP_NAME, get_version
@@ -269,10 +269,19 @@ def shutdown_qt(app: QApplication) -> None:
     (destroyQCoreApplication) to delete the remaining widgets in arbitrary order, which crashed
     on quit (SIGSEGV in ~QObject, heap corruption in ~QBackingStore).
     """
-    for widget in app.topLevelWidgets():
-        if shiboken6.isValid(widget):
-            widget.hide()
-            widget.deleteLater()
+    for widget in list(app.topLevelWidgets()):
+        if not shiboken6.isValid(widget):
+            continue
+        # Skip popups (completer popups, combo dropdowns, context menus) and tooltips;
+        # their lifecycles are owned by parent widgets / QCompleters and calling
+        # deleteLater() on them causes double-free crashes when parents are destroyed.
+        if widget.windowType() in (Qt.WindowType.Popup, Qt.WindowType.ToolTip):
+            continue
+        # Skip child windows whose parent is already a top-level widget that will destroy them
+        if widget.parent() is not None:
+            continue
+        widget.hide()
+        widget.deleteLater()
     app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
     gc.collect()

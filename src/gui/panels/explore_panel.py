@@ -82,7 +82,8 @@ class ExplorePanel(QWidget):
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self.refresh_trails)
         # Type-ahead: suggest the region's trail names as you type; picking one selects that trail
-        self.trail_completer = QCompleter(QStringListModel(self), self)
+        self.trail_completer = QCompleter(self)
+        self.trail_completer.setModel(QStringListModel(self.trail_completer))
         self.trail_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.trail_completer.setFilterMode(Qt.MatchFlag.MatchContains)
         self.trail_completer.setMaxVisibleItems(12)
