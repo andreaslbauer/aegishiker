@@ -358,15 +358,18 @@ def build_white_mountains_nh() -> DestinationPack:
         POI(id="poi_wm_greenleaf", pack_id=pid, name="AMC Greenleaf Hut", kind="hut", lat=44.1602, lon=-71.6538, ele_m=1280.0, note="Potable water, restrooms, and weather postings"),
         POI(id="poi_wm_pinkham", pack_id=pid, name="AMC Pinkham Notch Visitor Center", kind="trailhead", lat=44.2573, lon=-71.2528, ele_m=619.0, note="Base camp for Mt. Washington & Tuckerman Ravine"),
         POI(id="poi_wm_washington", pack_id=pid, name="Mount Washington Summit (6,288 ft)", kind="peak", lat=44.2705, lon=-71.3032, ele_m=1917.0, note="Highest peak in the Northeast; Mount Washington Observatory"),
+        POI(id="poi_wm_moosilauke", pack_id=pid, name="Mount Moosilauke Summit", kind="peak", lat=44.0244, lon=-71.8314, ele_m=1464.0, note="Broad alpine summit (4,802 ft) at the southwest corner of the Whites; Appalachian Trail via Glencliff and Beaver Brook"),
+        POI(id="poi_wm_ravine_lodge", pack_id=pid, name="Moosilauke Ravine Lodge", kind="hut", lat=44.0005, lon=-71.8155, ele_m=760.0, note="Dartmouth Outing Club lodge; Gorge Brook and Snapper trailheads"),
         POI(id="poi_wm_cabot", pack_id=pid, name="Mount Cabot Summit", kind="peak", lat=44.5056, lon=-71.4167, ele_m=1271.0, note="Northernmost 4,000-footer (4,170 ft) in the Pliny Range; Cabot Cabin just below the summit"),
         POI(id="poi_wm_lakes_clouds", pack_id=pid, name="AMC Lakes of the Clouds Hut", kind="hut", lat=44.2588, lon=-71.3188, ele_m=1540.0, note="Highest AMC hut on the shoulder of Mt. Monroe & Mt. Washington"),
     ]
 
     # South to the Flume Slide Trail (Franconia Notch), north to Randolph for the Howker Ridge
     # Trail and the Northern Presidentials, east to the Maine border (Wildcats, Carters, Baldfaces,
-    # Evans Notch), north to the Pliny / Kilkenny Range for Mount Cabot, The Horn and Unknown Pond
+    # Evans Notch), north to the Pliny / Kilkenny Range for Mount Cabot, The Horn and Unknown Pond,
+    # southwest to Mount Moosilauke (Glencliff, Gorge Brook, Beaver Brook and Benton trails)
     # (-70.95: just past the state line so Evans Notch trails that cross it, e.g. Bickford Brook, stay whole)
-    min_lat, max_lat, min_lon, max_lon = 44.095, 44.545, -71.710, -70.950
+    min_lat, max_lat, min_lon, max_lon = 43.985, 44.545, -71.905, -70.950
     dem, contours = _generate_dem_and_contours(
         min_lat,
         max_lat,
@@ -374,15 +377,15 @@ def build_white_mountains_nh() -> DestinationPack:
         max_lon,
         520.0,
         1917.0,
-        [(-71.3032, 44.2705, 1917.0), (-71.6409, 44.1607, 1600.0), (-71.6418, 44.1488, 1551.0), (-71.4167, 44.5056, 1271.0)],
+        [(-71.3032, 44.2705, 1917.0), (-71.6409, 44.1607, 1600.0), (-71.6418, 44.1488, 1551.0), (-71.4167, 44.5056, 1271.0), (-71.8314, 44.0244, 1464.0)],
     )
     return DestinationPack(
         id=pid,
         name="New Hampshire White Mountains",
         state_or_region="New Hampshire (White Mountain National Forest)",
         agency="USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
-        summary="Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border, and north to Mount Cabot.",
-        pack_version="1.5",  # 1.1: Flume Slide / Howker Ridge; 1.2: east to the Maine border; 1.3: + connector trails, Lost Pond; 1.4: every named trail in the region (Presidentials); 1.5: north to Mount Cabot
+        summary="Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border, north to Mount Cabot and southwest to Mount Moosilauke.",
+        pack_version="1.6",  # 1.1: Flume Slide / Howker Ridge; 1.2: east to the Maine border; 1.3: + connector trails, Lost Pond; 1.4: every named trail in the region (Presidentials); 1.5: north to Mount Cabot; 1.6: southwest to Mount Moosilauke
         min_lat=min_lat,
         max_lat=max_lat,
         min_lon=min_lon,

@@ -8,17 +8,17 @@
       "state_or_region": "New Hampshire (White Mountain National Forest)",
       "agency": "USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
       "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
-      "summary": "Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border, and north to Mount Cabot.",
+      "summary": "Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border, north to Mount Cabot and southwest to Mount Moosilauke.",
       "bbox": [
-        -71.71,
-        44.095,
+        -71.905,
+        43.985,
         -70.95,
         44.545
       ],
       "base_ele_m": 520.0,
       "max_ele_m": 1917.0,
-      "trail_count": 483,
-      "poi_count": 10,
+      "trail_count": 786,
+      "poi_count": 12,
       "bundled_file": "packs/white_mountains_nh.json"
     },
     {

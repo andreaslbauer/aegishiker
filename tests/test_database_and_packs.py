@@ -64,6 +64,7 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
     nh = seeded_db.get_destination("white_mountains_nh")
     assert nh is not None
     assert nh.max_lat >= 44.51, "reaches north to Mount Cabot"
+    assert nh.min_lat <= 44.0 and nh.min_lon <= -71.88, "reaches southwest to Mount Moosilauke"
     assert "White Mountains" in nh.name
     assert len(nh.trails) >= 6
     assert len(nh.pois) >= 5
