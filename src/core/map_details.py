@@ -1132,14 +1132,21 @@ def _expand_all_named(
     prefix = cfg.get("code_prefix", pack_id[:3].upper())
     out = []
     used = set(used_codes or ())
+    used_ids: set = set()
     for canonical in sorted(names):
         code = prefix + "-" + "".join(w[0] for w in re.findall(r"[A-Za-z]+", canonical)).upper()[:4]
         base, n = code, 2
         while code in used:
             code, n = f"{base}{n}", n + 1
         used.add(code)
+        # Names differing only in case or punctuation ("Old Route" / "old route") share a slug
+        trail_id = base_id = f"{pack_id}_{_slug(canonical)}"
+        n = 2
+        while trail_id in used_ids:
+            trail_id, n = f"{base_id}_{n}", n + 1
+        used_ids.add(trail_id)
         spec: Dict[str, Any] = {
-            "id": f"{pack_id}_{_slug(canonical)}",
+            "id": trail_id,
             "osm_name": canonical,
             "osm_names": sorted(names[canonical]),
             "name": cfg.get("rename", {}).get(canonical, canonical),
