@@ -245,7 +245,7 @@
       ],
       "base_ele_m": 360.0,
       "max_ele_m": 2800.0,
-      "trail_count": 0,
+      "trail_count": 163,
       "poi_count": 22,
       "bundled_file": "packs/grand_canyon.json"
     },
@@ -264,7 +264,7 @@
       ],
       "base_ele_m": 1600.0,
       "max_ele_m": 3462.0,
-      "trail_count": 0,
+      "trail_count": 355,
       "poi_count": 18,
       "bundled_file": "packs/yellowstone.json"
     },

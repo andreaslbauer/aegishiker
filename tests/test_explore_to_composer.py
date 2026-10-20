@@ -48,6 +48,7 @@ def test_selecting_region_fits_map_to_destination(seeded_db: Database, tmp_path:
     fitted = []
     monkeypatch.setattr(explore.map_canvas, "fit_when_shown", lambda coords: fitted.append(coords))
 
+    explore.state_combo.setCurrentIndex(explore.state_combo.findData(""))  # all states
     explore.dest_combo.setCurrentIndex(explore.dest_combo.findData(destination.id))
     app.processEvents()
 
@@ -159,3 +160,36 @@ def test_map_clicks_select_an_option_then_add_it_up_to_a_stop_point(seeded_db: D
     assert any("Midstate" in c.trail_name for c in builder._candidates), "the ridge trail is offered next"
     win.hide()
     win.deleteLater()
+
+
+def test_regions_are_chosen_by_state(seeded_db: Database, tmp_path: Path, monkeypatch) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.panels.explore_panel import ExplorePanel
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    state.set_active_destination("white_mountains_nh")
+    explore = ExplorePanel(app_state=state)
+    monkeypatch.setattr(explore.map_canvas, "fit_when_shown", lambda coords: None)
+    regions = lambda: [explore.dest_combo.itemData(i) for i in range(explore.dest_combo.count())]  # noqa: E731
+
+    assert explore.state_combo.currentData() == "New Hampshire", "opens on the current region's state"
+    assert set(regions()) == {"white_mountains_nh", "mount_monadnock"}
+    assert explore.state_combo.currentText().startswith("New Hampshire (2")
+
+    # Choosing a state opens its first region (by name); a park across state lines is in each state
+    explore.state_combo.setCurrentIndex(explore.state_combo.findData("Massachusetts"))
+    app.processEvents()
+    assert regions() == ["acton_boxborough_harvard", "fitchburg_state_forest", "pioneer_valley"]
+    assert state.active_destination_id == "acton_boxborough_harvard"
+    explore.state_combo.setCurrentIndex(explore.state_combo.findData("North Carolina"))
+    assert regions() == ["great_smoky_mountains"] and state.active_destination_id == "great_smoky_mountains"
+    explore.state_combo.setCurrentIndex(explore.state_combo.findData("Tennessee"))
+    assert state.active_destination_id == "great_smoky_mountains", "already in the state: region kept"
+
+    explore.state_combo.setCurrentIndex(explore.state_combo.findData(""))
+    assert len(regions()) == len(seeded_db.list_destinations())
+    assert explore.ui_state()["region_state"] == ""
+    explore.deleteLater()

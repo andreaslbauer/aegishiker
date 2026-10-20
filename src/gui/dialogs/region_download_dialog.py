@@ -36,7 +36,8 @@ class RegionDownloadDialog(QDialog):
 
         form = QFormLayout()
         self.name_edit = QLineEdit("Custom Alpine Region")
-        self.region_edit = QLineEdit("New England / Custom")
+        self.region_edit = QLineEdit()
+        self.region_edit.setPlaceholderText("e.g. Vermont — groups the region by state in Explore")
         self.lat_spin = QDoubleSpinBox()
         self.lat_spin.setRange(-85.0, 85.0)
         self.lat_spin.setDecimals(4)
@@ -51,7 +52,7 @@ class RegionDownloadDialog(QDialog):
         self.span_spin.setValue(0.08)
 
         form.addRow("Destination Name:", self.name_edit)
-        form.addRow("State / Region:", self.region_edit)
+        form.addRow("State:", self.region_edit)
         form.addRow("Center Latitude:", self.lat_spin)
         form.addRow("Center Longitude:", self.lon_spin)
         form.addRow("Bounding Box Span (°):", self.span_spin)
@@ -81,7 +82,7 @@ class RegionDownloadDialog(QDialog):
                 title="Downloading Region",
                 pass_progress=True,
                 name=self.name_edit.text().strip() or "Custom Region",
-                region=self.region_edit.text().strip() or "Custom",
+                region=self.region_edit.text().strip() or "Other",
                 bbox=bbox,
                 summary="User-downloaded custom offline trail pack.",
             )

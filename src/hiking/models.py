@@ -5,6 +5,7 @@ with convenience `.coordinates` properties returning [(lat, lon, ele_m), ...] fo
 """
 from datetime import datetime
 from enum import Enum
+import re
 from typing import Any, Dict, List, Literal, Optional, Tuple
 import uuid
 
@@ -174,6 +175,14 @@ class DestinationPack(BaseModel):
     @property
     def region(self) -> str:
         return self.state_or_region
+
+    @property
+    def states(self) -> List[str]:
+        """States the region lies in, from `state_or_region` ("Wyoming, Montana & Idaho (Yellowstone…)"
+        → ["Wyoming", "Montana", "Idaho"]); ["Other"] when it names none."""
+        lead = self.state_or_region.split("(", 1)[0]
+        parts = [p.strip() for p in re.split(r",|&|\band\b", lead)]
+        return [p for p in parts if p] or ["Other"]
 
     @property
     def base_elevation_m(self) -> float:

@@ -60,10 +60,21 @@ class ExplorePanel(QWidget):
         filters = Card(margins=(16, 14, 16, 14))
         top_bar = QHBoxLayout()
         top_bar.setSpacing(12)
+        # State first, then the regions in that state (a park across state lines is listed in each)
+        self._state: Optional[str] = None  # "" = all states; None = the current region's state
+        self.state_combo = QComboBox()
+        self.state_combo.setToolTip("Show the regions in one state")
+        self.state_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.state_combo.setMinimumContentsLength(14)
+        self.state_combo.setMaxVisibleItems(20)
+        self.state_combo.currentIndexChanged.connect(self._on_state_combo_changed)
+        top_bar.addWidget(self.state_combo, 1)
         self.dest_combo = QComboBox()
-        # Entries are "name — region description"; don't let the longest one set the window's minimum width
+        self.dest_combo.setToolTip("Region")
+        # Don't let the longest region name set the window's minimum width
         self.dest_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.dest_combo.setMinimumContentsLength(24)
+        self.dest_combo.setMaxVisibleItems(20)
         self.dest_combo.currentIndexChanged.connect(self._on_dest_combo_changed)
         top_bar.addWidget(self.dest_combo, 3)
         self.search_edit = QLineEdit()
@@ -170,9 +181,15 @@ class ExplorePanel(QWidget):
         self.refresh_all()
 
     def ui_state(self) -> dict:
-        return {"avoid_conditions": [c.value for c, pill in self.cond_toggles.items() if pill.isChecked()]}
+        return {
+            "avoid_conditions": [c.value for c, pill in self.cond_toggles.items() if pill.isChecked()],
+            "region_state": self._state,
+        }
 
     def restore_ui_state(self, state: dict) -> None:
+        if isinstance(state.get("region_state"), str):
+            self._state = state["region_state"]
+            self._fill_region_combos()
         avoid = state.get("avoid_conditions")
         if not isinstance(avoid, list):
             return
@@ -184,16 +201,7 @@ class ExplorePanel(QWidget):
         self.refresh_trails()
 
     def refresh_all(self) -> None:
-        self.dest_combo.blockSignals(True)
-        self.dest_combo.clear()
-        destinations = self.app_state.db.list_destinations()
-        active_idx = 0
-        for idx, d in enumerate(destinations):
-            self.dest_combo.addItem(f"{d.name} — {d.region}", d.id)
-            if d.id == self.app_state.active_destination_id:
-                active_idx = idx
-        self.dest_combo.setCurrentIndex(active_idx)
-        self.dest_combo.blockSignals(False)
+        self._fill_region_combos()
         names = sorted({t.name for t in self.app_state.get_active_trails()}, key=str.casefold)
         self._places = self._region_places()
         self.trail_completer.model().setStringList(names + sorted(self._places, key=str.casefold))
@@ -248,6 +256,46 @@ class ExplorePanel(QWidget):
                 self.trail_table.selectRow(row)
                 self.trail_table.scrollToItem(self.trail_table.item(row, 0))
                 break
+
+    def _fill_region_combos(self) -> None:
+        """State list (with region counts), then the chosen state's regions sorted by name."""
+        destinations = self.app_state.db.list_destinations()
+        active = next((d for d in destinations if d.id == self.app_state.active_destination_id), None)
+        counts: dict = {}
+        for d in destinations:
+            for st in d.states:
+                counts[st] = counts.get(st, 0) + 1
+        # Keep the chosen state while it still holds the current region; otherwise follow the region
+        if self._state is None or (self._state and (self._state not in counts or (active and self._state not in active.states))):
+            self._state = active.states[0] if active else ""
+
+        self.state_combo.blockSignals(True)
+        self.state_combo.clear()
+        self.state_combo.addItem(f"All states ({len(destinations)})", "")
+        for st in sorted(counts, key=lambda x: (x == "Other", x.casefold())):
+            self.state_combo.addItem(f"{st} ({counts[st]})", st)
+        self.state_combo.setCurrentIndex(max(0, self.state_combo.findData(self._state)))
+        self.state_combo.blockSignals(False)
+
+        if self._state:
+            shown = sorted((d for d in destinations if self._state in d.states), key=lambda d: d.name.casefold())
+        else:
+            shown = sorted(destinations, key=lambda d: (d.states[0] == "Other", d.states[0].casefold(), d.name.casefold()))
+        self.dest_combo.blockSignals(True)
+        self.dest_combo.clear()
+        for d in shown:
+            label = d.name if self._state else f"{d.name}  ·  {', '.join(d.states)}"
+            self.dest_combo.addItem(label, d.id)
+            self.dest_combo.setItemData(self.dest_combo.count() - 1, d.region, Qt.ItemDataRole.ToolTipRole)
+        self.dest_combo.setCurrentIndex(max(0, self.dest_combo.findData(self.app_state.active_destination_id)))
+        self.dest_combo.blockSignals(False)
+
+    def _on_state_combo_changed(self) -> None:
+        self._state = str(self.state_combo.currentData() or "")
+        self._fill_region_combos()
+        # The current region isn't in the chosen state: open the state's first region
+        if self.dest_combo.count() and self.dest_combo.currentData() != self.app_state.active_destination_id:
+            self._on_dest_combo_changed()
 
     def _on_dest_combo_changed(self) -> None:
         dest_id = self.dest_combo.currentData()
