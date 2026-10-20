@@ -77,12 +77,10 @@ parts:
       - version.txt
       - main.py
       - src
-      - assets
     stage:
       - main.py
       - src
       - version.txt
-      - assets
 
   desktop-assets:
     plugin: dump
