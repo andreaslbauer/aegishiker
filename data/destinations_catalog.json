@@ -226,7 +226,7 @@
       ],
       "base_ele_m": 260.0,
       "max_ele_m": 2025.0,
-      "trail_count": 0,
+      "trail_count": 308,
       "poi_count": 17,
       "bundled_file": "packs/great_smoky_mountains.json"
     },
