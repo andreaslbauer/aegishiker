@@ -207,7 +207,7 @@
       ],
       "base_ele_m": 30.0,
       "max_ele_m": 390.0,
-      "trail_count": 0,
+      "trail_count": 275,
       "poi_count": 14,
       "bundled_file": "packs/pioneer_valley.json"
     }
