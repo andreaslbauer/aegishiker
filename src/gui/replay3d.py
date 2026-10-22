@@ -9,6 +9,8 @@ import math
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from operator import itemgetter
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QLineF, QPointF, QRectF, QSize, Qt, QTimer, Signal
@@ -27,6 +29,7 @@ from PySide6.QtGui import (
     QPolygonF,
 )
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -52,9 +55,12 @@ from src.hiking.terrain3d import (
     look_camera,
     replay_map_layers,
     route_path,
+    shade_mesh,
     smoothstep,
 )
 from src.hiking.units import format_distance, format_elevation
+from src.hiking.vegetation import build_vegetation
+from src.gui.vegetation_sprites import GROUND_FRAC, make_sprites
 
 SKY_TOP = QColor(88, 140, 196)
 SKY_HORIZON = (196, 214, 226)
@@ -69,6 +75,13 @@ LAYER_PENS = {
     "trail": ((214, 178, 112), 1.8, 4200.0),  # tan: apart from the hike's own white / orange line
     "path": ((196, 168, 120), 1.0, 2400.0),  # dense: only near the hiker
 }
+
+# Vegetation: plants are drawn taller than life so they read from the chase camera (~1.5 km back)
+VEG_SCALE = 1.6
+VEG_BOOST = {"krummholz": 2.0, "shrub": 2.4, "sage": 2.4, "grass": 4.0, "boulder": 1.6}  # small plants, more so
+SMALL_PLANTS = frozenset(VEG_BOOST)
+VEG_NEAR, VEG_MID, VEG_FAR = 1300.0, 2000.0, 2700.0  # all of a cell's plants / ~half / ~a fifth / none beyond
+SMALL_FAR = 1800.0  # shrubs, grass and boulders only this close
 
 BASE_DURATION_S = 75.0  # whole route at 1x (photos excluded)
 
@@ -127,7 +140,7 @@ class Replay3DView(QWidget):
     state_changed = Signal(str)  # "playing" | "paused" | "photo" | "done"
 
     def __init__(self, route: ComposedRoute, pack: Optional[DestinationPack], photos: List[HikePhotoPin],
-                 units: str = "us", parent: Optional[QWidget] = None) -> None:
+                 units: str = "us", parent: Optional[QWidget] = None, month: Optional[int] = None) -> None:
         super().__init__(parent)
         self.setMinimumSize(640, 400)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -151,6 +164,15 @@ class Replay3DView(QWidget):
         )
         # Other trails, paths, streams, rivers and lakes from the region's map
         self.layers = replay_map_layers(pack, self.mesh, route.trail_ids)
+        # The region's life zones and land cover colour the terrain and grow its plants; the hike's
+        # month (else its first photo's) sets the foliage
+        if month is None:
+            taken = [p.date_taken for p in photos if p.date_taken]
+            month = datetime.fromtimestamp(min(taken), tz=timezone.utc).month if taken else None
+        self.veg = build_vegetation(pack, self.mesh, self.path.pts, month)
+        shade_mesh(self.mesh, self.veg.ground_rgb)
+        self._sprites = make_sprites(self.veg.season, self.veg.biome.rock)
+        self._plant_cells: Dict[Tuple[int, int], list] = {}
         # Drape the trail slightly above the mesh so it stays visible on slopes
         self._trail = [(x, y, max(z, self.mesh.height_at(x, y)) + 6.0) for x, y, z in self.path.pts]
         self._trail_cells: Dict[Tuple[int, int], List[int]] = {}
@@ -173,6 +195,7 @@ class Replay3DView(QWidget):
             x, y = self.frame.to_xy(first.lat, first.lon)
             items = [PhotoItem(pin, photo_pixmap(pin, 300)) for pin in plan.shown]
             self.stops.append(PhotoStop(items, plan.along_m, (x, y, self.mesh.height_at(x, y) + 6.0), plan.hidden))
+        self.photo_stops = self.stops  # all of them; `stops` is empty while photos are hidden
         # Full-size photos are decoded off the GUI thread just ahead of being shown
         self._loader = ThreadPoolExecutor(max_workers=1, thread_name_prefix="replay-photo")
 
@@ -227,6 +250,23 @@ class Replay3DView(QWidget):
         self.progress_changed.emit(self.dist / max(1.0, self.path.length))
         self.update()
 
+    @property
+    def show_photos(self) -> bool:
+        return self.stops is self.photo_stops
+
+    def set_show_photos(self, show: bool) -> None:
+        """Show photos (stop, zoom in, linger) or hike straight through with no markers."""
+        if show == self.show_photos:
+            return
+        if self.phase in self.PHOTO_PHASES:  # leave the photo being shown at once
+            self.phase = "playing" if self.timer.isActive() else "paused"
+            self.state_changed.emit(self.phase)
+        self.stops = self.photo_stops if show else []
+        self.next_stop = next((i for i, s in enumerate(self.stops) if s.along_m >= self.dist - 1.0), len(self.stops))
+        self.photo_k = 0
+        self._prefetch()
+        self.update()
+
     def skip_photo(self) -> None:
         """Leave the current stop (blending out from wherever it is)."""
         if self.phase == "blend_in":
@@ -262,7 +302,7 @@ class Replay3DView(QWidget):
         keep = {id(it) for it in self._upcoming_items()}
         if self.next_stop >= 1 and self.next_stop - 1 < len(self.stops):
             keep.update(id(it) for it in self.stops[self.next_stop - 1].items[-1:])  # blending out
-        for stop in self.stops:
+        for stop in self.photo_stops:  # all stops, so hiding photos frees them too
             for it in stop.items:
                 if id(it) not in keep:
                     it.full, it.loading = None, None  # memory: only what's about to be shown
@@ -471,6 +511,8 @@ class Replay3DView(QWidget):
             layer_segs = self.layers.cells.get((r, c))
             if layer_segs:
                 self._draw_layers(p, project, layer_segs, depth)
+            if depth < VEG_FAR:
+                self._draw_plants(p, project, cam.focal, r, c, depth, f)
             # Trail and photo markers on this cell are drawn now, so nearer terrain hides them
             for i in self._trail_cells.get((r, c), ()):
                 s0 = project(*self._trail[i])
@@ -522,6 +564,47 @@ class Replay3DView(QWidget):
                 p.setPen(QPen(QColor(rgb[0], rgb[1], rgb[2], int(225 * fade)), width))
                 p.drawLines(lines)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+
+    def _draw_plants(self, p: QPainter, project, focal: float, r: int, c: int, depth: float, fog: float) -> None:
+        """This cell's trees, shrubs, grass and boulders, back to front; fewer with distance, fading
+        into the fog and out before VEG_FAR so they don't pop."""
+        plants = self._plant_cells.get((r, c))
+        if plants is None:
+            # (x, y, z, drawn height in mesh units, sprite, small) — prepared once per cell
+            k = self.frame.zx * VEG_SCALE
+            plants = self._plant_cells[(r, c)] = [
+                (x, y, z, k * height_m * VEG_BOOST.get(sp, 1.0), self._sprites[sp][variant], sp in SMALL_PLANTS)
+                for x, y, z, sp, variant, height_m in self.veg.plants(r, c)
+            ]
+        if not plants:
+            return
+        if depth > VEG_MID:
+            plants = plants[:max(1, len(plants) // 5)]
+        elif depth > VEG_NEAR:
+            plants = plants[:max(1, len(plants) // 2)]
+        skip_small = depth > SMALL_FAR
+        visible = []
+        for x, y, z, hk, sprite, small in plants:
+            if small and skip_small:
+                continue
+            s = project(x, y, z)
+            if s is not None:
+                hpx = focal * hk / s[2]
+                if hpx >= 2.0:
+                    visible.append((s[2], s[0], s[1], hpx, sprite))
+        if not visible:
+            return
+        if depth < VEG_NEAR:  # farther away the order within a cell isn't noticeable
+            visible.sort(key=itemgetter(0), reverse=True)
+        p.setOpacity((1.0 - fog * 0.9) * min(1.0, (VEG_FAR - depth) / 500.0))
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        draw = p.drawPixmap
+        for _d, sx, sy, hpx, sprite in visible:
+            pix, src = sprite.level_for(hpx)
+            w = hpx * sprite.aspect
+            draw(QRectF(sx - w * 0.5, sy - hpx * GROUND_FRAC, w, hpx), pix, src)  # ground point at (sx, sy)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+        p.setOpacity(1.0)
 
     @staticmethod
     def _marker_rect(project, stop: PhotoStop) -> Optional[Tuple[QPointF, QRectF]]:
@@ -614,7 +697,17 @@ class Replay3DView(QWidget):
         p.drawText(QPointF(26, 62), f"{format_distance(self.dist, self.units)} of {format_distance(self.path.length, self.units)}")
         p.setFont(QFont("Sans Serif", 16, QFont.Weight.Bold))
         p.setPen(QColor("#F4D03F"))
-        p.drawText(QPointF(26, 94), f"▲ {format_elevation(ele, self.units)}")
+        alt = f"▲ {format_elevation(ele, self.units)}"
+        p.drawText(QPointF(26, 94), alt)
+        # Life zone at the hiker (Spruce–fir forest, Krummholz, Alpine tundra, ...)
+        x, y, _z, _e = self.path.at(self.dist)
+        alt_w = QFontMetricsF(p.font()).horizontalAdvance(alt)
+        p.setFont(QFont("Sans Serif", 9))
+        p.setPen(QColor("#98B2A1"))
+        fm = QFontMetricsF(p.font())
+        room = max(0.0, 330 - 12 - (alt_w + 12))
+        p.drawText(QPointF(26 + alt_w + 12, 93),
+                   fm.elidedText(self.veg.zone_name_at(x, y), Qt.TextElideMode.ElideRight, room))
 
         self._draw_profile(p, w, h, ele)
         self._draw_minimap(p, w, h)
@@ -800,13 +893,14 @@ class Replay3DDialog(QDialog):
     """Window with the 3D replay and its playback controls."""
 
     def __init__(self, route: ComposedRoute, pack: Optional[DestinationPack], photos: List[HikePhotoPin],
-                 units: str = "us", parent: Optional[QWidget] = None) -> None:
+                 units: str = "us", parent: Optional[QWidget] = None, month: Optional[int] = None,
+                 show_photos: bool = True) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"3D Hike Replay — {route.name}")
         self.resize(1280, 800)
         col = QVBoxLayout(self)
         col.setContentsMargins(6, 6, 6, 6)
-        self.view = Replay3DView(route, pack, photos, units)
+        self.view = Replay3DView(route, pack, photos, units, month=month)
         col.addWidget(self.view, 1)
 
         bar = QHBoxLayout()
@@ -823,10 +917,17 @@ class Replay3DDialog(QDialog):
         for label, val in (("0.5×", 0.5), ("1×", 1.0), ("2×", 2.0), ("4×", 4.0)):
             self.speed_combo.addItem(label, val)
         self.speed_combo.setCurrentIndex(1)
+        self.photos_check = QCheckBox("Show photos")
+        self.photos_check.setToolTip("Stop at each photo and show it, or hike straight through")
+        self.photos_check.setChecked(show_photos)
+        self.photos_check.setEnabled(bool(self.view.photo_stops))
+        self.view.set_show_photos(show_photos)
+        self.photos_check.toggled.connect(self.view.set_show_photos)
         self.speed_combo.currentIndexChanged.connect(lambda _i: setattr(self.view, "speed", float(self.speed_combo.currentData())))
         bar.addWidget(self.play_btn)
         bar.addWidget(self.skip_btn)
         bar.addWidget(self.slider, 1)
+        bar.addWidget(self.photos_check)
         bar.addWidget(QLabel("Speed:"))
         bar.addWidget(self.speed_combo)
         hint = QLabel("Space: play/pause · →: skip photo")

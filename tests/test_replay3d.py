@@ -177,3 +177,61 @@ def test_map_layers_are_draped_on_the_replay_terrain() -> None:
                 assert abs(z - (mesh.height_at(x, y) + 3.0)) < 1e-6
     seg = layers.segs[0]
     assert abs(seg[2] - (mesh.height_at(seg[0], seg[1]) + 6.0)) < 1e-6, "lines lie just above the ground"
+
+
+def test_replay_grows_region_vegetation_for_the_hikes_season(tmp_path: Path) -> None:
+    from src.hiking.vegetation import MONADNOCK
+
+    view, route = _view(tmp_path)  # photo taken in August
+    assert view.veg.biome is MONADNOCK and view.veg.season == "summer"
+    view.dist = route.distance_m * 0.3
+    view.grab()
+    drawn = [p for plants in view._plant_cells.values() for p in plants]
+    assert len(drawn) > 200, "trees and shrubs around the trail"
+    x, y, _z, _e = view.path.at(view.path.length)
+    assert view.veg.zone_name_at(x, y) in ("Open summit ledges", "Bare rock", "Cliffs"), "bald summit"
+
+    from src.gui.replay3d import Replay3DView
+
+    autumn = Replay3DView(route, view_pack(), [], "us", month=10)
+    assert autumn.veg.season == "autumn"
+
+
+def view_pack():
+    from src.hiking.models import DestinationPack
+
+    pack_file = Path(__file__).resolve().parent.parent / "data" / "packs" / "mount_monadnock.json"
+    return DestinationPack.model_validate_json(pack_file.read_text(encoding="utf-8"))
+
+
+def test_photos_can_be_hidden_and_shown_again(tmp_path: Path) -> None:
+    from src.gui.replay3d import Replay3DDialog
+
+    view, route = _view(tmp_path)
+    view.seek(0.0)
+    view.phase = "playing"
+    while view.phase == "playing":
+        view.advance(0.1)
+    assert view.phase == "blend_in"
+
+    view.set_show_photos(False)  # mid-photo: the photo goes and the hike carries on
+    assert view.phase == "paused" and not view.show_photos and view.stops == []
+    view.phase = "playing"
+    view.advance(0.1)
+    assert view.speed_factor() == 1.0, "no slowing down for hidden photos"
+    while view.phase == "playing":
+        view.advance(0.5)
+    assert view.phase == "done", "straight through to the end without stopping"
+
+    view.set_show_photos(True)
+    view.seek(0.0)
+    assert view.show_photos and len(view.stops) == 1 and view.next_stop == 0
+
+    dlg = Replay3DDialog(route, view_pack(), [view.stops[0].pin], "us", show_photos=False)
+    assert not dlg.photos_check.isChecked() and dlg.photos_check.isEnabled() and not dlg.view.show_photos
+    dlg.photos_check.setChecked(True)
+    assert dlg.view.show_photos
+    dlg.view.shutdown()
+    no_photos = Replay3DDialog(route, view_pack(), [], "us")
+    assert not no_photos.photos_check.isEnabled()
+    no_photos.view.shutdown()

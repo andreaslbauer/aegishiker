@@ -7,7 +7,7 @@ hiker along the route; points are perspective-projected to screen pixels.
 import bisect
 import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from .elevation import sample_dem
 from .models import DEMGrid
@@ -93,22 +93,28 @@ def build_mesh(
     lo = min(min(r) for r in z)
     hi = max(max(r) for r in z)
     span = max(1.0, hi - lo)
-    # Sun from the north-west, 40° up
+    mesh = TerrainMesh(frame, x_min, y_min, cell_m, cols, rows, z, [])
+    shade_mesh(mesh, lambda r, c: _hypso(((z[r][c] + z[r][c + 1] + z[r + 1][c] + z[r + 1][c + 1]) / 4.0 - lo) / span))
+    return mesh
+
+
+def shade_mesh(mesh: TerrainMesh, ground: Callable[[int, int], Tuple[float, float, float]]) -> None:
+    """(Re)colour the mesh: each cell's `ground(row, col)` colour, lit by a sun from the north-west, 40° up."""
+    z, cell_m = mesh.z, mesh.cell_m
     lx, ly, lz = -0.54, 0.54, 0.64
     color: List[List[Tuple[int, int, int]]] = []
-    for r in range(rows - 1):
+    for r in range(mesh.rows - 1):
         crow = []
-        for c in range(cols - 1):
+        for c in range(mesh.cols - 1):
             z00, z10, z01, z11 = z[r][c], z[r][c + 1], z[r + 1][c], z[r + 1][c + 1]
             dzdx = ((z10 - z00) + (z11 - z01)) / (2 * cell_m)
             dzdy = ((z01 - z00) + (z11 - z10)) / (2 * cell_m)
             n = math.sqrt(dzdx * dzdx + dzdy * dzdy + 1.0)
             shade = max(0.0, (-dzdx * lx - dzdy * ly + lz) / n)
-            base = _hypso(((z00 + z10 + z01 + z11) / 4.0 - lo) / span)
             f = 0.45 + 0.85 * shade
-            crow.append(tuple(min(255, int(ch * f)) for ch in base))  # type: ignore[misc]
+            crow.append(tuple(min(255, int(ch * f)) for ch in ground(r, c)))  # type: ignore[misc]
         color.append(crow)
-    return TerrainMesh(frame, x_min, y_min, cell_m, cols, rows, z, color)
+    mesh.color = color
 
 
 @dataclass
