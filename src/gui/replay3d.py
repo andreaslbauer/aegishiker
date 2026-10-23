@@ -679,20 +679,63 @@ class Replay3DView(QWidget):
             p.drawText(rect, label)
 
     def _draw_hiker(self, p: QPainter, project, pos: Tuple[float, float, float]) -> None:
+        """A hiker seen from behind (the chase camera's view): backpack, hat and trekking pole,
+        legs and arms swinging with the distance walked (still while paused)."""
         s = project(*pos)
         if not s:
             return
+        top = project(pos[0], pos[1], pos[2] + 70.0)  # sized like a 70 m figure, readable at any zoom
+        hgt = max(26.0, min(64.0, (s[1] - top[1]) if top else 36.0))
+        gx, gy = s[0], s[1]
+        swing = math.sin(self.dist / 0.9)  # one stride every ~5.7 m
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        pole_top = project(pos[0], pos[1], pos[2] + 110.0)
-        if pole_top:
-            p.setPen(QPen(QColor(255, 255, 255, 200), 2.0))
-            p.drawLine(QPointF(s[0], s[1]), QPointF(pole_top[0], pole_top[1]))
-        p.setPen(QPen(QColor("#FFFFFF"), 2.0))
-        p.setBrush(QColor("#E74C3C"))
-        p.drawEllipse(QPointF(s[0], s[1]), 7.0, 7.0)
-        p.setBrush(QColor(231, 76, 60, 70))
+
+        # Shadow and a soft halo so the figure stands out on any terrain
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(QPointF(s[0], s[1]), 16.0, 16.0)
+        p.setBrush(QColor(231, 76, 60, 60))
+        p.drawEllipse(QPointF(gx, gy), hgt * 0.42, hgt * 0.13)
+        p.setBrush(QColor(0, 0, 0, 90))
+        p.drawEllipse(QPointF(gx, gy), hgt * 0.22, hgt * 0.07)
+
+        def at(dx: float, dy: float) -> QPointF:  # offsets in figure heights from the ground point
+            return QPointF(gx + dx * hgt, gy - dy * hgt)
+
+        cap = Qt.PenCapStyle.RoundCap
+        # Legs: the stepping foot lifts and both shift with the stride
+        legs = QPen(QColor("#2C3E50"), hgt * 0.12, Qt.PenStyle.SolidLine, cap)
+        p.setPen(legs)
+        for side, ph in ((-1, swing), (1, -swing)):
+            p.drawLine(at(side * 0.07, 0.46), at(side * 0.09, 0.02 + max(0.0, ph) * 0.07))
+        # Boots
+        p.setPen(QPen(QColor("#5D4037"), hgt * 0.13, Qt.PenStyle.SolidLine, cap))
+        for side, ph in ((-1, swing), (1, -swing)):
+            foot = at(side * 0.09, 0.02 + max(0.0, ph) * 0.07)
+            p.drawPoint(foot)
+        # Arms swing opposite to the legs; the right hand holds the pole
+        arm = QPen(QColor("#1F6FA8"), hgt * 0.09, Qt.PenStyle.SolidLine, cap)
+        p.setPen(arm)
+        l_hand, r_hand = at(-0.21, 0.50 + swing * 0.04), at(0.21, 0.50 - swing * 0.04)
+        p.drawLine(at(-0.15, 0.76), l_hand)
+        p.drawLine(at(0.15, 0.76), r_hand)
+        p.setPen(QPen(QColor(220, 220, 220), max(1.5, hgt * 0.035), Qt.PenStyle.SolidLine, cap))
+        p.drawLine(QPointF(r_hand.x(), r_hand.y() - hgt * 0.06), at(0.27 - swing * 0.05, 0.0))
+        # Jacket, then the backpack over it (seen from behind)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#2E86C1"))
+        p.drawRoundedRect(QRectF(gx - hgt * 0.16, gy - hgt * 0.82, hgt * 0.32, hgt * 0.40), hgt * 0.08, hgt * 0.08)
+        p.setBrush(QColor("#E67E22"))
+        p.drawRoundedRect(QRectF(gx - hgt * 0.14, gy - hgt * 0.86, hgt * 0.28, hgt * 0.36), hgt * 0.07, hgt * 0.07)
+        p.setBrush(QColor("#B85E12"))
+        p.drawRoundedRect(QRectF(gx - hgt * 0.10, gy - hgt * 0.66, hgt * 0.20, hgt * 0.10), hgt * 0.03, hgt * 0.03)
+        p.setPen(QPen(QColor("#8E4A0E"), max(1.0, hgt * 0.025)))
+        p.drawLine(at(-0.14, 0.62), at(0.14, 0.62))  # hip belt
+        # Head and hat
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#E8B990"))
+        p.drawEllipse(at(0.0, 0.92), hgt * 0.085, hgt * 0.09)
+        p.setBrush(QColor("#6D4C41"))
+        p.drawEllipse(at(0.0, 0.955), hgt * 0.14, hgt * 0.035)  # brim
+        p.drawRoundedRect(QRectF(gx - hgt * 0.08, gy - hgt * 1.06, hgt * 0.16, hgt * 0.10), hgt * 0.04, hgt * 0.04)
 
     def _draw_hud(self, p: QPainter, w: int, h: int, ele: float) -> None:
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
