@@ -100,3 +100,20 @@ def mock_voyager_db(temp_app_dir: Path) -> Path:
 @pytest.fixture()
 def test_settings(temp_app_dir: Path) -> Settings:
     return Settings(settings_file=temp_app_dir / "settings.json")
+
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """Delete the widgets tests left open while Qt is still up (as the app does on quit): PySide
+    otherwise destroys them at interpreter exit, after all tests passed, and that can segfault."""
+    import sys
+
+    if "PySide6.QtWidgets" not in sys.modules:
+        return
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is not None:
+        from main import shutdown_qt
+
+        shutdown_qt(app)

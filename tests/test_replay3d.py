@@ -235,3 +235,24 @@ def test_photos_can_be_hidden_and_shown_again(tmp_path: Path) -> None:
     no_photos = Replay3DDialog(route, view_pack(), [], "us")
     assert not no_photos.photos_check.isEnabled()
     no_photos.view.shutdown()
+
+
+def test_scene_is_drawn_once_while_a_photo_is_up(tmp_path: Path) -> None:
+    """The camera stands still during a photo: its frames reuse the scene instead of redrawing it."""
+    from src.gui.replay3d import BLEND_IN_S
+
+    view, _route = _view(tmp_path)
+    drawn = []
+    real = view._draw_terrain
+    view._draw_terrain = lambda *a: (drawn.append(1), real(*a))
+    view.dist = view.stops[0].along_m
+    view.phase, view.phase_t, view.photo_k = "blend_in", 0.0, 0
+    for _ in range(4):
+        view.advance(BLEND_IN_S / 3)
+        assert not view.grab().isNull()
+    assert view.phase == "hold" and len(drawn) == 1
+    view.phase = "playing"
+    view.advance(0.5)
+    view.grab()
+    assert len(drawn) == 2, "moving again redraws the scene"
+    view.shutdown()

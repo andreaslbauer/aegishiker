@@ -80,8 +80,8 @@ LAYER_PENS = {
 VEG_SCALE = 1.6
 VEG_BOOST = {"krummholz": 2.0, "shrub": 2.4, "sage": 2.4, "grass": 4.0, "boulder": 1.6}  # small plants, more so
 SMALL_PLANTS = frozenset(VEG_BOOST)
-VEG_NEAR, VEG_MID, VEG_FAR = 1300.0, 2000.0, 2700.0  # all of a cell's plants / ~half / ~a fifth / none beyond
-SMALL_FAR = 1800.0  # shrubs, grass and boulders only this close
+VEG_NEAR, VEG_FAR = 1300.0, 2700.0  # plants sorted back to front within this / none beyond
+VEG_MIN_PX, VEG_FULL_PX = 1.5, 6.0  # a plant fades in from this drawn height to fully opaque at that
 
 BASE_DURATION_S = 75.0  # whole route at 1x (photos excluded)
 
@@ -91,11 +91,11 @@ APPROACH_M = 300.0  # start slowing / turning toward a stop this far before it
 DEPART_M = 250.0  # speed back up / turn back to the trail over this distance after it
 EASE_SHARE = 0.06  # on short hikes both shrink to this share of the route, so it doesn't crawl throughout
 MIN_SPEED_FACTOR = 0.12  # crawl speed right at a stop (never a dead stop)
-BLEND_IN_S = 1.6  # photo grows from its spot and fades in while the scene blurs
-BLEND_OUT_S = 1.4
-FIRST_HOLD_S = 5.0  # first photo of a stop holds this long…
-NEXT_HOLD_S = 2.5  # …further photos of the same stop
-XFADE_S = 0.8  # cross-fade between photos of one stop
+BLEND_IN_S = 1.0  # photo grows from its spot and fades in while the scene blurs
+BLEND_OUT_S = 0.9
+FIRST_HOLD_S = 3.0  # first photo of a stop holds this long…
+NEXT_HOLD_S = 1.5  # …further photos of the same stop
+XFADE_S = 0.5  # cross-fade between photos of one stop
 LINGER_S = FIRST_HOLD_S  # (kept for callers/tests)
 
 
@@ -173,6 +173,7 @@ class Replay3DView(QWidget):
         shade_mesh(self.mesh, self.veg.ground_rgb)
         self._sprites = make_sprites(self.veg.season, self.veg.biome.rock)
         self._plant_cells: Dict[Tuple[int, int], list] = {}
+        self._plant_tallest: Dict[Tuple[int, int], float] = {}  # per cell: drawn height of its tallest plant
         # Drape the trail slightly above the mesh so it stays visible on slopes
         self._trail = [(x, y, max(z, self.mesh.height_at(x, y)) + 6.0) for x, y, z in self.path.pts]
         self._trail_cells: Dict[Tuple[int, int], List[int]] = {}
@@ -197,7 +198,7 @@ class Replay3DView(QWidget):
             self.stops.append(PhotoStop(items, plan.along_m, (x, y, self.mesh.height_at(x, y) + 6.0), plan.hidden))
         self.photo_stops = self.stops  # all of them; `stops` is empty while photos are hidden
         # Full-size photos are decoded off the GUI thread just ahead of being shown
-        self._loader = ThreadPoolExecutor(max_workers=1, thread_name_prefix="replay-photo")
+        self._loader = ThreadPoolExecutor(max_workers=2, thread_name_prefix="replay-photo")
 
         # Animation state
         self.dist = 0.0
@@ -208,6 +209,8 @@ class Replay3DView(QWidget):
         self.yaw = self.path.heading(0.0)
         self._last_tick = time.monotonic()
         self._frame: Optional[QPixmap] = None
+        self._frame_key: Optional[tuple] = None  # what _frame shows; reused while a photo is up
+        self._soft: Optional[QPixmap] = None  # blurred copy of _frame behind the photo
         self.timer = QTimer(self)
         self.timer.setInterval(33)
         self.timer.timeout.connect(self._tick)
@@ -430,17 +433,22 @@ class Replay3DView(QWidget):
         if self._frame is None or self._frame.size() != QSize(int(w * dpr), int(h * dpr)):
             self._frame = QPixmap(int(w * dpr), int(h * dpr))
             self._frame.setDevicePixelRatio(dpr)
+            self._frame_key = None
         x, y, z, ele = self.path.at(self.dist)
         cam = self._camera(w, h)
         project = cam.projector()
 
-        scene = QPainter(self._frame)
-        self._draw_sky(scene, w, h)
-        self._draw_terrain(scene, cam, project)
-        self._draw_peaks(scene, project)
-        self._draw_hiker(scene, project, (x, y, max(z, self.mesh.height_at(x, y)) + 6.0))
-        self._draw_hud(scene, w, h, ele)
-        scene.end()
+        # The camera stands still while a photo is up: draw the scene once, not every frame
+        key = (self.dist, self.yaw, self.next_stop, self.phase in self.PHOTO_PHASES, self.show_photos)
+        if key != self._frame_key:
+            scene = QPainter(self._frame)
+            self._draw_sky(scene, w, h)
+            self._draw_terrain(scene, cam, project)
+            self._draw_peaks(scene, project)
+            self._draw_hiker(scene, project, (x, y, max(z, self.mesh.height_at(x, y)) + 6.0))
+            self._draw_hud(scene, w, h, ele)
+            scene.end()
+            self._frame_key, self._soft = key, None
 
         p = QPainter(self)
         p.drawPixmap(0, 0, self._frame)
@@ -566,8 +574,8 @@ class Replay3DView(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
     def _draw_plants(self, p: QPainter, project, focal: float, r: int, c: int, depth: float, fog: float) -> None:
-        """This cell's trees, shrubs, grass and boulders, back to front; fewer with distance, fading
-        into the fog and out before VEG_FAR so they don't pop."""
+        """This cell's trees, shrubs, grass and boulders, back to front. Always the same plants: they
+        only grow as the camera nears them, each fading in while still a few pixels tall, so none pop."""
         plants = self._plant_cells.get((r, c))
         if plants is None:
             # (x, y, z, drawn height in mesh units, sprite, small) — prepared once per cell
@@ -578,28 +586,34 @@ class Replay3DView(QWidget):
             ]
         if not plants:
             return
-        if depth > VEG_MID:
-            plants = plants[:max(1, len(plants) // 5)]
-        elif depth > VEG_NEAR:
-            plants = plants[:max(1, len(plants) // 2)]
-        skip_small = depth > SMALL_FAR
+        tallest = self._plant_tallest.get((r, c))
+        if tallest is None:
+            tallest = self._plant_tallest[(r, c)] = max(pl[3] for pl in plants)
+        if focal * tallest / max(1.0, depth - self.mesh.cell_m) < VEG_MIN_PX:
+            return  # even its tallest plant at the cell's nearest corner is too small to see
         visible = []
-        for x, y, z, hk, sprite, small in plants:
-            if small and skip_small:
-                continue
+        for x, y, z, hk, sprite, _small in plants:
             s = project(x, y, z)
             if s is not None:
                 hpx = focal * hk / s[2]
-                if hpx >= 2.0:
+                if hpx >= VEG_MIN_PX:
                     visible.append((s[2], s[0], s[1], hpx, sprite))
         if not visible:
             return
         if depth < VEG_NEAR:  # farther away the order within a cell isn't noticeable
             visible.sort(key=itemgetter(0), reverse=True)
-        p.setOpacity((1.0 - fog * 0.9) * min(1.0, (VEG_FAR - depth) / 500.0))
+        alpha = (1.0 - fog * 0.9) * min(1.0, (VEG_FAR - depth) / 500.0)
+        p.setOpacity(alpha)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         draw = p.drawPixmap
+        fading = False
         for _d, sx, sy, hpx, sprite in visible:
+            if hpx < VEG_FULL_PX:  # still tiny: fade in with size instead of appearing at once
+                p.setOpacity(alpha * (hpx - VEG_MIN_PX) / (VEG_FULL_PX - VEG_MIN_PX))
+                fading = True
+            elif fading:
+                p.setOpacity(alpha)
+                fading = False
             pix, src = sprite.level_for(hpx)
             w = hpx * sprite.aspect
             draw(QRectF(sx - w * 0.5, sy - hpx * GROUND_FRAC, w, hpx), pix, src)  # ground point at (sx, sy)
@@ -808,8 +822,11 @@ class Replay3DView(QWidget):
 
         # Soft focus: a heavily downscaled copy of the scene, scaled back up, faded over it
         if t > 0.01 and self._frame is not None:
-            small = self._frame.scaled(max(8, w // 14), max(6, h // 14), Qt.AspectRatioMode.IgnoreAspectRatio,
-                                       Qt.TransformationMode.SmoothTransformation)
+            if self._soft is None:
+                self._soft = self._frame.scaled(max(8, w // 14), max(6, h // 14),
+                                                Qt.AspectRatioMode.IgnoreAspectRatio,
+                                                Qt.TransformationMode.SmoothTransformation)
+            small = self._soft
             p.setOpacity(min(1.0, t * 1.1))
             p.drawPixmap(QRectF(0, 0, w, h), small, QRectF(small.rect()))
             p.setOpacity(1.0)
