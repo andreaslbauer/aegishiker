@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic builder for AegisHiker's 16 bundled regional destination packs.
+"""Deterministic builder for AegisHiker's 17 bundled regional destination packs.
 
 Generates:
   - data/destinations_catalog.json
@@ -19,6 +19,7 @@ Generates:
   - data/packs/yellowstone.json
   - data/packs/grand_teton.json
   - data/packs/joshua_tree.json
+  - data/packs/adirondacks.json
 
 Usage: build_starter_packs.py [pack_id ...]   (no ids = rebuild all)
 """
@@ -1138,6 +1139,46 @@ def build_joshua_tree() -> DestinationPack:
     )
 
 
+def build_adirondacks() -> DestinationPack:
+    pid = "adirondacks"
+    poi = lambda i, n, k, lat, lon, e, note="": POI(id=f"poi_adk_{i}", pack_id=pid, name=n, kind=k, lat=lat, lon=lon, ele_m=e, note=note)  # noqa: E731
+    return _national_park(
+        pid, "Adirondack High Peaks",
+        "New York (Adirondack Park — High Peaks Wilderness, Lake Placid & Keene Valley)",
+        "NYS DEC, Adirondack Mountain Club, USGS 3DEP & OpenStreetMap Contributors",
+        "All 46 High Peaks of the Adirondacks: Mount Marcy, the MacIntyre Range and Algonquin, the Great Range "
+        "from Gothics to Haystack, Giant and the Dix Range, the Santanonis and Sewards, Whiteface above Lake "
+        "Placid, and Avalanche Pass. Bear canisters are required in the Eastern High Peaks; camping above "
+        "3,500 ft is not allowed.",
+        (43.980, -74.260, 44.400, -73.660), 500.0, 1629.0,
+        "911 / NYS DEC Forest Ranger dispatch (518) 891-0235",
+        [
+            poi("marcy", "Mount Marcy", "peak", 44.1127, -73.9237, 1629.0, "Highest point in New York (5,344 ft); open alpine summit"),
+            poi("algonquin", "Algonquin Peak", "peak", 44.1437, -73.9866, 1559.0, "Second-highest peak; fragile alpine summit, stay on the rock"),
+            poi("haystack", "Mount Haystack", "peak", 44.1058, -73.9006, 1512.0),
+            poi("colden", "Mount Colden", "peak", 44.1265, -73.9599, 1428.0, "Trap Dike slide route is a technical scramble"),
+            poi("gothics", "Gothics", "peak", 44.1288, -73.8577, 1397.0, "Cables on the steep slabs of the Great Range"),
+            poi("giant", "Giant Mountain", "peak", 44.1612, -73.7206, 1411.0),
+            poi("cascade", "Cascade Mountain", "peak", 44.2187, -73.8604, 1251.0, "Short, popular climb from Route 73 with a bare summit"),
+            poi("whiteface", "Whiteface Mountain", "peak", 44.3659, -73.9026, 1483.0, "Veterans Memorial Highway and a castle near the summit"),
+            poi("hpic", "High Peaks Information Center (Adirondak Loj)", "ranger", 44.1830, -73.9636, 660.0,
+                "Heart Lake trailhead for Marcy Dam, Algonquin and Avalanche Pass; parking fee"),
+            poi("garden", "The Garden Trailhead", "trailhead", 44.1879, -73.8176, 460.0,
+                "Keene Valley: Johns Brook valley and the Great Range; small lot fills early"),
+            poi("amr", "Ausable Club / St. Huberts Parking", "trailhead", 44.1495, -73.7676, 380.0,
+                "Adirondack Mountain Reserve; parking reservation required in season"),
+            poi("upper_works", "Upper Works Trailhead", "trailhead", 44.0868, -74.0560, 550.0,
+                "Southern approach to Lake Colden, Marcy and the Santanonis"),
+            poi("cascade_th", "Cascade Mountain Trailhead", "trailhead", 44.2178, -73.8865, 640.0, "Route 73 near the Cascade Lakes"),
+            poi("marcy_dam", "Marcy Dam", "water", 44.1590, -73.9530, 720.0, "Junction of the Van Hoevenberg and Avalanche Pass trails"),
+            poi("avalanche_lake", "Avalanche Lake", "water", 44.1320, -73.9700, 875.0, "Hitch-up Matilda boardwalks along the cliffs"),
+            poi("lake_colden", "Lake Colden", "water", 44.1240, -73.9810, 840.0, "Interior ranger outpost and lean-tos"),
+            poi("tear", "Lake Tear of the Clouds", "water", 44.1057, -73.9340, 1310.0, "Highest source of the Hudson River"),
+            poi("indian_head", "Indian Head", "viewpoint", 44.1131, -73.8210, 830.0, "Classic view over the Lower Ausable Lake"),
+        ],
+    )
+
+
 def build_all(only: List[str] | None = None) -> None:
     packs = [
         build_white_mountains_nh(),
@@ -1156,6 +1197,7 @@ def build_all(only: List[str] | None = None) -> None:
         build_yellowstone(),
         build_grand_teton(),
         build_joshua_tree(),
+        build_adirondacks(),
     ]
     if only:
         packs = [p for p in packs if p.id in only]

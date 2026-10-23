@@ -985,5 +985,27 @@
         "no_dogs": false
       }
     }
+  },
+  "adirondacks": {
+    "all_named": true,
+    "exclude_regex": "\\bRoad\\b|\\bRd\\b|\\bStreet\\b|\\bAvenue\\b|\\bLane\\b|\\bDrive\\b|\\bHighway\\b|\\bDriveway\\b|^(no name|No Name)$|^\\((?i:yellow|orange|blue|red|white|green)\\)$|^(?i:blue|green|orange|red|white|yellow) blazes$|^(Trail|Connector|Bypass|Shortcut|Spur|Access|Path|Footpath|Sidewalk)$|Snowmobile|[Ss]ocial trail|[Uu]nmaintained|[Aa]bandoned|Closed|CLOSED|[Pp]roposed|Disc Golf|Fitness Trail|Parking|^(NF|FR|FS|BLM|NPS|CR|IR|BIA)[- ]?\\d|^Indian Route|^old Indian Route|\\bRoute \\d|^\\d[A-Za-z]\\d\\b|Campsite Spur|^Approach to |^;?(?i:NF|NV|FR|FS|BLM|BML|NPS|CR|IR|BIA|AZ|USFS|Nfs Rte)[- ]?[A-Z]?\\d|^\\d+$|^[A-Z]{1,2}\\d$|^[A-Z]{2}\\d{1,2}\\b|(?i:campsite)|\\d[A-Z]{1,2}\\d\\b|^(minor path|x-country route)$|Sidewalk",
+    "aliases": {},
+    "code_prefix": "ADK",
+    "tags": [
+      "adirondacks",
+      "high_peaks"
+    ],
+    "defaults": {
+      "min_length_m": 200,
+      "alpine_above_m": 1300
+    },
+    "overrides": {
+      "Van Hoevenberg Trail": {
+        "note": "Most-used route up Mount Marcy from Adirondak Loj via Marcy Dam; muddy and eroded in places."
+      },
+      "Avalanche Pass Trail": {
+        "note": "Through the pass to Avalanche Lake; ladders and the Hitch-up Matilda boardwalks along the cliffs."
+      }
+    }
   }
 }

@@ -305,6 +305,25 @@
       "trail_count": 170,
       "poi_count": 16,
       "bundled_file": "packs/joshua_tree.json"
+    },
+    {
+      "id": "adirondacks",
+      "name": "Adirondack High Peaks",
+      "state_or_region": "New York (Adirondack Park \u2014 High Peaks Wilderness, Lake Placid & Keene Valley)",
+      "agency": "NYS DEC, Adirondack Mountain Club, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "All 46 High Peaks of the Adirondacks: Mount Marcy, the MacIntyre Range and Algonquin, the Great Range from Gothics to Haystack, Giant and the Dix Range, the Santanonis and Sewards, Whiteface above Lake Placid, and Avalanche Pass. Bear canisters are required in the Eastern High Peaks; camping above 3,500 ft is not allowed.",
+      "bbox": [
+        -74.26,
+        43.98,
+        -73.66,
+        44.4
+      ],
+      "base_ele_m": 500.0,
+      "max_ele_m": 1629.0,
+      "trail_count": 393,
+      "poi_count": 18,
+      "bundled_file": "packs/adirondacks.json"
     }
   ]
 }
