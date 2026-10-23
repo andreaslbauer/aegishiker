@@ -40,3 +40,10 @@ Uses `snap/snapcraft.yaml` (`base: core24`, `extensions: [gnome]`, `compression:
 ./tools/build/test-snap.sh
 ```
 
+### Build, Test & Publish (candidate)
+```bash
+snapcraft login            # once
+./tools/build/snap_package_test_deploy.sh
+```
+Builds, runs `test-snap.sh`, and only if tests pass uploads the snap and releases it to the `candidate` channel (`snapcraft upload --release=candidate`), then bumps the patch version in `version.txt`. Override the channel with `SNAP_RELEASE_CHANNEL=beta`.
+

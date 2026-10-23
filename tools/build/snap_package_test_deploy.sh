@@ -11,6 +11,9 @@ cd "$PROJECT_ROOT"
 
 BUILD_SNAP="./tools/build/build-snap.sh"
 TEST_SNAP="./tools/build/test-snap.sh"
+PACKAGE_NAME="aegishiker"
+# Store channel the tested snap is released to (override e.g. SNAP_RELEASE_CHANNEL=beta)
+SNAP_RELEASE_CHANNEL="${SNAP_RELEASE_CHANNEL:-candidate}"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -25,6 +28,15 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Orchestrating Snap Build, Test, Deploy  ${NC}"
 echo -e "${GREEN}========================================${NC}"
 
+# Step 0: Verify Snap Store credentials before spending time on build/test
+if [ -z "${SNAP_UPLOAD_COMMAND:-}" ]; then
+    print_info "Step 0: Checking Snap Store login..."
+    if ! snapcraft whoami &>/dev/null; then
+        print_error "Not logged in to the Snap Store. Run 'snapcraft login' (or export SNAPCRAFT_STORE_CREDENTIALS) first."
+        exit 1
+    fi
+fi
+
 # Step 1: Build
 print_info "Step 1: Building Snap package..."
 chmod +x "$BUILD_SNAP"
@@ -35,16 +47,17 @@ print_info "Step 2: Testing Snap package..."
 chmod +x "$TEST_SNAP"
 $TEST_SNAP
 
-# Step 3: Deploy to Snap Store
+# Step 3: Deploy to Snap Store (only reached if build and tests succeeded)
 print_info "Step 3: Uploading to Snap Store..."
-LATEST_SNAP=$(ls -t *.snap 2>/dev/null | head -n 1)
+LATEST_SNAP=$(ls -t ${PACKAGE_NAME}*.snap 2>/dev/null | head -n 1)
 if [ -n "$LATEST_SNAP" ]; then
-    print_info "Releasing $LATEST_SNAP to Snap Store..."
+    print_info "Uploading $LATEST_SNAP and releasing to '$SNAP_RELEASE_CHANNEL'..."
     if [ -n "${SNAP_UPLOAD_COMMAND:-}" ]; then
         eval "$SNAP_UPLOAD_COMMAND"
     else
-        snapcraft upload "$LATEST_SNAP"
+        snapcraft upload --release="$SNAP_RELEASE_CHANNEL" "$LATEST_SNAP"
     fi
+    print_status "Released $LATEST_SNAP to $SNAP_RELEASE_CHANNEL."
 else
     print_error "No .snap package found to upload."
     exit 1
