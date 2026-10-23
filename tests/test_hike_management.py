@@ -220,3 +220,31 @@ def test_library_opens_a_hiked_route_in_reexperience(seeded_db, tmp_path, monkey
     assert state.active_session_id == first.id and win.tabs.currentWidget() is win.reexperience_panel
     win.hide()
     win.deleteLater()
+
+
+def test_reexperience_never_shows_another_route_for_a_hike(seeded_db: Database, test_settings: Settings) -> None:
+    """A hike whose route was deleted shows its own stored track, not the Composer's active route."""
+    _qt()
+    from src.gui.panels.reexperience_panel import ReexperiencePanel
+
+    state = AppState(db=seeded_db, settings=test_settings)
+    hiked = [[-71.30, 44.30, 400.0], [-71.29, 44.31, 700.0], [-71.28, 44.32, 1100.0]]
+    other = seeded_db.save_route(ComposedRoute(name="Unrelated Plan", pack_id="white_mountains_nh",
+                                               coords_3d=[[-71.6, 44.1, 300.0], [-71.59, 44.1, 310.0]]))
+    s = HikeSession(title="Ridge day", started_at="2025-09-05T07:00:00", destination_id="white_mountains_nh",
+                    interactive_map_data={"title": "Ridge day", "coords_3d": hiked, "distance_m": 2900.0,
+                                          "elevation_gain_m": 700.0})
+    seeded_db.save_session(s)  # route_id None: its route was deleted
+    state.set_active_route(other.id)
+    state.set_active_session(s.id)
+    panel = ReexperiencePanel(state)
+
+    assert [list(c) for c in panel.map_canvas.active_route.coords_3d] == hiked
+    assert [round(p.ele_m) for p in panel.elev_chart.samples][-1] == 1100, "chart = the hike's own track"
+    assert panel._replay_route().coords_3d == hiked
+
+    seeded_db.save_session(HikeSession(id=s.id, title="Ridge day", started_at=s.started_at,
+                                       destination_id="white_mountains_nh"))  # no track at all
+    panel.refresh_all()
+    assert panel.map_canvas.active_route is None
+    assert panel.elev_chart.samples == [], "no stale profile from the previous hike"

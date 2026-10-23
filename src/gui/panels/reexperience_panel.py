@@ -38,7 +38,9 @@ from src.gui.widgets import Card, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.hike_replay import build_interactive_map_data, export_interactive_hike_html
 from src.hiking.models import TrailPhotoPin
 from src.hiking.photo_matcher import dedupe_pins, photo_keys
-from src.hiking.hike_info import hike_date_label, hike_title, hike_trail_names, people_label, real_people
+from src.hiking.hike_info import (
+    hike_date_label, hike_title, hike_trail_names, hiked_route, people_label, real_people,
+)
 from src.hiking.hike_report import hike_companions, hike_details
 from src.gui.dialogs.hike_details_dialog import HikeDetailsDialog
 from src.gui.dialogs.hike_picker_dialog import HikePickerDialog
@@ -244,15 +246,19 @@ class ReexperiencePanel(QWidget):
         session = self.app_state.get_active_session()
         if session is None:
             return
-        route = self.app_state.db.get_route(session.route_id) if session.route_id else None
+        _session, route = self._active()
         title, ok = QInputDialog.getText(self, "Rename Hike", "Hike name:", text=hike_title(session, route))
         if ok and title.strip():
             self.app_state.rename_session(session.id, title)
 
     def _active(self):
+        """The active hike and the route it followed. Without a hike: the active route (planned only).
+        A hike whose route was deleted gets it rebuilt from its own track, never another route."""
         session = self.app_state.get_active_session()
-        route = self.app_state.db.get_route(session.route_id) if session and session.route_id else None
-        return session, route
+        if session is None:
+            return None, self.app_state.get_active_route()
+        saved = self.app_state.db.get_route(session.route_id) if session.route_id else None
+        return session, hiked_route(session, saved)
 
     def edit_details(self) -> None:
         session, _route = self._active()
@@ -374,12 +380,7 @@ class ReexperiencePanel(QWidget):
                     self.app_state.db.save_photo_pin(pin)
 
     def _load_active_session_view(self) -> None:
-        session = self.app_state.get_active_session()
-        route = None
-        if session and session.route_id:
-            route = self.app_state.db.get_route(session.route_id)
-        if not route:
-            route = self.app_state.get_active_route()
+        session, route = self._active()
 
         unit = str(self.app_state.settings.get("unit_system", "metric"))
         if session:
@@ -414,6 +415,11 @@ class ReexperiencePanel(QWidget):
             self.elev_chart.set_profile(route.elevation_profile, photo_pins=self.photo_pins, unit_system=unit)
             self.dist_card.set_value(format_distance(route.distance_m, unit))
             self.gain_card.set_value(f"+{format_elevation(route.elevation_gain_m, unit)}")
+        else:  # don't leave the previous hike's profile and numbers behind
+            self._max_dist_m = 1.0
+            self.elev_chart.set_profile([], unit_system=unit)
+            self.dist_card.set_value("--")
+            self.gain_card.set_value("--")
         self.photos_card.set_value(str(len(self.photo_pins)), "Geotagged along corridor")
 
         self.photo_list.clear()
@@ -494,9 +500,7 @@ class ReexperiencePanel(QWidget):
                 self._display_photo_pin(nearest)
 
     def _replay_route(self):
-        session = self.app_state.get_active_session()
-        route = self.app_state.db.get_route(session.route_id) if session and session.route_id else None
-        return route or self.app_state.get_active_route()
+        return self._active()[1]
 
     def open_3d_replay(self) -> None:
         route = self._replay_route()
@@ -541,10 +545,7 @@ class ReexperiencePanel(QWidget):
             self.scrubber.setValue(nxt)
 
     def rescan_voyager_for_active_session(self) -> None:
-        session = self.app_state.get_active_session()
-        route = self.app_state.get_active_route()
-        if session and session.route_id:
-            route = self.app_state.db.get_route(session.route_id) or route
+        session, route = self._active()
         if not route:
             return
         matched = run_in_background(
@@ -574,10 +575,7 @@ class ReexperiencePanel(QWidget):
             self._load_active_session_view()
 
     def _ensure_map_html(self) -> Optional[Path]:
-        session = self.app_state.get_active_session()
-        route = self.app_state.get_active_route()
-        if session and session.route_id:
-            route = self.app_state.db.get_route(session.route_id) or route
+        session, route = self._active()
         if not route:
             return None
         dest = self.app_state.db.get_destination(route.destination_id)

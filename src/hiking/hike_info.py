@@ -29,6 +29,23 @@ def hike_title(session: HikeSession, route: Optional[ComposedRoute] = None) -> s
     return title or "Recorded Hike"
 
 
+def hiked_route(session: HikeSession, saved: Optional[ComposedRoute] = None) -> Optional[ComposedRoute]:
+    """The route a hike followed: its saved route, else rebuilt from the track stored with the hike
+    (the route may have been deleted since; never substitute some other route)."""
+    if saved is not None:
+        return saved
+    for data in (session.route_snapshot, session.interactive_map_data):
+        if data and len(data.get("coords_3d") or []) >= 2:
+            return ComposedRoute(
+                id=session.route_id or f"rte_{session.id}",
+                pack_id=session.pack_id or data.get("pack_id") or "",
+                name=data.get("name") or data.get("title") or session.title or "Recorded Hike",
+                **{k: data[k] for k in ("coords_3d", "distance_m", "elevation_gain_m", "elevation_loss_m",
+                                        "min_ele_m", "max_ele_m") if data.get(k) is not None},
+            )
+    return None
+
+
 def hike_start(session: HikeSession) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(session.started_at)
