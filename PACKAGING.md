@@ -21,7 +21,13 @@ This script:
 ```bash
 ./tools/build/test-deb.sh
 ```
-Installs the `.deb`, runs headless `pytest` (`QT_QPA_PLATFORM=offscreen`), performs a smoke test of the binary, and cleanly purges the test installation.
+Installs the `.deb`, runs headless `pytest` (`QT_QPA_PLATFORM=offscreen`), and performs a smoke test of the binary.
+
+### Build, Test & Deploy
+```bash
+./tools/build/deb_package_test_deploy.sh
+```
+Builds, runs `test-deb.sh`, and only if tests pass deploys the package — by default it installs the tested `.deb` on this machine (`sudo dpkg -i`) and verifies the installed version — then bumps the patch version in `version.txt`. Set `DEPLOY_COMMAND="..."` to deploy somewhere else instead.
 
 ---
 

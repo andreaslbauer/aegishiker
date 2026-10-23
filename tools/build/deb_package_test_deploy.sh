@@ -11,6 +11,7 @@ cd "$PROJECT_ROOT"
 
 BUILD_DEB="./tools/build/build-deb.sh"
 TEST_DEB="./tools/build/test-deb.sh"
+PACKAGE_NAME="aegishiker"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -35,12 +36,25 @@ print_info "Step 2: Testing Debian package..."
 chmod +x "$TEST_DEB"
 $TEST_DEB
 
-# Step 3: Deploy
+# Step 3: Deploy (only reached if build and tests succeeded)
+# Default: install the tested package on this machine. Override with DEPLOY_COMMAND="...".
 print_info "Step 3: Deploying package..."
+LATEST_DEB=$(ls -t dist/${PACKAGE_NAME}*.deb 2>/dev/null | head -n 1)
+if [ -z "$LATEST_DEB" ]; then
+    print_error "No .deb package found in dist/ to deploy."
+    exit 1
+fi
 if [ -n "${DEPLOY_COMMAND:-}" ]; then
     eval "$DEPLOY_COMMAND"
 else
-    echo "Skipping remote deployment (set DEPLOY_COMMAND to deploy)"
+    print_info "Installing $LATEST_DEB on this machine..."
+    sudo dpkg -i "$LATEST_DEB" || sudo apt-get install -f -y
+    INSTALLED_VERSION=$(dpkg-query -W -f='${Version}' "$PACKAGE_NAME" 2>/dev/null || true)
+    if [ -z "$INSTALLED_VERSION" ]; then
+        print_error "$PACKAGE_NAME is not installed after deploy."
+        exit 1
+    fi
+    print_status "Deployed $PACKAGE_NAME $INSTALLED_VERSION locally."
 fi
 
 # Step 4: Bump patch version
