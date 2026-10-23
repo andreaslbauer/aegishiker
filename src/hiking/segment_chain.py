@@ -6,8 +6,9 @@ junction). Turning around on the current trail (out-and-back) and re-using trail
 are always allowed. The chain is complete when it returns to its starting point or the user ends it.
 
 Besides the region's named trails the chain can know the basemap's other footpaths and tracks
-("map paths", see `map_paths_from_features`). They are never listed as options on their own, but
-the user can click one on the map to walk it, and routes to a clicked trail may use them to fill gaps.
+("map paths", see `map_paths_from_features`): minor named paths and unnamed ones. With
+`include_map_paths` they are offered as segments and can be clicked on the map or started on;
+either way, routes to a clicked trail may use them to fill gaps.
 """
 import bisect
 import heapq
@@ -54,11 +55,12 @@ def map_paths_from_features(
                 pts.append([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
         pts.append(list(f.coords[-1][:2]))
         coords = [[lon, lat, round(sample_dem(dem, lat, lon), 1)] for lon, lat in pts]
+        length = sum(haversine_m(a[1], a[0], b[1], b[0]) for a, b in zip(f.coords, f.coords[1:]))
         unnamed = "Unnamed path" if f.kind == "path" else "Unnamed track"
         if f.info:  # what the map says about it, e.g. "SAC T1 hiking", so it can be told apart
             unnamed += f" ({f.info.split(' · ')[0].split(';')[0][:40]})"
         out.append(TrailSegment(
-            id=f"mappath_{i}", pack_id=pack_id, name=f.name or unnamed, coords_3d=coords,
+            id=f"mappath_{i}", pack_id=pack_id, name=f.name or unnamed, coords_3d=coords, distance_m=round(length, 1),
             tags=[MAP_PATH_TAG] + ([] if f.name else ["unnamed"]),
             description="Path from the map (not one of the region's listed trails)",
         ))
@@ -147,6 +149,7 @@ class SegmentChain:
     map_paths: Sequence[TrailSegment] = ()  # the map's other paths: pickable, routable and offered too
     legs: List[Leg] = field(default_factory=list)
     ended: bool = False
+    include_map_paths: bool = True  # offer minor & unnamed map paths as segments (else routing only)
     _history: List[Tuple[List[Leg], bool]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -186,7 +189,15 @@ class SegmentChain:
 
     def offered(self, ti: int) -> bool:
         """Can trail ti be offered as a next segment / named at a junction?"""
-        return ti < self._n_named or ti not in self._shadows
+        if ti < self._n_named:
+            return True
+        return self.include_map_paths and ti not in self._shadows
+
+    def minor_paths(self) -> List[TrailSegment]:
+        """The map's named paths that aren't one of the region's listed trails, by name."""
+        return sorted((self.trails[ti] for ti in range(self._n_named, len(self.trails))
+                       if ti not in self._shadows and "unnamed" not in self.trails[ti].tags),
+                      key=lambda t: t.name.lower())
 
     # ── building ──────────────────────────────────────────────────────────
 
@@ -426,7 +437,9 @@ class SegmentChain:
         are all returned so the caller can ask which one is meant. Map paths are returned only
         where no region trail is near (a listed trail usually is a map path too)."""
         hits = self._trails_at(lat, lon, tol_m, 0, self._n_named)
-        return hits or self._trails_at(lat, lon, tol_m, self._n_named, len(self.trails))
+        if hits or not self.include_map_paths:
+            return hits
+        return self._trails_at(lat, lon, tol_m, self._n_named, len(self.trails))
 
     def _trails_at(self, lat: float, lon: float, tol_m: float, lo: int, hi: int) -> List[Tuple[TrailSegment, bool, float]]:
         hits = []

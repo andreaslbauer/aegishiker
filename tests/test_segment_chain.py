@@ -226,3 +226,30 @@ def test_map_path_copies_of_listed_trails_are_not_offered_twice() -> None:
     names = [c.trail_name for c in chain.candidates() if not c.turnaround]
     assert names.count("Ridge Trail") == 1, names
     assert "Unnamed path (SAC T1 hiking)" in names, "unnamed side paths are offered, told apart by their map info"
+
+
+def test_minor_and_unnamed_paths_can_be_switched_off_and_started_on() -> None:
+    from src.hiking.models import MapFeature
+    from src.hiking.segment_chain import map_paths_from_features
+
+    a = _line("a", "Brook Trail", [(-71.0 + i * 0.0015, 44.0, 300) for i in range(11)])
+    feats = [
+        MapFeature(kind="path", geom="line", name="Herd Path", coords=[[-70.991, 44.0], [-70.991, 44.006]]),
+        MapFeature(kind="path", geom="line", name="", coords=[[-70.994, 44.0], [-70.994, 43.995]]),
+    ]
+    paths = map_paths_from_features(feats, None, "p")
+    assert 640 < paths[0].distance_m < 700, "map paths know their length"
+    chain = SegmentChain([a], [], map_paths=paths)
+    assert [t.name for t in chain.minor_paths()] == ["Herd Path"], "named minor paths can be listed to start on"
+    chain.start(a)
+    names = {c.trail_name for c in chain.candidates()}
+    assert {"Herd Path", "Unnamed path"} <= names
+
+    chain.include_map_paths = False
+    names = {c.trail_name for c in chain.candidates()}
+    assert "Herd Path" not in names and "Unnamed path" not in names, "only listed trails"
+    assert chain.trails_at(44.004, -70.991, 30) == [], "map paths not clickable when left out"
+
+    chain.include_map_paths = True
+    chain.start(chain.minor_paths()[0], reverse=True)  # down the herd path to Brook Trail
+    assert chain.legs[0].trail.name == "Herd Path" and any(c.leg.trail.id == "a" for c in chain.candidates())

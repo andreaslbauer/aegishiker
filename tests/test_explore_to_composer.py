@@ -251,3 +251,29 @@ def test_composer_plays_the_shown_hike_in_3d(seeded_db: Database, tmp_path: Path
     composer.play3d_btn.click()
     assert played == [f"3D Hike Replay — {composer._draft.name}"], "the draft being built is played"
     composer.deleteLater()
+
+
+def test_builder_lists_minor_paths_to_start_on_when_included(seeded_db: Database, tmp_path: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.panels.composer_panel import ComposerPanel
+
+    QApplication.instance() or QApplication([])
+    settings = Settings(settings_file=tmp_path / "settings.json")
+    state = AppState(db=seeded_db, settings=settings)
+    builder = ComposerPanel(state).segment_builder
+    combo = builder.start_combo
+    assert builder.minor_chk.isChecked(), "included by default"
+    with_minor = combo.count()
+    minor = builder.chain.minor_paths()
+    assert minor and combo.findData(minor[0].id) >= 0
+
+    builder.minor_chk.setChecked(False)
+    assert combo.count() < with_minor and combo.findData(minor[0].id) < 0
+    assert not builder.chain.include_map_paths and settings.get("include_minor_paths") is False
+
+    builder.minor_chk.setChecked(True)
+    combo.setCurrentIndex(combo.findData(minor[0].id))
+    builder.start_chain()
+    assert builder.chain.legs[0].trail.id == minor[0].id

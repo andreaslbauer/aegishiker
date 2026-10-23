@@ -28,7 +28,7 @@ from src.gui.app_state import AppState
 from src.gui.busy import busy
 from src.hiking.geo import haversine_m
 from src.hiking.models import ComposedRoute, DestinationPack
-from src.hiking.segment_chain import Candidate, SegmentChain, StopPoint, map_paths_from_features
+from src.hiking.segment_chain import Candidate, SegmentChain, StopPoint, is_map_path, map_paths_from_features
 from src.hiking.units import format_distance, format_elevation
 
 PLACE_KINDS = {"peak", "hut", "shelter", "trailhead", "parking", "waterfall", "viewpoint", "campsite", "saddle", "spring"}
@@ -65,6 +65,14 @@ class SegmentBuilder(QWidget):
             "segments. Turn off to trace a route by clicking waypoints instead."
         )
         col.addWidget(self.pick_chk)
+        self.minor_chk = QCheckBox("Include minor && unnamed paths")
+        self.minor_chk.setChecked(bool(self.app_state.settings.get("include_minor_paths", True)))
+        self.minor_chk.setToolTip(
+            "Offer the map's smaller paths too — side paths, herd paths and unnamed tracks that aren't "
+            "among the region's listed trails. Off: only listed trails (paths still bridge gaps)."
+        )
+        self.minor_chk.toggled.connect(self._on_minor_toggled)
+        col.addWidget(self.minor_chk)
 
         col.addWidget(self._step("1 · Starting trail — or click one on the map"))
         self.start_combo = QComboBox()
@@ -172,11 +180,39 @@ class SegmentBuilder(QWidget):
             trails = sorted(pack.trails, key=lambda t: t.name.lower())
             # The map's other footpaths and tracks: pickable on the map and used to fill gaps
             map_paths = map_paths_from_features(pack.features, pack.dem, pack.id)
-            self.chain = SegmentChain(trails, places, map_paths=map_paths)
-            unit = self._unit()
-            for t in trails:
-                self.start_combo.addItem(f"{t.name}  ({format_distance(t.distance_m, unit)})", t.id)
+            self.chain = SegmentChain(trails, places, map_paths=map_paths,
+                                      include_map_paths=self.minor_chk.isChecked())
+            self._fill_start_combo()
         self._refresh()
+
+    def _fill_start_combo(self) -> None:
+        """The region's trails, then (when included) the map's minor named paths. Unnamed paths are
+        too many to list: click one on the map to start there."""
+        current = self.start_combo.currentData()
+        self.start_combo.clear()
+        if not self.chain:
+            return
+        unit = self._unit()
+        for t in self.chain.named_trails:
+            self.start_combo.addItem(f"{t.name}  ({format_distance(t.distance_m, unit)})", t.id)
+        if self.chain.include_map_paths:
+            minor = self.chain.minor_paths()
+            if minor:
+                self.start_combo.insertSeparator(self.start_combo.count())
+            for t in minor:
+                self.start_combo.addItem(f"{t.name}  ({format_distance(t.distance_m, unit)}, minor path)", t.id)
+        idx = self.start_combo.findData(current)
+        if idx >= 0:
+            self.start_combo.setCurrentIndex(idx)
+
+    def _on_minor_toggled(self, on: bool) -> None:
+        self.app_state.settings.set("include_minor_paths", on)
+        self.app_state.settings.save()
+        if self.chain:
+            self.chain.include_map_paths = on
+            self._fill_start_combo()
+            self._picked = [c for c in self._picked if on or not is_map_path(c.leg.trail)]
+            self._refresh()
 
     def _unit(self) -> str:
         return str(self.app_state.settings.get("unit_system", "metric"))
