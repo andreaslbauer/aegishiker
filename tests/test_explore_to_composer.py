@@ -230,3 +230,24 @@ def test_pick_existing_hike_in_region_opens_it_in_composer(seeded_db: Database, 
     assert composer.route_combo.currentData() == hike.id
     win.hide()
     win.deleteLater()
+
+
+def test_composer_plays_the_shown_hike_in_3d(seeded_db: Database, tmp_path: Path, monkeypatch) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui import replay3d
+    from src.gui.panels.composer_panel import ComposerPanel
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    composer = ComposerPanel(state)
+    played = []
+    monkeypatch.setattr(replay3d.Replay3DDialog, "exec", lambda dlg: played.append(dlg.windowTitle()) or 0)
+
+    assert composer.segment_builder.start_on_trail("wmnf_osm_crawford_path")
+    app.processEvents()
+    assert composer.play3d_btn.isEnabled()
+    composer.play3d_btn.click()
+    assert played == [f"3D Hike Replay — {composer._draft.name}"], "the draft being built is played"
+    composer.deleteLater()

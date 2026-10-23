@@ -61,11 +61,14 @@ class ComposerPanel(QWidget):
         export_btn = QPushButton("Export GPX…")
         export_btn.setObjectName("FlatButton")
         export_btn.clicked.connect(self.export_gpx_file)
+        self.play3d_btn = QPushButton("▶  3D Play Hike")
+        self.play3d_btn.setToolTip("Fly along this hike over 3D terrain")
+        self.play3d_btn.clicked.connect(self.play_hike_3d)
         self.i_hiked_btn = QPushButton("✓  I Hiked This Trail")
         self.i_hiked_btn.setObjectName("PrimaryButton")
         self.i_hiked_btn.setToolTip(TOOLTIPS["i_hiked_this"])
         self.i_hiked_btn.clicked.connect(self.open_i_hiked_this_wizard)
-        for b in (import_btn, export_btn, self.i_hiked_btn):
+        for b in (import_btn, export_btn, self.play3d_btn, self.i_hiked_btn):
             header.actions_layout.addWidget(b)
         layout.addWidget(header)
 
@@ -297,6 +300,29 @@ class ComposerPanel(QWidget):
             self._update_metrics(route)
         else:
             self.elev_chart.set_profile([], unit_system=unit)
+        self.play3d_btn.setEnabled(route is not None and len(route.coords_3d) >= 2)
+
+    def play_hike_3d(self) -> None:
+        """3D replay of the hike shown: the draft being built, else the saved route (with the
+        photos of its recorded hikes)."""
+        route = self._draft or self.app_state.get_active_route()
+        if route is None or len(route.coords_3d) < 2:
+            self.app_state.status_message.emit("Build or pick a hike to play it in 3D.")
+            return
+        photos = [] if self._draft is not None else self.app_state.db.list_photo_pins(route_id=route.id)
+        unit = str(self.app_state.settings.get("unit_system", "metric"))
+        show = bool(self.app_state.settings.get("replay_show_photos", True))
+        with busy(self, "Building 3D terrain for the replay…", title="3D Replay"):
+            from src.gui.replay3d import Replay3DDialog
+
+            pack = self.app_state.db.get_destination_pack(route.destination_id)
+            dlg = Replay3DDialog(route, pack, photos, "metric" if unit == "metric" else "us", self,
+                                 show_photos=show)
+        dlg.exec()
+        if dlg.photos_check.isEnabled() and dlg.photos_check.isChecked() != show:  # remember the choice
+            self.app_state.settings.set("replay_show_photos", dlg.photos_check.isChecked())
+            self.app_state.settings.save()
+        dlg.deleteLater()  # frees the terrain mesh now, not when the app quits
 
     def _update_metrics(self, route: ComposedRoute) -> None:
         unit = str(self.app_state.settings.get("unit_system", "metric"))
