@@ -193,3 +193,40 @@ def test_regions_are_chosen_by_state(seeded_db: Database, tmp_path: Path, monkey
     assert len(regions()) == len(seeded_db.list_destinations())
     assert explore.ui_state()["region_state"] == ""
     explore.deleteLater()
+
+
+def test_pick_existing_hike_in_region_opens_it_in_composer(seeded_db: Database, tmp_path: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.main_window import MainWindow
+    from src.hiking.models import ComposedRoute
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    trail = state.get_active_trails()[0]
+    hike = seeded_db.save_route(ComposedRoute(
+        pack_id=state.active_destination_id, name="Zz Test Ridge Loop",
+        trail_ids=[trail.id], coords_3d=trail.coords_3d, distance_m=trail.length_m,
+    ))
+    other = next(d for d in seeded_db.list_destinations() if d.id != state.active_destination_id)
+    seeded_db.save_route(ComposedRoute(pack_id=other.id, name="Elsewhere Hike"))
+    win = MainWindow(app_state=state)
+    win.show()
+    explore, composer = win.explore_panel, win.composer_panel
+
+    names = [r.name for r in explore._hikes]
+    assert "Zz Test Ridge Loop" in names and "Elsewhere Hike" not in names, "only this region's hikes"
+    explore.search_edit.setText("ridge loop")
+    assert [r.id for r in explore._hikes] == [hike.id]
+
+    explore.list_tabs.setCurrentIndex(1)
+    explore.hike_table.selectRow(0)
+    explore._open_selected_hike()
+    app.processEvents()
+
+    assert win.tabs.currentWidget() is composer
+    assert state.active_route_id == hike.id
+    assert composer.route_combo.currentData() == hike.id
+    win.hide()
+    win.deleteLater()

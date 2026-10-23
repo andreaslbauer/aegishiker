@@ -229,6 +229,13 @@ class ComposerPanel(QWidget):
         self.segment_builder.set_pack(self.app_state.db.get_destination_pack(dest_id) if dest_id else None)
         return self.segment_builder.start_at_place(lat, lon, name)
 
+    def open_route(self, route_id: str) -> None:
+        """Show a saved hike (from Explore Regions); it replaces the unsaved draft."""
+        self.waypoints.clear()
+        self.segment_builder.clear()
+        self.app_state.set_active_route(route_id)
+        self._populate_route_combo()
+
     def _on_builder_saved(self, route_id: str) -> None:
         self._draft = None
         self.app_state.set_active_route(route_id)

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSplitter,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -25,7 +26,7 @@ from src.hiking.filters import TrailFilterCriteria, filter_trail_segments
 from src.hiking.hike_report import dist_to_line_m, named_places
 from src.hiking.models import TrailCondition, TrailDifficulty
 from src.hiking.routing import route_from_trail_segment
-from src.hiking.units import format_distance, format_elevation
+from src.hiking.units import format_distance, format_duration_min, format_elevation
 
 
 PLACE_PREFIX = "📍 "  # type-ahead entries for places (trailheads, parking, peaks…), not trails
@@ -36,11 +37,14 @@ PLACE_KIND_LABELS = {
     "ranger": "ranger station", "spring": "spring",
 }
 NEAR_PLACE_M = 400.0  # trails listed for a chosen place
+HIKE_STATUS_LABELS = {"planned": "Planned", "ready_for_phone": "On phone", "completed": "Completed",
+                      "favorite": "★ Favorite"}
 
 
 class ExplorePanel(QWidget):
     compose_trail_requested = Signal(str)  # trail_id: start a hike on this trail in the Composer
     start_at_place_requested = Signal(float, float, str)  # lat, lon, name: start a hike at a trailhead
+    open_route_requested = Signal(str)  # route_id: open a saved hike of this region in the Composer
 
     def __init__(self, app_state: AppState, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -81,6 +85,7 @@ class ExplorePanel(QWidget):
         self.search_edit.setPlaceholderText("🔍  Search trails, trailheads, parking, peaks…")
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self.refresh_trails)
+        self.search_edit.textChanged.connect(self.refresh_hikes)
         # Type-ahead: suggest the region's trail names as you type; picking one selects that trail
         self.trail_completer = QCompleter(self)
         self.trail_completer.setModel(QStringListModel(self.trail_completer))
@@ -133,11 +138,15 @@ class ExplorePanel(QWidget):
         self.elev_card = StatCard("Base Elevation", "--")
         layout.addLayout(stat_row(self.trails_card, self.pois_card, self.elev_card))
 
-        # Trails (card) | map
+        # Trails / saved hikes (tabbed card) | map
         splitter = QSplitter()
         splitter.setHandleWidth(14)
-        trails_card = Card("Trails", margins=(14, 14, 14, 14))
-        self.trails_title = trails_card.title_lbl
+        list_card = Card(margins=(14, 14, 14, 14))
+        self.list_tabs = QTabWidget()
+        trails_page = QWidget()
+        trails_lay = QVBoxLayout(trails_page)
+        trails_lay.setContentsMargins(0, 10, 0, 0)
+        trails_lay.setSpacing(10)
 
         self.trail_table = QTableWidget(0, 5)
         self.trail_table.setHorizontalHeaderLabels(["Trail", "Difficulty", "Condition", "Length", "Ascent"])
@@ -155,7 +164,7 @@ class ExplorePanel(QWidget):
         self.trail_table.setTextElideMode(Qt.TextElideMode.ElideNone)
         header.sectionResized.connect(lambda idx, _old, _new: idx == 0 and self._fit_name_rows())
         self.trail_table.itemSelectionChanged.connect(self._on_trail_row_selected)
-        trails_card.body.addWidget(self.trail_table, 1)
+        trails_lay.addWidget(self.trail_table, 1)
 
         action_row = QHBoxLayout()
         action_row.setSpacing(8)
@@ -167,10 +176,49 @@ class ExplorePanel(QWidget):
         action_row.addWidget(cond_btn)
         action_row.addStretch(1)
         action_row.addWidget(compose_btn)
-        trails_card.body.addLayout(action_row)
+        trails_lay.addLayout(action_row)
+        self.list_tabs.addTab(trails_page, "Trails")
+
+        # Hikes already composed in this region: pick one to preview and open in the Composer
+        hikes_page = QWidget()
+        hikes_lay = QVBoxLayout(hikes_page)
+        hikes_lay.setContentsMargins(0, 10, 0, 0)
+        hikes_lay.setSpacing(10)
+        self._hikes: list = []
+        self.hike_table = QTableWidget(0, 6)
+        self.hike_table.setHorizontalHeaderLabels(["Hike", "Status", "Length", "Ascent", "Time", "Hiked"])
+        header = self.hike_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col in range(1, 6):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.hike_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.hike_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.hike_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.hike_table.setShowGrid(False)
+        self.hike_table.setAlternatingRowColors(True)
+        self.hike_table.verticalHeader().setVisible(False)
+        self.hike_table.itemSelectionChanged.connect(self._on_hike_row_selected)
+        self.hike_table.cellDoubleClicked.connect(lambda *_: self._open_selected_hike())
+        hikes_lay.addWidget(self.hike_table, 1)
+        self.no_hikes_lbl = QLabel()
+        self.no_hikes_lbl.setObjectName("Muted")
+        self.no_hikes_lbl.setWordWrap(True)
+        hikes_lay.addWidget(self.no_hikes_lbl)
+        hike_actions = QHBoxLayout()
+        hike_actions.addStretch(1)
+        self.open_hike_btn = QPushButton("Open Hike in Composer  →")
+        self.open_hike_btn.setObjectName("PrimaryButton")
+        self.open_hike_btn.setToolTip("Show this saved hike in the Trail Composer")
+        self.open_hike_btn.clicked.connect(self._open_selected_hike)
+        hike_actions.addWidget(self.open_hike_btn)
+        hikes_lay.addLayout(hike_actions)
+        self.list_tabs.addTab(hikes_page, "Hikes")
+        self.list_tabs.currentChanged.connect(self._on_list_tab_changed)
+        list_card.body.addWidget(self.list_tabs, 1)
 
         self.map_canvas = MapCanvas()
-        splitter.addWidget(trails_card)
+        splitter.addWidget(list_card)
         splitter.addWidget(self.map_canvas)
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 5)
@@ -179,6 +227,9 @@ class ExplorePanel(QWidget):
         self.app_state.destination_changed.connect(lambda _: self.refresh_all())
         self.app_state.trails_updated.connect(self.refresh_trails)
         self.app_state.settings_changed.connect(self.refresh_all)
+        # A hike was saved / opened elsewhere, or hiked (times-hiked column)
+        self.app_state.route_changed.connect(lambda _: self.refresh_hikes())
+        self.app_state.sessions_changed.connect(self.refresh_hikes)
         self.refresh_all()
 
     def ui_state(self) -> dict:
@@ -209,6 +260,7 @@ class ExplorePanel(QWidget):
         self._place = None
         self.place_row.hide()
         self.refresh_trails()
+        self.refresh_hikes()
 
     def _region_places(self) -> dict:
         """Type-ahead label -> (name, kind, lon, lat) for the region's named places."""
@@ -334,6 +386,7 @@ class ExplorePanel(QWidget):
         self._filtered_trails = filter_trail_segments(raw_trails, criteria)
         pois = self.app_state.get_active_pois()
 
+        self.list_tabs.setTabText(0, f"Trails ({len(self._filtered_trails)})")
         self.trails_card.set_value(str(len(self._filtered_trails)),
                                    f"near {near}" if near else f"of {len(raw_trails)} segments")
         self.pois_card.set_value(str(len(pois)), "Peaks, viewpoints & water")
@@ -377,6 +430,67 @@ class ExplorePanel(QWidget):
         self.place_row.hide()
         self.map_canvas.waypoints = []
         self.map_canvas.set_scene_data(trails=raw_trails, pois=pois, route=route)
+
+    def refresh_hikes(self) -> None:
+        """The hikes composed in this region (newest first), narrowed by the search text."""
+        dest_id = self.app_state.active_destination_id
+        routes = self.app_state.db.list_routes(dest_id) if dest_id else []
+        query = self.search_edit.text().strip().casefold()
+        self._hikes = [r for r in routes if query in r.name.casefold()] if query else routes
+        unit = str(self.app_state.settings.get("unit_system", "metric"))
+        hiked = self.app_state.db.route_hike_stats()
+        self.hike_table.blockSignals(True)
+        self.hike_table.setRowCount(len(self._hikes))
+        for row, r in enumerate(self._hikes):
+            name_item = QTableWidgetItem(r.name)
+            name_item.setToolTip(f"<b>{r.name}</b><br>{r.notes}" if r.notes else r.name)
+            self.hike_table.setItem(row, 0, name_item)
+            self.hike_table.setItem(row, 1, QTableWidgetItem(HIKE_STATUS_LABELS.get(r.status, r.status)))
+            self.hike_table.setItem(row, 2, QTableWidgetItem(format_distance(r.distance_m, unit)))
+            self.hike_table.setItem(row, 3, QTableWidgetItem(f"+{format_elevation(r.elevation_gain_m, unit)}"))
+            self.hike_table.setItem(row, 4, QTableWidgetItem(format_duration_min(r.estimated_duration_min)))
+            times, _last = hiked.get(r.id, (0, ""))
+            self.hike_table.setItem(row, 5, QTableWidgetItem(f"{times}×" if times else "—"))
+        self.hike_table.blockSignals(False)
+        self.list_tabs.setTabText(1, f"Hikes ({len(self._hikes)})")
+        if not routes:
+            self.no_hikes_lbl.setText("No hikes in this region yet — pick a trail or trailhead and build one.")
+        elif not self._hikes:
+            self.no_hikes_lbl.setText("No hikes match the search.")
+        self.no_hikes_lbl.setVisible(not self._hikes)
+        self.hike_table.setVisible(bool(self._hikes))
+        self.open_hike_btn.setEnabled(bool(self._hikes))
+
+    def _selected_hike(self):
+        rows = self.hike_table.selectionModel().selectedRows()
+        if not rows:
+            return None
+        idx = rows[0].row()
+        return self._hikes[idx] if 0 <= idx < len(self._hikes) else None
+
+    def _on_list_tab_changed(self, index: int) -> None:
+        if index == 1:
+            self._on_hike_row_selected()
+        else:
+            self.refresh_trails()  # back to the trail list's map view
+
+    def _on_hike_row_selected(self) -> None:
+        route = self._selected_hike()
+        if route is None:
+            return
+        self.map_canvas.waypoints = []
+        self.map_canvas.set_scene_data(
+            trails=self.app_state.get_active_trails(),
+            pois=self.app_state.get_active_pois(),
+            route=route,
+        )
+        if route.coordinates:
+            self.map_canvas.zoom_to_coordinates(route.coordinates)
+
+    def _open_selected_hike(self) -> None:
+        route = self._selected_hike() or (self._hikes[0] if len(self._hikes) == 1 else None)
+        if route is not None:
+            self.open_route_requested.emit(route.id)
 
     def _fit_name_rows(self) -> None:
         """Size rows so long trail names wrap onto extra lines instead of being cut off.
