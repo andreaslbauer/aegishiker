@@ -786,6 +786,205 @@
       lerpAngle(a.yaw, b.yaw, t), a.pitch + (b.pitch - a.pitch) * t, a.focal + (b.focal - a.focal) * t, a.cx, a.cy);
   }
 
+  // ── vegetation (ports of the plant scatter in src/hiking/vegetation.py and src/gui/vegetation_sprites.py) ──
+  // Plants are drawn taller than life so they read from the chase camera (~1.5 km back)
+  const VEG_SCALE = 1.6, VEG_NEAR = 1300, VEG_FAR = 2700, VEG_MIN_PX = 1.5, VEG_FULL_PX = 6;
+  const VEG_BOOST = { krummholz: 2.0, shrub: 2.4, sage: 2.4, grass: 4.0, boulder: 1.6 };
+  const VEG_GRID_BASE = 48, PLANTS_PER_SUBCELL = 6;
+  const SPECIES_HEIGHT_M = {
+    broadleaf: [15, 24], aspen: [9, 16], spruce: [10, 20], fir: [18, 32], pine: [16, 30], lodgepole: [15, 24],
+    juniper: [3, 7], joshua: [4, 9], krummholz: [0.8, 2.2], shrub: [0.6, 2.0], sage: [0.5, 1.4], grass: [0.3, 0.7], boulder: [0.8, 2.6],
+  };
+  const TREES = new Set(["broadleaf", "aspen", "spruce", "fir", "pine", "lodgepole", "juniper", "joshua"]);
+  const SPRITE_PX = 128, GROUND_FRAC = (SPRITE_PX - 5) / SPRITE_PX; // where a plant meets the ground
+  const SPRITE_ASPECT = {
+    broadleaf: 0.85, aspen: 0.5, spruce: 0.42, fir: 0.62, pine: 0.62, lodgepole: 0.38,
+    juniper: 1.0, joshua: 0.95, krummholz: 2.4, shrub: 1.5, sage: 1.6, grass: 1.8, boulder: 1.5,
+  };
+
+  function seededRng(seed) { // mulberry32: the same plants on every frame and every visit
+    let a = seed >>> 0;
+    const next = () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), a | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    return { random: next, uniform: (lo, hi) => lo + (hi - lo) * next(), randint: (lo, hi) => lo + Math.floor(next() * (hi - lo + 1)) };
+  }
+  function strSeed(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; }
+  const rgbCss = (rgb, k = 1, a = 1) => `rgba(${Math.min(255, (rgb[0] * k) | 0)},${Math.min(255, (rgb[1] * k) | 0)},${Math.min(255, (rgb[2] * k) | 0)},${a})`;
+  const jitter = (rgb, rng, amount = 10) => rgb.map(ch => clamp(ch + rng.randint(-amount, amount), 0, 255));
+
+  function spriteBlob(g, x, y, rx, ry, rgb) { // leafy clump lit from the upper left
+    const fx = x - rx * 0.35, fy = y - ry * 0.4, grad = g.createRadialGradient(fx, fy, 0, fx, fy, Math.max(rx, ry) * 1.25);
+    grad.addColorStop(0, rgbCss(rgb, 1.35)); grad.addColorStop(0.55, rgbCss(rgb)); grad.addColorStop(1, rgbCss(rgb, 0.62));
+    g.fillStyle = grad; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill();
+  }
+  function spritePoly(g, pts) { g.beginPath(); pts.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.closePath(); }
+  function spriteLine(g, x0, y0, x1, y1, css, width) { g.strokeStyle = css; g.lineWidth = width; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); }
+  function spriteTrunk(g, x, y0, y1, width, rgb) {
+    const grad = g.createLinearGradient(x - width / 2, 0, x + width / 2, 0);
+    grad.addColorStop(0, rgbCss(rgb, 1.25)); grad.addColorStop(1, rgbCss(rgb, 0.6));
+    g.fillStyle = grad;
+    spritePoly(g, [[x - width / 2, y0], [x - width * 0.3, y1], [x + width * 0.3, y1], [x + width / 2, y0]]); g.fill();
+  }
+  function bareBranches(g, x, y, length, angle, width, depth, rgb, rng) {
+    const x2 = x + Math.cos(angle) * length, y2 = y - Math.sin(angle) * length;
+    spriteLine(g, x, y, x2, y2, rgbCss(rgb, 1, 0.9), Math.max(0.8, width));
+    if (depth > 0) {
+      for (const da of depth > 2 ? [-0.45, 0.4, 0] : [-0.45, 0.4]) {
+        bareBranches(g, x2, y2, length * rng.uniform(0.6, 0.78), angle + da + rng.uniform(-0.15, 0.15), width * 0.62, depth - 1, rgb, rng);
+      }
+    }
+  }
+  function conifer(g, w, h, gy, rgb, tiers, spread, rng) { // tiered spire, narrowing to a point
+    const cx = w / 2;
+    spriteTrunk(g, cx, gy, gy - h * 0.16, w * 0.09, [86, 62, 44]);
+    const top = 3, bottom = gy - h * 0.07, left = [[cx, top]], right = [[cx, top]];
+    for (let k = 0; k < tiers; k++) {
+      const yIn = top + (bottom - top) * (k + 0.55) / tiers, yOut = top + (bottom - top) * (k + 1) / tiers;
+      const hw = w * spread * Math.pow((k + 1) / tiers, 0.9) * rng.uniform(0.88, 1.08);
+      left.push([cx - hw * 0.5, yIn], [cx - hw, yOut]);
+      right.push([cx + hw * 0.5, yIn + rng.uniform(-1, 1)], [cx + hw * rng.uniform(0.9, 1.05), yOut]);
+    }
+    const grad = g.createLinearGradient(cx - w * spread, 0, cx + w * spread, 0);
+    grad.addColorStop(0, rgbCss(rgb, 1.3)); grad.addColorStop(0.5, rgbCss(rgb)); grad.addColorStop(1, rgbCss(rgb, 0.62));
+    g.fillStyle = grad; g.strokeStyle = rgbCss(rgb, 0.55); g.lineWidth = 1;
+    spritePoly(g, left.concat(right.reverse())); g.fill(); g.stroke();
+  }
+  function paintSprite(species, season, rock, variant) {
+    const rng = seededRng(strSeed(species + "/" + variant));
+    const h = SPRITE_PX, w = Math.max(8, Math.round(h * SPRITE_ASPECT[species]));
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const g = cv.getContext("2d");
+    g.lineCap = "round";
+    const gy = h * GROUND_FRAC, cx = w / 2;
+    const shadow = g.createRadialGradient(cx, gy, 0, cx, gy, w * 0.42); // soft contact shadow
+    shadow.addColorStop(0, "rgba(0,0,0,0.27)"); shadow.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = shadow; g.beginPath(); g.ellipse(cx, gy, w * 0.42, 5, 0, 0, Math.PI * 2); g.fill();
+
+    if (species === "spruce") conifer(g, w, h, gy, jitter([32, 70, 46], rng, 6), 8, 0.47, rng);
+    else if (species === "fir") conifer(g, w, h, gy, jitter([42, 84, 52], rng, 6), 7, 0.49, rng);
+    else if (species === "pine" || species === "lodgepole") {
+      const tall = species === "lodgepole";
+      const bark = tall ? [112, 88, 66] : [140, 92, 62];
+      const crownTop = h * (tall ? 0.03 : 0.05), crownBottom = h * (tall ? 0.58 : 0.5);
+      spriteTrunk(g, cx, gy, crownTop + h * 0.08, w * (tall ? 0.1 : 0.08), bark);
+      const rgb = jitter(tall ? [50, 86, 50] : [56, 92, 52], rng, 6), n = tall ? 9 : 8;
+      for (let k = 0; k < n; k++) {
+        const t = k / (n - 1), y = crownTop + (crownBottom - crownTop) * t + rng.uniform(-3, 3);
+        const spread = tall ? 0.2 : 0.3 + 0.12 * Math.sin(t * Math.PI);
+        const x = cx + (w * spread * rng.uniform(0.2, 1.0)) * (k % 2 ? 1 : -1);
+        spriteLine(g, cx, y + 4, x, y, rgbCss(bark, 0.8), 1.4);
+        spriteBlob(g, x, y, w * (tall ? 0.17 : 0.2) * rng.uniform(0.8, 1.15), h * 0.06 * rng.uniform(0.8, 1.2), rgb);
+      }
+    } else if (species === "broadleaf" || species === "aspen") {
+      const aspen = species === "aspen", bark = aspen ? [222, 222, 210] : [92, 74, 58];
+      if (season === "winter") {
+        spriteTrunk(g, cx, gy, h * 0.45, w * (aspen ? 0.07 : 0.1), bark);
+        const twig = aspen ? [196, 196, 186] : [96, 84, 72];
+        for (const a of [Math.PI / 2 + 0.5, Math.PI / 2 - 0.5, Math.PI / 2 + 0.1]) {
+          bareBranches(g, cx, h * 0.48, h * (aspen ? 0.2 : 0.24), a + rng.uniform(-0.1, 0.1), w * (aspen ? 0.035 : 0.05), 4, twig, rng);
+        }
+      } else {
+        spriteTrunk(g, cx, gy, h * 0.42, w * (aspen ? 0.07 : 0.1), bark);
+        if (aspen) { // dark knots on white bark
+          g.fillStyle = "rgb(50,46,40)";
+          for (let k = 0; k < 4; k++) { g.beginPath(); g.ellipse(cx + rng.uniform(-1.5, 1.5), gy - h * (0.12 + 0.08 * k), 1.6, 1.0, 0, 0, Math.PI * 2); g.fill(); }
+        }
+        let rgb;
+        if (season === "autumn") {
+          const palette = aspen ? [[236, 192, 46], [226, 178, 40], [240, 204, 70], [190, 176, 60]]
+            : [[180, 60, 40], [206, 122, 42], [214, 176, 62], [150, 114, 54]];
+          rgb = palette[variant % palette.length];
+        } else rgb = aspen ? [112, 160, 72] : [[70, 118, 52], [82, 126, 58], [62, 108, 50], [76, 114, 46]][variant];
+        const ccx = cx, ccy = h * (aspen ? 0.32 : 0.34), rx = w * (aspen ? 0.26 : 0.3), ry = h * (aspen ? 0.26 : 0.22);
+        for (let k = 0; k < 8; k++) {
+          const a = rng.uniform(0, Math.PI * 2), d = rng.uniform(0, 0.85);
+          spriteBlob(g, ccx + Math.cos(a) * rx * d, ccy + Math.sin(a) * ry * d, w * rng.uniform(0.18, 0.25), h * rng.uniform(0.09, 0.13), jitter(rgb, rng, 12));
+        }
+      }
+    } else if (species === "juniper") {
+      const rgb = variant % 2 ? [78, 104, 80] : [66, 96, 58]; // juniper blue-green / pinyon green
+      spriteLine(g, cx, gy, cx + rng.uniform(-6, 6), gy - h * 0.3, rgbCss([104, 90, 74]), w * 0.06);
+      for (let k = 0; k < 7; k++) {
+        spriteBlob(g, cx + rng.uniform(-0.3, 0.3) * w, h * rng.uniform(0.3, 0.68), w * rng.uniform(0.17, 0.26), h * rng.uniform(0.13, 0.19), jitter(rgb, rng, 8));
+      }
+    } else if (species === "joshua") {
+      const bark = [122, 104, 84], fx = cx, fy = h * 0.52, ends = [];
+      spriteLine(g, cx, gy, fx, fy, rgbCss(bark), w * 0.09);
+      const arms = rng.randint(2, 4);
+      for (let k = 0; k < arms; k++) {
+        const a = Math.PI / 2 + rng.uniform(-0.9, 0.9);
+        const mx = fx + Math.cos(a) * w * 0.2, my = fy - Math.sin(a) * h * 0.14;
+        const ex = mx + Math.cos(a * 0.8 + 0.3) * w * 0.12, ey = my - h * rng.uniform(0.08, 0.16);
+        spriteLine(g, fx, fy, mx, my, rgbCss(bark, 0.95), w * 0.065);
+        spriteLine(g, mx, my, ex, ey, rgbCss(bark, 0.95), w * 0.065);
+        ends.push([ex, ey]);
+      }
+      for (const e of ends) { // spiky leaf rosettes
+        for (let k = 0; k < 14; k++) {
+          const a = k / 14 * Math.PI * 2;
+          spriteLine(g, e[0], e[1], e[0] + Math.cos(a) * w * 0.1, e[1] + Math.sin(a) * h * 0.06, rgbCss([98, 118, 58]), 1.6);
+        }
+        spriteBlob(g, e[0], e[1], w * 0.05, h * 0.03, [110, 128, 64]);
+      }
+    } else if (species === "krummholz") {
+      const rgb = jitter([40, 74, 48], rng, 6);
+      for (let k = 0; k < 14; k++) {
+        const x = rng.uniform(0.1, 0.9) * w, top = 0.5 + 0.45 * (1 - Math.abs(x / w - 0.45) * 2); // flagged downwind
+        spriteBlob(g, x, gy - h * rng.uniform(0.15, top * 0.6), w * rng.uniform(0.07, 0.12), h * rng.uniform(0.14, 0.24), rgb);
+      }
+    } else if (species === "shrub" || species === "sage") {
+      let rgb;
+      if (species === "sage") rgb = [138, 148, 118];
+      else if (season === "autumn") rgb = [[150, 62, 44], [168, 98, 48], [134, 70, 48], [150, 116, 56]][variant]; // heath and blueberry
+      else if (season === "winter") rgb = [112, 98, 82];
+      else rgb = [72, 112, 56];
+      const n = species === "shrub" ? 6 : 8;
+      for (let k = 0; k < n; k++) {
+        spriteBlob(g, cx + rng.uniform(-0.3, 0.3) * w, gy - h * rng.uniform(0.25, 0.55), w * rng.uniform(0.16, 0.24), h * rng.uniform(0.2, 0.32), jitter(rgb, rng, 10));
+      }
+    } else if (species === "grass") {
+      const rgb = { autumn: [186, 162, 94], winter: [170, 150, 112] }[season] || [128, 148, 74];
+      for (let k = 0; k < 26; k++) {
+        const a = Math.PI / 2 + rng.uniform(-1.05, 1.05), length = h * rng.uniform(0.55, 0.95);
+        const col = jitter(rgb, rng, 18);
+        spriteLine(g, cx + rng.uniform(-w * 0.1, w * 0.1), gy, cx + Math.cos(a) * length * 0.9, gy - Math.sin(a) * length, rgbCss(col, rng.uniform(0.75, 1.2)), 2.6);
+      }
+    } else if (species === "boulder") {
+      const rgb = jitter(rock, rng, 8), pts = [], n = 11;
+      for (let k = 0; k < n; k++) {
+        const a = Math.PI + k / (n - 1) * Math.PI; // upper half, left to right
+        pts.push([cx + Math.cos(a) * w * 0.44 * rng.uniform(0.85, 1.0), gy + Math.sin(a) * h * 0.8 * rng.uniform(0.8, 1.0)]);
+      }
+      const grad = g.createLinearGradient(cx - w * 0.3, gy - h * 0.7, cx + w * 0.3, gy);
+      grad.addColorStop(0, rgbCss(rgb, 1.3)); grad.addColorStop(1, rgbCss(rgb, 0.6));
+      g.fillStyle = grad; g.strokeStyle = rgbCss(rgb, 0.5); g.lineWidth = 1;
+      spritePoly(g, pts); g.fill(); g.stroke();
+    }
+    return cv;
+  }
+  function makeSprites(season, rock) {
+    // species -> variants, each with mip levels (128 px tall halved down to 16) so small plants stay smooth
+    const out = {};
+    for (const sp in SPRITE_ASPECT) {
+      out[sp] = [0, 1, 2, 3].map(v => {
+        const levels = [paintSprite(sp, season, rock, v)];
+        for (let src = levels[0]; src.height > 16;) {
+          const dst = document.createElement("canvas");
+          dst.width = Math.max(1, src.width >> 1); dst.height = src.height >> 1;
+          dst.getContext("2d").drawImage(src, 0, 0, dst.width, dst.height);
+          levels.push(src = dst);
+        }
+        return { aspect: levels[0].width / levels[0].height, levels };
+      });
+    }
+    return out;
+  }
+
   class Replay3D {
     constructor(host) {
       const R = H.replay;
@@ -794,6 +993,22 @@
       const xyz = R.path.xyz, n = xyz.length / 3;
       this.px = new Float64Array(n); this.py = new Float64Array(n); this.pz = new Float64Array(n);
       for (let i = 0; i < n; i++) { this.px[i] = xyz[3 * i]; this.py[i] = xyz[3 * i + 1]; this.pz[i] = xyz[3 * i + 2]; }
+      // Life zones and land cover: each land-cover sample's habitat grows the same kind of plants as in the app
+      this.zx = R.zx || 1.5;
+      this.plantCells = new Map();
+      this.veg = null;
+      if (R.veg) {
+        const V = R.veg, step = m.cell / V.sub;
+        this.veg = { sub: V.sub, step, habitats: V.habitats, grid: V.grid, treeline: V.treeline, clear: V.clear,
+          nx: (m.cols - 1) * V.sub, ny: (m.rows - 1) * V.sub };
+        this.sprites = makeSprites(V.season, V.rock);
+        this.avoid = new Map(); // route points by land-cover sample, to keep the trail itself clear
+        for (let i = 0; i < n; i++) {
+          const k = Math.floor((this.py[i] - m.y0) / step) * 100000 + Math.floor((this.px[i] - m.x0) / step);
+          if (!this.avoid.has(k)) this.avoid.set(k, []);
+          this.avoid.get(k).push(this.px[i], this.py[i]);
+        }
+      }
       this.pe = Float64Array.from(R.path.ele);
       this.cum = new Float64Array(n);
       for (let i = 1; i < n; i++) this.cum[i] = this.cum[i - 1] + Math.hypot(this.px[i] - this.px[i - 1], this.py[i] - this.py[i - 1]);
@@ -861,6 +1076,86 @@
       const a = this.at(d - 150), b = this.at(d + 300);
       if (Math.abs(b[0] - a[0]) + Math.abs(b[1] - a[1]) < 1e-6) return 0;
       return Math.atan2(b[1] - a[1], b[0] - a[0]);
+    }
+    // vegetation
+    habitat(i, j) {
+      const V = this.veg;
+      return V.habitats[V.grid.charCodeAt(clamp(j, 0, V.ny - 1) * V.nx + clamp(i, 0, V.nx - 1)) - VEG_GRID_BASE];
+    }
+    zoneAt(x, y) { // Spruce–fir forest, Krummholz, Alpine tundra, ...
+      if (!this.veg) return "";
+      const s = this.veg.step;
+      return this.habitat(Math.floor((x - this.mesh.x0) / s), Math.floor((y - this.mesh.y0) / s))[0];
+    }
+    _nearTrail(x, y) {
+      const s = this.veg.step, i = Math.floor((x - this.mesh.x0) / s), j = Math.floor((y - this.mesh.y0) / s), r2 = this.veg.clear * this.veg.clear;
+      for (let dj = -1; dj <= 1; dj++) {
+        for (let di = -1; di <= 1; di++) {
+          const pts = this.avoid.get((j + dj) * 100000 + i + di);
+          if (!pts) continue;
+          for (let k = 0; k < pts.length; k += 2) if ((pts[k] - x) ** 2 + (pts[k + 1] - y) ** 2 < r2) return true;
+        }
+      }
+      return false;
+    }
+    _cellPlants(r, c) {
+      // [x, y, z, drawn height in mesh units, sprite], made once per cell (as Vegetation.plants in the app)
+      const key = r * 100000 + c;
+      let out = this.plantCells.get(key);
+      if (out) return out;
+      out = [];
+      const V = this.veg, M = this.mesh, sub = V.sub, step = V.step;
+      const rng = seededRng((r * 1000003 + c) * 31);
+      for (let j = 0; j < sub; j++) {
+        for (let i = 0; i < sub; i++) {
+          const hab = this.habitat(c * sub + i, r * sub + j), density = hab[1], flora = hab[2];
+          if (!flora.length || density <= 0) continue;
+          const sx = M.x0 + c * M.cell + i * step, sy = M.y0 + r * M.cell + j * step;
+          const ele = this.heightAt(sx + step / 2, sy + step / 2) / this.zx;
+          const want = density * PLANTS_PER_SUBCELL;
+          const count = Math.floor(want) + (rng.random() < want - Math.floor(want) ? 1 : 0);
+          const total = flora.reduce((t, f) => t + f[1], 0) || 1;
+          for (let k = 0; k < count; k++) {
+            const x = sx + rng.random() * step, y = sy + rng.random() * step;
+            let pick = rng.random() * total, sp = flora[flora.length - 1][0];
+            for (const f of flora) { if ((pick -= f[1]) < 0) { sp = f[0]; break; } }
+            const variant = rng.randint(0, 3), [lo, hi] = SPECIES_HEIGHT_M[sp];
+            let height = lo + (hi - lo) * rng.random();
+            if (this._nearTrail(x, y)) continue;
+            if (TREES.has(sp) && V.treeline != null && ele > V.treeline - 200) {
+              height *= Math.max(0.35, 0.45 + 0.55 * (V.treeline - ele) / 200); // stunted near treeline
+            }
+            out.push([x, y, this.heightAt(x, y), this.zx * VEG_SCALE * height * (VEG_BOOST[sp] || 1), this.sprites[sp][variant]]);
+          }
+        }
+      }
+      out.tallest = out.reduce((t, p) => Math.max(t, p[3]), 0);
+      this.plantCells.set(key, out);
+      return out;
+    }
+    _plants(ctx, project, focal, r, c, depth, fog) {
+      // This cell's trees, shrubs, grass and boulders, back to front. Always the same plants: they only
+      // grow as the camera nears them, each fading in while still a few pixels tall, so none pop
+      const plants = this._cellPlants(r, c);
+      if (!plants.length || focal * plants.tallest / Math.max(1, depth - this.mesh.cell) < VEG_MIN_PX) return;
+      const vis = [];
+      for (const pl of plants) {
+        const s = project(pl[0], pl[1], pl[2]);
+        if (!s) continue;
+        const hpx = focal * pl[3] / s[2];
+        if (hpx >= VEG_MIN_PX) vis.push([s[2], s[0], s[1], hpx, pl[4]]);
+      }
+      if (!vis.length) return;
+      if (depth < VEG_NEAR) vis.sort((a, b) => b[0] - a[0]); // farther away the order within a cell isn't noticeable
+      const alpha = (1 - fog * 0.9) * Math.min(1, (VEG_FAR - depth) / 500);
+      for (const v of vis) {
+        const hpx = v[3], sprite = v[4];
+        ctx.globalAlpha = hpx < VEG_FULL_PX ? alpha * (hpx - VEG_MIN_PX) / (VEG_FULL_PX - VEG_MIN_PX) : alpha;
+        const img = sprite.levels[Math.min(sprite.levels.length - 1, hpx <= 16 ? 3 : hpx <= 32 ? 2 : hpx <= 64 ? 1 : 0)];
+        const w = hpx * sprite.aspect;
+        ctx.drawImage(img, v[1] - w * 0.5, v[2] - hpx * GROUND_FRAC, w, hpx); // ground point at (sx, sy)
+      }
+      ctx.globalAlpha = 1;
     }
     // UI
     _build(host) {
@@ -1081,6 +1376,8 @@
         }
         const lsegs = this.layerCells.get(key);
         if (lsegs) this._layers(ctx, project, lsegs, depth);
+        if (this.veg && depth < VEG_FAR) this._plants(ctx, project, cam.focal, r, c, depth, f);
+        // Trail and photo markers on this cell are drawn now, so nearer terrain hides them
         const segs = this.trailCells.get(key);
         if (segs) {
           for (const i of segs) {
@@ -1164,13 +1461,44 @@
       }
     }
     _hiker(ctx, project, pos) {
+      // A hiker seen from behind (the chase camera's view): backpack, hat and trekking pole, legs and
+      // arms swinging with the distance walked (still while paused)
       const s = project(pos[0], pos[1], pos[2]);
       if (!s) return;
-      const top = project(pos[0], pos[1], pos[2] + 110);
-      if (top) { ctx.strokeStyle = "rgba(255,255,255,0.78)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(top[0], top[1]); ctx.stroke(); }
-      ctx.fillStyle = "rgba(231,76,60,0.27)"; ctx.beginPath(); ctx.arc(s[0], s[1], 16, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#E74C3C"; ctx.beginPath(); ctx.arc(s[0], s[1], 7, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+      const top = project(pos[0], pos[1], pos[2] + 70); // sized like a 70 m figure, readable at any zoom
+      const hg = clamp(top ? s[1] - top[1] : 36, 26, 64);
+      const gx = s[0], gy = s[1], swing = Math.sin(this.dist / 0.9); // one stride every ~5.7 m
+      const at = (dx, dy) => [gx + dx * hg, gy - dy * hg]; // offsets in figure heights from the ground point
+      const ell = (q, rx, ry, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.ellipse(q[0], q[1], rx, ry, 0, 0, Math.PI * 2); ctx.fill(); };
+      const seg = (a, b, css, width) => { ctx.strokeStyle = css; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); };
+      const box = (x, y, bw, bh, rad, fill) => {
+        ctx.fillStyle = fill; ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, bw, bh, rad); else ctx.rect(x, y, bw, bh);
+        ctx.fill();
+      };
+      ctx.lineCap = "round";
+      // Shadow and a soft halo so the figure stands out on any terrain
+      ell([gx, gy], hg * 0.42, hg * 0.13, "rgba(231,76,60,0.235)");
+      ell([gx, gy], hg * 0.22, hg * 0.07, "rgba(0,0,0,0.353)");
+      // Legs: the stepping foot lifts and both shift with the stride; then the boots
+      const feet = [[-1, swing], [1, -swing]].map(([side, ph]) => [side, at(side * 0.09, 0.02 + Math.max(0, ph) * 0.07)]);
+      for (const [side, foot] of feet) seg(at(side * 0.07, 0.46), foot, "#2C3E50", hg * 0.12);
+      for (const [, foot] of feet) ell(foot, hg * 0.065, hg * 0.065, "#5D4037");
+      // Arms swing opposite to the legs; the right hand holds the pole
+      const lHand = at(-0.21, 0.50 + swing * 0.04), rHand = at(0.21, 0.50 - swing * 0.04);
+      seg(at(-0.15, 0.76), lHand, "#1F6FA8", hg * 0.09);
+      seg(at(0.15, 0.76), rHand, "#1F6FA8", hg * 0.09);
+      seg([rHand[0], rHand[1] - hg * 0.06], at(0.27 - swing * 0.05, 0), "rgb(220,220,220)", Math.max(1.5, hg * 0.035));
+      // Jacket, then the backpack over it (seen from behind)
+      box(gx - hg * 0.16, gy - hg * 0.82, hg * 0.32, hg * 0.40, hg * 0.08, "#2E86C1");
+      box(gx - hg * 0.14, gy - hg * 0.86, hg * 0.28, hg * 0.36, hg * 0.07, "#E67E22");
+      box(gx - hg * 0.10, gy - hg * 0.66, hg * 0.20, hg * 0.10, hg * 0.03, "#B85E12");
+      ctx.lineCap = "butt";
+      seg(at(-0.14, 0.62), at(0.14, 0.62), "#8E4A0E", Math.max(1, hg * 0.025)); // hip belt
+      // Head and hat
+      ell(at(0, 0.92), hg * 0.085, hg * 0.09, "#E8B990");
+      ell(at(0, 0.955), hg * 0.14, hg * 0.035, "#6D4C41"); // brim
+      box(gx - hg * 0.08, gy - hg * 1.06, hg * 0.16, hg * 0.10, hg * 0.04, "#6D4C41");
     }
     _hud(ctx, w, h, ele) {
       const round = (x, y, bw, bh, r) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, bw, bh, r) : ctx.rect(x, y, bw, bh); };
@@ -1186,7 +1514,17 @@
       ctx.fillStyle = "#98B2A1"; ctx.font = "12px sans-serif";
       ctx.fillText(fmt.dist(along) + " of " + fmt.dist(G.total) + (leg && leg.named ? " · " + leg.name : ""), 26, 60, maxW);
       ctx.fillStyle = "#F4D03F"; ctx.font = "bold 21px sans-serif";
-      ctx.fillText("▲ " + fmt.ele(ele), 26, 92);
+      const alt = "▲ " + fmt.ele(ele), altW = ctx.measureText(alt).width;
+      ctx.fillText(alt, 26, 92);
+      // Life zone at the hiker (Spruce–fir forest, Krummholz, Alpine tundra, ...)
+      const here = this.at(this.dist), zone = this.zoneAt(here[0], here[1]);
+      const room = Math.min(330, w - 200) - 24 - altW;
+      if (zone && room > 30) {
+        ctx.fillStyle = "#98B2A1"; ctx.font = "12px sans-serif";
+        let z = zone;
+        while (z.length > 3 && ctx.measureText(z).width > room) z = z.slice(0, -2);
+        ctx.fillText(z === zone ? z : z + "…", 38 + altW, 91);
+      }
       // elevation profile
       const px = 14, py = h - 104, pw = w - 28, ph = 90;
       ctx.fillStyle = "rgba(11,22,16,0.75)"; round(px, py, pw, ph, 8); ctx.fill();

@@ -21,7 +21,7 @@ import os
 import re
 import shutil
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -30,7 +30,8 @@ from src.hiking.hike_report import build_hike_summary, leg_at, trail_legs
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.replay_plan import plan_photo_stops
-from src.hiking.terrain3d import LAYER_STYLES, LocalFrame, build_mesh, replay_map_layers, route_path
+from src.hiking.terrain3d import LAYER_STYLES, LocalFrame, build_mesh, replay_map_layers, route_path, shade_mesh
+from src.hiking.vegetation import TRAIL_CLEAR_M, build_vegetation
 
 from . import paths
 
@@ -44,6 +45,7 @@ RELIEF_UPSCALE = 4
 REPLAY_CELL_M = 120.0
 REPLAY_PAD_M = 5000.0  # terrain drawn around the route (the 3D view sees ~4.2 km)
 Z_EXAGGERATION = 1.5
+VEG_GRID_BASE = 48  # habitat index i is sent as chr(48 + i)
 RAW_EXTS = {".rw2", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".orf", ".raf", ".pef", ".srw"}
 VIDEO_EXTS = {".mov", ".mp4", ".m4v", ".avi", ".mts", ".3gp"}
 
@@ -276,9 +278,9 @@ def build_basemap(pack: Optional[DestinationPack], bb) -> Dict:
 
 
 def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
-                 pins: Sequence[HikePhotoPin]) -> Dict:
-    """Terrain mesh, route path, photo stops and peak labels for the browser 3D replay (the same
-    geometry as the desktop replay in src/gui/replay3d.py)."""
+                 pins: Sequence[HikePhotoPin], month: Optional[int] = None) -> Dict:
+    """Terrain mesh, route path, photo stops, peak labels and vegetation for the browser 3D replay
+    (the same scene as the desktop replay in src/gui/replay3d.py)."""
     coords = route.coords_3d
     lats = [c[1] for c in coords]
     lons = [c[0] for c in coords]
@@ -291,6 +293,14 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
         (min(xs) - REPLAY_PAD_M, min(ys) - REPLAY_PAD_M, max(xs) + REPLAY_PAD_M, max(ys) + REPLAY_PAD_M),
         cell_m=REPLAY_CELL_M, fallback_ele=min(path.ele) if path.ele else 0.0,
     )
+    # Life zones and land cover colour the terrain; the browser grows the plants from the habitat grid.
+    # The hike's month (else its first photo's, as in the app) sets the foliage
+    if month is None:
+        taken = [p.date_taken for p in pins if p.date_taken]
+        month = datetime.fromtimestamp(min(taken), tz=timezone.utc).month if taken else None
+    veg = build_vegetation(pack, mesh, path.pts, month)
+    shade_mesh(mesh, veg.ground_rgb)
+    habitats, grid = veg.habitat_grid()
     index_of = {id(pin): i for i, pin in enumerate(pins)}
     stops = []
     for plan in plan_photo_stops(list(pins)):
@@ -336,6 +346,12 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
         },
         "stops": stops,
         "peaks": peaks,
+        "veg": {
+            "season": veg.season, "rock": list(veg.biome.rock), "treeline": veg.treeline,
+            "sub": round(mesh.cell_m / veg.cover.step), "clear": TRAIL_CLEAR_M,
+            "habitats": [[h.name, h.density, [[sp, w] for sp, w in h.flora]] for h in habitats],
+            "grid": "".join(chr(VEG_GRID_BASE + i) for i in grid),  # one character per land-cover sample
+        },
     }
 
 
@@ -485,7 +501,8 @@ def export_hike_site(
         basemap["relief"] = {"src": "relief.png", "bbox": relief[1]}
 
     say("Building the 3D replay terrain…")
-    replay = build_replay(route, pack, kept)
+    date = summary.get("date_iso") or ""
+    replay = build_replay(route, pack, kept, month=int(date[5:7]) if date[5:7].isdigit() else None)
 
     cum = [0.0]
     for a, b in zip(route.coords_3d, route.coords_3d[1:]):

@@ -118,6 +118,11 @@ def test_export_open_site(seeded_db: Database, tmp_path: Path) -> None:
     assert [t["name"] for t in data["summary"]["trails"]][1] == "Crow Hill Ledges North Climb"
     assert len(data["photos"]) == len(pins) and data["photos"][0]["trail"] == "Crow Hill Trail"
     assert data["replay"]["mesh"]["cols"] > 10 and data["replay"]["stops"]
+    veg, mesh = data["replay"]["veg"], data["replay"]["mesh"]
+    assert veg["season"] == "autumn", "the hike's month (October) sets the foliage"
+    assert len(veg["grid"]) == (mesh["cols"] - 1) * (mesh["rows"] - 1) * veg["sub"] ** 2
+    habitats = {veg["habitats"][ord(ch) - 48][0] for ch in veg["grid"]}
+    assert habitats and any(h[2] for h in veg["habitats"]), "the browser replay grows region plants"
     assert data["basemap"]["contours"] and data["basemap"]["lines"]
     with Image.open(out / data["photos"][0]["src"]) as im:
         assert not im.getexif().get(0x8825), "no GPS EXIF in published photos"

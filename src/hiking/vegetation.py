@@ -420,6 +420,24 @@ class Vegetation:
         n = sub * sub
         return (min(255, int(tot[0] / n * k)), min(255, int(tot[1] / n * k)), min(255, int(tot[2] / n * k)))
 
+    def habitat_grid(self) -> Tuple[List[Habitat], bytearray]:
+        """Every land-cover sample's habitat (index into the returned list), row by row on the cover
+        grid: what the browser replay grows its plants from."""
+        mesh, sub = self.mesh, self._sub
+        step = mesh.cell_m / sub
+        nx = (mesh.cols - 1) * sub
+        index: Dict[Habitat, int] = {}
+        grid = bytearray(nx * (mesh.rows - 1) * sub)
+        for r in range(mesh.rows - 1):
+            for c in range(mesh.cols - 1):
+                slope = self._slope_deg(r, c)
+                for j in range(sub):
+                    for i in range(sub):
+                        hab = self.habitat_at(mesh.x0 + c * mesh.cell_m + (i + 0.5) * step,
+                                              mesh.y0 + r * mesh.cell_m + (j + 0.5) * step, slope)[0]
+                        grid[(r * sub + j) * nx + c * sub + i] = index.setdefault(hab, len(index))
+        return list(index), grid
+
     def zone_name_at(self, x: float, y: float) -> str:
         r, c = self.mesh.cell_of(x, y)
         r = max(0, min(self.mesh.rows - 2, r))
