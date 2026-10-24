@@ -264,6 +264,7 @@ class HikeSiteDialog(QDialog):
 
     # ── publish ───────────────────────────────────────────────────────────
     def _target(self) -> Optional[FtpTarget]:
+        self._save_ftp_settings()  # remembered even when the login then fails
         host = self.host_edit.text().strip()
         url = self.url_edit.text().strip()
         if not host and url:
@@ -287,6 +288,7 @@ class HikeSiteDialog(QDialog):
                          use_tls=self.tls_chk.isChecked())
 
     def _save_ftp_settings(self) -> None:
+        """Remember the server, port, user, encryption, folder and URL (never the password)."""
         s = self.app_state.settings
         s.set("ftp_host", self.host_edit.text().strip())
         s.set("ftp_port", int(self.port_spin.value()))
@@ -311,7 +313,6 @@ class HikeSiteDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "FTP", f"Could not log in to {target.host}:\n\n{e}")
             return
-        self._save_ftp_settings()
         QMessageBox.information(self, "FTP", f"Logged in to {target.host}.\n\n{welcome}")
 
     def upload(self) -> None:
@@ -327,7 +328,6 @@ class HikeSiteDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "Upload", str(e))
             return
-        self._save_ftp_settings()
         url = self.url_edit.text().strip()
         if url:
             if "://" not in url:
@@ -337,3 +337,7 @@ class HikeSiteDialog(QDialog):
             self.app_state.status_message.emit(f"Hike website uploaded — link copied: {url}")
         else:
             self.link_lbl.setText(f"✓ Uploaded {sent} files to {target.host}{target.remote_dir}")
+
+    def done(self, result: int) -> None:  # Close, Esc or the window's X
+        self._save_ftp_settings()
+        super().done(result)

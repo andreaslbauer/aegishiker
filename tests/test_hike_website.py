@@ -285,3 +285,35 @@ def test_photo_review_leaves_photos_out(seeded_db: Database, tmp_path: Path) -> 
     dlg.set_kept({p.id for p in pins})
     assert not dlg.removed_pins()
     dlg.deleteLater()
+
+
+def test_ftp_settings_are_remembered_but_not_the_password(seeded_db: Database, tmp_path: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.app_state import AppState
+    from src.gui.dialogs.hike_site_dialog import HikeSiteDialog
+
+    QApplication.instance() or QApplication([])
+    _pack, route = _crow_hill_loop(seeded_db)
+    settings_file = tmp_path / "settings.json"
+    state = AppState(db=seeded_db, settings=Settings(settings_file=settings_file))
+    session = _session(route)
+    dlg = HikeSiteDialog(state, session, route, [])
+    dlg.host_edit.setText("ftp.example.com")
+    dlg.port_spin.setValue(2121)
+    dlg.user_edit.setText("hiker")
+    dlg.ftp_pw.setText("s3cret-pw")
+    dlg.tls_chk.setChecked(False)
+    dlg.url_edit.setText(f"https://example.com/hikes/{dlg.slug}/")
+    dlg.remote_edit.setText(f"/www/hikes/{dlg.slug}")
+    dlg.reject()  # closed without testing or uploading
+    dlg.deleteLater()
+
+    assert "s3cret-pw" not in settings_file.read_text(), "the FTP password is never saved"
+    again = HikeSiteDialog(AppState(db=seeded_db, settings=Settings(settings_file=settings_file)), session, route, [])
+    assert (again.host_edit.text(), again.port_spin.value(), again.user_edit.text()) == ("ftp.example.com", 2121, "hiker")
+    assert not again.tls_chk.isChecked() and not again.ftp_pw.text()
+    assert again.url_edit.text() == f"https://example.com/hikes/{dlg.slug}/"
+    assert again.remote_edit.text() == f"/www/hikes/{dlg.slug}"
+    again.deleteLater()
