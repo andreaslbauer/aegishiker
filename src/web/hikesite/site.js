@@ -33,6 +33,23 @@
     set(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* private mode */ } },
   };
 
+  // ── device: phone or desktop ──────────────────────────────────────────────
+  // A phone is a touch screen that is small in both directions (so also in landscape), or any narrow
+  // window. <html> gets .phone / .desktop and .touch, for the CSS and the views.
+  const device = { phone: false, touch: false };
+  function detectDevice() {
+    const mq = q => !!(window.matchMedia && matchMedia(q).matches);
+    const coarse = mq("(pointer: coarse)");
+    const was = device.phone;
+    device.touch = coarse || (navigator.maxTouchPoints > 0 && !mq("(pointer: fine)"));
+    device.phone = (coarse && Math.min(screen.width, screen.height) < 600) || window.innerWidth < 600;
+    const c = document.documentElement.classList;
+    c.toggle("phone", device.phone); c.toggle("desktop", !device.phone); c.toggle("touch", device.touch);
+    return was !== device.phone;
+  }
+  detectDevice();
+  const pixelRatio = cap => Math.min(window.devicePixelRatio || 1, cap || 3);
+
   // ── units & formatting ────────────────────────────────────────────────────
   const FT = 3.28084, MI = 1609.344;
   let units = "us";
@@ -212,9 +229,12 @@
 
   class TopoMap {
     constructor(host, opts) {
-      this.opts = Object.assign({ interactive: true, photos: true, focusOnly: false, onHover: null, onPhoto: null }, opts || {});
+      this.opts = Object.assign({ interactive: true, photos: true, focusOnly: false, embedded: false, onHover: null, onPhoto: null }, opts || {});
       this.box = el("div", { class: "mapbox" });
       this.canvas = el("canvas");
+      // A map within a scrolling page on a touch screen: an up/down swipe scrolls the page, sideways
+      // drags pan the map and two fingers zoom it
+      if (this.opts.embedded && device.touch) this.canvas.style.touchAction = "pan-y";
       this.tip = el("div", { class: "tip" });
       this.box.append(this.canvas, this.tip);
       host.append(this.box);
@@ -246,7 +266,7 @@
     }
     resize() {
       const r = this.box.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = pixelRatio(device.phone ? 2 : 3);
       this.w = Math.max(10, r.width); this.h = Math.max(10, r.height);
       this.canvas.width = Math.round(this.w * dpr); this.canvas.height = Math.round(this.h * dpr);
       this.dpr = dpr;
@@ -342,9 +362,10 @@
     _photoAt(p) {
       if (!this.showPhotos || !p) return null;
       let best = null, bd = 1e9;
+      const pad = device.touch ? 10 : 3; // fingers are less precise than a mouse
       for (const ph of H.photos) {
         const r = this._photoRect(ph);
-        if (p[0] >= r.x - 3 && p[0] <= r.x + r.w + 3 && p[1] >= r.y - 3 && p[1] <= r.y + r.h + 3) {
+        if (p[0] >= r.x - pad && p[0] <= r.x + r.w + pad && p[1] >= r.y - pad && p[1] <= r.y + r.h + pad) {
           const d = Math.hypot(p[0] - (r.x + r.w / 2), p[1] - (r.y + r.h / 2));
           if (d < bd) { bd = d; best = ph; }
         }
@@ -381,6 +402,7 @@
     _click(p) {
       const ph = this._photoAt(p);
       if (ph && this.opts.onPhoto) this.opts.onPhoto(ph.i);
+      else if (device.touch) this._hover(p); // no hover on a touch screen: a tap on the route shows where it is
     }
     _photoRect(ph) {
       const big = this.view.s > 0.12 && ph.thumbImg && (!this.opts.focusOnly || ph.i === this.focus);
@@ -622,20 +644,25 @@
       this.ro = new ResizeObserver(() => this.resize());
       this.ro.observe(this.box);
       const local = e => { const r = this.canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-      this.canvas.addEventListener("pointermove", e => {
+      const track = e => {
         const p = local(e);
         const along = clamp((p[0] - this.l) / (this.w - this.l - this.r) * G.total, 0, G.total);
         const ph = this._photoAt(p);
         this.canvas.style.cursor = ph ? "pointer" : "crosshair";
         this.setCursor(along);
         if (this.opts.onHover) this.opts.onHover(along);
+      };
+      this.canvas.addEventListener("pointermove", track);
+      this.canvas.addEventListener("pointerdown", track); // a finger touches down without hovering first
+      this.canvas.addEventListener("pointerleave", e => {
+        if (e.pointerType !== "mouse") return; // a lifted finger leaves the readout where it was
+        this.setCursor(null); if (this.opts.onHover) this.opts.onHover(null);
       });
-      this.canvas.addEventListener("pointerleave", () => { this.setCursor(null); if (this.opts.onHover) this.opts.onHover(null); });
       this.canvas.addEventListener("click", e => { const ph = this._photoAt(local(e)); if (ph && this.opts.onPhoto) this.opts.onPhoto(ph.i); });
     }
     destroy() { this.ro.disconnect(); }
     resize() {
-      const r = this.box.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      const r = this.box.getBoundingClientRect(), dpr = pixelRatio(device.phone ? 2 : 3);
       this.w = r.width; this.h = r.height; this.dpr = dpr;
       this.canvas.width = Math.round(r.width * dpr); this.canvas.height = Math.round(r.height * dpr);
       this.l = units === "us" ? 52 : 46; this.r = 12; this.t = G.legs.length > 1 ? 24 : 10; this.b = 24;
@@ -646,7 +673,7 @@
     _photoAt(p) {
       for (const ph of H.photos) {
         const x = this.X(ph.along_m), y = this.Y(pointAt(ph.along_m).e);
-        if (Math.hypot(p[0] - x, p[1] - y) < 8) return ph;
+        if (Math.hypot(p[0] - x, p[1] - y) < (device.touch ? 14 : 8)) return ph;
       }
       return null;
     }
@@ -1170,11 +1197,22 @@
       this.speedSel = el("select", { "aria-label": "Speed" },
         [["0.5×", 0.5], ["1×", 1], ["2×", 2], ["4×", 4]].map(o => el("option", { value: o[1], text: o[0], selected: o[1] === 1 })));
       this.speedSel.addEventListener("change", () => { this.speed = Number(this.speedSel.value); });
-      const fs = el("button", { text: "⛶", title: "Full screen", onclick: () => {
-        if (document.fullscreenElement) document.exitFullscreen(); else if (this.root.requestFullscreen) this.root.requestFullscreen();
-      } });
+      // Full screen where the browser allows it (not on iPhones); a phone turns to landscape for it
+      const fs = document.fullscreenEnabled ? el("button", { class: "fs", text: "⛶", title: "Full screen", "aria-label": "Full screen", onclick: () => {
+        if (document.fullscreenElement) { document.exitFullscreen(); return; }
+        const done = this.root.requestFullscreen();
+        if (device.phone && done && done.then) done.then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape")).catch(() => {});
+      } }) : null;
       this.root.append(this.stage, el("div", { class: "bar" }, this.playBtn, this.skipBtn, this.slider, this.speedSel, fs,
-        el("span", { class: "hint", text: "Space: play / pause · →: skip photo" })));
+        el("span", { class: "hint", text: "Space: play / pause · →: skip photo · click the view to pause" })));
+      // A tap (or click) on the view: leave the photo being shown, else play / pause
+      let down = null;
+      this.canvas.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
+      this.canvas.addEventListener("pointerup", e => {
+        if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 10) { down = null; return; }
+        down = null;
+        if (this.phase === "blend_in" || this.phase === "hold") this.skipPhoto(); else this.toggle();
+      });
       host.append(this.root);
       this.ctx = this.canvas.getContext("2d");
       this.small = document.createElement("canvas");
@@ -1189,7 +1227,8 @@
     }
     destroy() { this.running = false; this.ro.disconnect(); document.removeEventListener("keydown", this.onKey); }
     resize() {
-      const r = this.stage.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      // Phones draw at a lower pixel ratio: thousands of plants a frame stay smooth on a small GPU
+      const r = this.stage.getBoundingClientRect(), dpr = pixelRatio(device.phone ? 1.5 : 2);
       this.w = r.width; this.h = r.height; this.dpr = dpr;
       this.canvas.width = Math.round(r.width * dpr); this.canvas.height = Math.round(r.height * dpr);
       this.render();
@@ -1502,31 +1541,35 @@
     }
     _hud(ctx, w, h, ele) {
       const round = (x, y, bw, bh, r) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, bw, bh, r) : ctx.rect(x, y, bw, bh); };
-      ctx.fillStyle = "rgba(11,22,16,0.78)"; round(14, 14, Math.min(330, w - 200), 92, 8); ctx.fill();
-      ctx.fillStyle = "#ECF5EE"; ctx.font = "bold 13px sans-serif";
+      // Small screens (phones, either way up) get a tighter HUD and no mini map
+      const compact = w < 600 || h < 420, m = compact ? 10 : 14, showMini = w >= 520 && h >= 420;
+      const bw = showMini ? Math.min(330, w - 200) : Math.min(330, w - 2 * m), bh = compact ? 76 : 92;
+      const lx = m + 12, ys = compact ? [m + 19, m + 39, m + 64] : [m + 22, m + 46, m + 78];
+      const maxW = bw - 24;
+      ctx.fillStyle = "rgba(11,22,16,0.78)"; round(m, m, bw, bh, 8); ctx.fill();
+      ctx.fillStyle = "#ECF5EE"; ctx.font = (compact ? "bold 12px" : "bold 13px") + " sans-serif";
       let name = H.summary.route_name || H.summary.title;
-      const maxW = Math.min(306, w - 224);
       while (name.length > 4 && ctx.measureText(name).width > maxW) name = name.slice(0, -2);
       if (name !== (H.summary.route_name || H.summary.title)) name += "…";
-      ctx.fillText(name, 26, 36);
+      ctx.fillText(name, lx, ys[0]);
       const along = this.dist / this.scale;
       const leg = legAt(along);
-      ctx.fillStyle = "#98B2A1"; ctx.font = "12px sans-serif";
-      ctx.fillText(fmt.dist(along) + " of " + fmt.dist(G.total) + (leg && leg.named ? " · " + leg.name : ""), 26, 60, maxW);
-      ctx.fillStyle = "#F4D03F"; ctx.font = "bold 21px sans-serif";
+      ctx.fillStyle = "#98B2A1"; ctx.font = (compact ? "11px" : "12px") + " sans-serif";
+      ctx.fillText(fmt.dist(along) + " of " + fmt.dist(G.total) + (leg && leg.named ? " · " + leg.name : ""), lx, ys[1], maxW);
+      ctx.fillStyle = "#F4D03F"; ctx.font = (compact ? "bold 17px" : "bold 21px") + " sans-serif";
       const alt = "▲ " + fmt.ele(ele), altW = ctx.measureText(alt).width;
-      ctx.fillText(alt, 26, 92);
+      ctx.fillText(alt, lx, ys[2]);
       // Life zone at the hiker (Spruce–fir forest, Krummholz, Alpine tundra, ...)
       const here = this.at(this.dist), zone = this.zoneAt(here[0], here[1]);
-      const room = Math.min(330, w - 200) - 24 - altW;
+      const room = maxW - 12 - altW;
       if (zone && room > 30) {
-        ctx.fillStyle = "#98B2A1"; ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#98B2A1"; ctx.font = (compact ? "11px" : "12px") + " sans-serif";
         let z = zone;
         while (z.length > 3 && ctx.measureText(z).width > room) z = z.slice(0, -2);
-        ctx.fillText(z === zone ? z : z + "…", 38 + altW, 91);
+        ctx.fillText(z === zone ? z : z + "…", lx + altW + 12, ys[2] - 1);
       }
       // elevation profile
-      const px = 14, py = h - 104, pw = w - 28, ph = 90;
+      const ph = compact ? 62 : 90, px = m, py = h - ph - m, pw = w - 2 * m;
       ctx.fillStyle = "rgba(11,22,16,0.75)"; round(px, py, pw, ph, 8); ctx.fill();
       const ix = px + 12, iy = py + 10, iw = pw - 24, ih = ph - 26;
       let lo = Infinity, hi = -Infinity;
@@ -1545,7 +1588,7 @@
       ctx.fillStyle = "#98B2A1"; ctx.font = "10px sans-serif";
       ctx.fillText(fmt.ele(hi), ix, py + 9); ctx.fillText(fmt.ele(lo), ix, iy + ih + 14);
       // mini map
-      if (w >= 520) {
+      if (showMini) {
         const size = 170, mx = w - size - 14, my = 14;
         ctx.fillStyle = "rgba(11,22,16,0.78)"; round(mx, my, size, size, 8); ctx.fill();
         ctx.strokeStyle = "rgba(236,245,238,0.45)"; ctx.lineWidth = 1; ctx.stroke();
@@ -1635,9 +1678,10 @@
   // ── lightbox ──────────────────────────────────────────────────────────────
   let lightbox = null;
   function openPhoto(i, list) {
+    const hadEntry = !!(lightbox && lightbox.pushed);
     list = list || H.photos;
     let pos = Math.max(0, list.findIndex(p => p.i === i));
-    closePhoto();
+    closePhoto(true);
     const img = el("img", { alt: "" });
     const side = el("div", { class: "side" });
     let mini = null;
@@ -1666,7 +1710,7 @@
       const mapHost = el("div");
       side.append(mapHost);
       if (mini) mini.destroy();
-      mini = new TopoMap(mapHost, { interactive: true, focusOnly: true, onPhoto: j => { pos = Math.max(0, list.findIndex(q => q.i === j)); show(); } });
+      mini = new TopoMap(mapHost, { interactive: true, focusOnly: true, embedded: true, onPhoto: j => { pos = Math.max(0, list.findIndex(q => q.i === j)); show(); } });
       mini.focus = p.i;
       mini.view.s = 0.5;
       mini.box.style.height = "230px";
@@ -1680,10 +1724,12 @@
         list.length > 1 ? el("button", { class: "nav prev", "aria-label": "Previous photo", text: "‹", onclick: () => go(-1) }) : null,
         list.length > 1 ? el("button", { class: "nav next", "aria-label": "Next photo", text: "›", onclick: () => go(1) }) : null),
       side,
-      el("button", { class: "close", "aria-label": "Close", text: "✕", onclick: closePhoto }));
+      el("button", { class: "close", "aria-label": "Close", text: "✕", onclick: () => closePhoto() }));
+    // Swipe sideways for the next / previous photo (up and down still scrolls to the details)
     let sx = null;
     img.addEventListener("pointerdown", e => { sx = e.clientX; });
     img.addEventListener("pointerup", e => { if (sx != null && Math.abs(e.clientX - sx) > 50) go(e.clientX < sx ? 1 : -1); sx = null; });
+    img.addEventListener("pointercancel", () => { sx = null; });
     const onKey = e => {
       if (e.key === "Escape") closePhoto();
       else if (e.key === "ArrowLeft") go(-1);
@@ -1692,17 +1738,22 @@
     document.addEventListener("keydown", onKey);
     document.body.append(box);
     document.body.style.overflow = "hidden";
-    lightbox = { box, onKey, destroy: () => { if (mini) mini.destroy(); } };
+    // An open photo is a step in the browser history, so the phone's Back gesture closes it
+    if (!hadEntry && history.pushState) history.pushState({ photo: true }, "");
+    lightbox = { box, onKey, pushed: hadEntry || !!history.pushState, destroy: () => { if (mini) mini.destroy(); } };
     show();
   }
-  function closePhoto() {
+  function closePhoto(keepHistory) {
     if (!lightbox) return;
+    const back = lightbox.pushed && !keepHistory;
     document.removeEventListener("keydown", lightbox.onKey);
     lightbox.destroy();
     lightbox.box.remove();
     document.body.style.overflow = "";
     lightbox = null;
+    if (back) history.back();
   }
+  window.addEventListener("popstate", () => closePhoto(true));
 
   // ── views ─────────────────────────────────────────────────────────────────
   let pendingFocus = null, pendingPlayAlong = null;
@@ -1771,9 +1822,9 @@
     left.append(routeCard);
     const mapHost = el("div");
     routeCard.append(mapHost);
-    const map = new TopoMap(mapHost, { interactive: true, onPhoto: i => openPhoto(i), onHover: a => prof.setCursor(a) });
-    map.box.style.height = "380px";
-    const prof = new Profile(routeCard, { height: 150, onHover: a => map.setCursor(a), onPhoto: i => openPhoto(i) });
+    const map = new TopoMap(mapHost, { interactive: true, embedded: true, onPhoto: i => openPhoto(i), onHover: a => prof.setCursor(a) });
+    map.box.style.height = device.phone ? "280px" : "380px";
+    const prof = new Profile(routeCard, { height: device.phone ? 120 : 150, onHover: a => map.setCursor(a), onPhoto: i => openPhoto(i) });
     const where = [S.start_place && (S.start_place === S.end_place || !S.end_place ? "Start & finish: " + S.start_place : "Start: " + S.start_place + " · Finish: " + (S.end_place || "—"))];
     if (where[0]) routeCard.append(el("p", { class: "muted small", style: { margin: "10px 0 0" }, text: where[0] }));
 
@@ -1863,7 +1914,7 @@
         readout.append(el("span", {}, el("b", { text: fmt.dist(S.distance_m) }), " total"),
           el("span", {}, el("b", { text: "↗ " + fmt.ele(S.gain_m) }), " climb"),
           el("span", {}, el("b", { text: fmt.ele(S.max_ele_m) }), " high point"),
-          el("span", { text: "Hover the route or the profile; click a photo to open it." }));
+          el("span", { text: device.touch ? "Touch the route or the profile; tap a photo to open it." : "Hover the route or the profile; click a photo to open it." }));
         return;
       }
       const pt = pointAt(a), leg = legAt(a);
@@ -1874,7 +1925,7 @@
     };
     let prof = null;
     const map = new TopoMap(mapHost, { interactive: true, onPhoto: i => openPhoto(i), onHover: a => { prof && prof.setCursor(a); setReadout(a); } });
-    prof = new Profile(card, { height: 180, onHover: a => { map.setCursor(a); setReadout(a); }, onPhoto: i => openPhoto(i) });
+    prof = new Profile(card, { height: device.phone ? 110 : 180, onHover: a => { map.setCursor(a); setReadout(a); }, onPhoto: i => openPhoto(i) });
     card.append(readout);
     setReadout(null);
     if (pendingFocus != null) { map.focus = pendingFocus; pendingFocus = null; }
@@ -1883,9 +1934,11 @@
 
   function viewPlay(main) {
     const S = H.summary;
-    main.append(el("p", { class: "muted", style: { margin: "0 0 12px" },
+    main.append(el("p", { class: "muted intro", style: { margin: "0 0 12px" },
       text: "Follow " + S.title + " in 3D over the real terrain. At each photo the view turns toward where it was taken and the photo grows to fill the screen." }));
     const r = new Replay3D(main);
+    // A phone held sideways has room for the replay alone: bring it fully into view
+    if (device.phone && window.innerWidth > window.innerHeight) setTimeout(() => r.root.scrollIntoView({ block: "start" }), 50);
     if (pendingPlayAlong != null) { r.seekAlong(Math.max(0, pendingPlayAlong - 80)); pendingPlayAlong = null; }
     setTimeout(() => { if (r.root.isConnected) r.play(); }, 500);
     return { destroy: () => r.destroy() };
@@ -1915,7 +1968,13 @@
   }
 
   // ── shell & routing ───────────────────────────────────────────────────────
-  let mainEl, tabs;
+  let mainEl, tabs, barTabs;
+  const ICONS = { // bottom tab bar (phones)
+    overview: '<path d="M3 20l6.5-11 4 6.5 2.5-4L21 20z"/>',
+    map: '<path d="M9 4l6 2 5-2v15l-5 2-6-2-5 2V6zM9 4v15M15 6v15"/>',
+    play: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.5 3.5z"/>',
+    photos: '<rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8.5 6l1.5-2h4l1.5 2"/>',
+  };
   function shell() {
     const app = document.getElementById("app");
     app.textContent = "";
@@ -1935,6 +1994,12 @@
       } });
       return b;
     });
+    barTabs = {};
+    for (const [k, label] of [["overview", "Overview"], ["map", "Map"], ["play", "Play"], ["photos", "Photos"]]) {
+      const icon = el("span", { class: "ic", "aria-hidden": "true" });
+      icon.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">' + ICONS[k] + "</svg>";
+      barTabs[k] = el("a", { href: "#" + k }, icon, el("span", { text: label }));
+    }
     mainEl = el("main");
     app.append(
       el("header", { class: "topbar" },
@@ -1944,12 +2009,24 @@
         el("div", { class: "units" }, unitBtns)),
       mainEl,
       el("footer", {}, "Made with AegisHiker · Map data © OpenStreetMap contributors (ODbL) · Terrain: USGS 3DEP",
-        el("br"), H.meta.generated ? "Published " + new Date(H.meta.generated).toLocaleDateString() : ""));
+        el("br"), H.meta.generated ? "Published " + new Date(H.meta.generated).toLocaleDateString() : ""),
+      el("nav", { class: "tabbar", "aria-label": "Sections" }, Object.values(barTabs)));
     window.addEventListener("hashchange", route);
+    // Turning a tablet or resizing a window across the phone / desktop line redraws the page for it
+    let resizing = null;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizing);
+      resizing = setTimeout(() => { if (detectDevice() && !lightbox) route(); }, 200);
+    });
     route();
   }
   function navigate(name) {
-    closePhoto();
+    if (lightbox && lightbox.pushed) { // the open photo's history step becomes the new view
+      closePhoto(true);
+      history.replaceState(null, "", "#" + name);
+      route();
+      return;
+    }
     if (location.hash === "#" + name) route(); else location.hash = name;
   }
   function route() {
@@ -1958,9 +2035,10 @@
     const view = ({ overview: viewOverview, map: viewMap, play: viewPlay, photos: viewPhotos })[name] || viewOverview;
     const key = ({ overview: 1, map: 1, play: 1, photos: 1 })[name] ? name : "overview";
     current.destroy();
-    closePhoto();
+    closePhoto(true);
     mainEl.textContent = "";
-    Object.entries(tabs).forEach(([k, a]) => a.classList.toggle("on", k === key));
+    for (const set of [tabs, barTabs]) Object.entries(set).forEach(([k, a]) => a.classList.toggle("on", k === key));
+    document.documentElement.dataset.view = key;
     current = view(mainEl, arg) || { destroy() {} };
     if (key !== "overview") window.scrollTo(0, 0);
   }
