@@ -769,7 +769,8 @@
   // ── 3D replay (port of src/gui/replay3d.py) ───────────────────────────────
   const VIEW_RADIUS_M = 4200, FOG_START = 1800, FOG_END = 5200, BASE_DURATION_S = 75;
   const APPROACH_M = 300, DEPART_M = 250, EASE_SHARE = 0.06, MIN_SPEED = 0.12;
-  const BLEND_IN_S = 1.6, BLEND_OUT_S = 1.4, FIRST_HOLD_S = 5.0, NEXT_HOLD_S = 2.5, XFADE_S = 0.8;
+  // Photo stops: the same timing as the app (src/gui/replay3d.py)
+  const BLEND_IN_S = 1.0, BLEND_OUT_S = 0.9, FIRST_HOLD_S = 3.0, NEXT_HOLD_S = 1.5, XFADE_S = 0.5;
   const SKY_TOP = [88, 140, 196], SKY_HORIZON = [196, 214, 226];
   // Map layers on the terrain (as in the app): kind -> [rgb, pen width, fades out beyond this depth]
   const LAYER_PENS = {
