@@ -18,6 +18,24 @@ def real_people(names) -> List[str]:
     return [n for n in names if n and not is_placeholder_person(n)]
 
 
+# AI tag words meaning a person is in the picture ("rock face", "man-made" stay scenery)
+_PEOPLE_TAG_WORDS = {
+    "person", "persons", "people", "man", "men", "woman", "women", "boy", "boys", "girl", "girls",
+    "child", "children", "kid", "kids", "baby", "toddler", "family", "friends", "couple", "crowd",
+    "selfie", "selfies", "portrait", "hiker", "hikers", "human", "humans",
+}
+
+
+def shows_people(pin: HikePhotoPin) -> bool:
+    """Whether a photo has people in it: faces Voyager recognised, or AI tags naming a person."""
+    if pin.people:
+        return True
+    for tag in pin.ai_tags:
+        if any(w in _PEOPLE_TAG_WORDS for w in re.split(r"[\s_]+", str(tag).lower().lstrip("#"))):
+            return True
+    return False
+
+
 _GENERIC_TITLES = {"", "Recorded Hike", "Photo Hike Session", "Traced Trail Hike"}
 
 

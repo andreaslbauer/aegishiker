@@ -97,6 +97,14 @@ class HikeSiteDialog(QDialog):
             self.size_combo.addItem(label, px)
         form.addRow("Photo size:", self.size_combo)
 
+        self.skip_people_chk = QCheckBox("Leave out photos with people in them")
+        self.skip_people_chk.setToolTip(
+            "Skips photos where AegisPhotoVoyager recognised someone, or whose AI tags mention a person "
+            "(person, hiker, selfie…). Unrecognised faces without such tags can still slip through."
+        )
+        self.skip_people_chk.setChecked(bool(s.get("hike_site_skip_people", False)))
+        form.addRow("", self.skip_people_chk)
+
         self.protect_chk = QCheckBox("Password protect the website")
         self.protect_chk.setToolTip(
             "The hike, its map and every photo are encrypted; visitors need the password to see anything."
@@ -240,7 +248,8 @@ class HikeSiteDialog(QDialog):
             return
         pack = self.app_state.db.get_destination_pack(self.route.destination_id)
         options = SiteOptions(password=password, units=str(self.units_combo.currentData()),
-                              photo_px=int(self.size_combo.currentData()))
+                              photo_px=int(self.size_combo.currentData()),
+                              skip_people=self.skip_people_chk.isChecked())
         try:
             report = run_in_background(
                 self, "Creating the hike website…", export_hike_site, folder, self.route, self.session, pack,
@@ -250,11 +259,15 @@ class HikeSiteDialog(QDialog):
             QMessageBox.warning(self, "Hike Website", f"Could not create the website:\n\n{e}")
             return
         self._remember("hike_site_dirs", str(folder))
+        self.app_state.settings.set("hike_site_skip_people", self.skip_people_chk.isChecked())
         self.app_state.settings.save()
         skipped = report.get("skipped_photos") or []
         lock = " · 🔒 password protected" if report.get("protected") else ""
         text = (f"✓ Created with {report['photos']} photo{'s' if report['photos'] != 1 else ''} "
                 f"({report['bytes'] / 1e6:.1f} MB){lock}.<br><span style='color:#98B2A1'>{folder}</span>")
+        if report.get("people_photos_left_out"):
+            n = report["people_photos_left_out"]
+            text += f"<br>{n} photo{'s' if n != 1 else ''} with people left out."
         if skipped:
             text += (f"<br><span style='color:#F39C12'>{len(skipped)} photo(s) could not be read and were left out: "
                      f"{', '.join(skipped[:4])}{'…' if len(skipped) > 4 else ''}</span>")

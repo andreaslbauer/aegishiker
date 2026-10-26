@@ -140,6 +140,23 @@ def test_export_open_site(seeded_db: Database, tmp_path: Path) -> None:
         export_hike_site(other, route, _session(route), pack, pins)
 
 
+def test_export_can_leave_out_photos_with_people(seeded_db: Database, tmp_path: Path) -> None:
+    from src.core.hike_site import SiteOptions, export_hike_site
+    from src.hiking.hike_info import shows_people
+
+    pack, route = _crow_hill_loop(seeded_db)
+    pins = _photos(route, tmp_path)
+    pins[4].ai_tags = ["summit", "Hiker"]
+    pins[5].ai_tags = ["rock face", "man-made cairn"]
+    assert [shows_people(p) for p in pins] == [False, False, True, False, True, False]
+    out = tmp_path / "site"
+    report = export_hike_site(out, route, _session(route), pack, pins, SiteOptions(skip_people=True))
+    assert report["photos"] == 4 and report["people_photos_left_out"] == 2
+    data = json.loads((out / "hike.js").read_text().split("=", 1)[1].rstrip(";\n"))
+    assert not any(p["people"] for p in data["photos"])
+    assert "Maria" not in json.dumps(data["summary"]), "people only seen in left-out photos aren't named"
+
+
 def test_export_password_protected_site(seeded_db: Database, tmp_path: Path) -> None:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 

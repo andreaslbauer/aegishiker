@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from src.hiking.geo import haversine_m, simplify_polyline_dp
+from src.hiking.hike_info import shows_people
 from src.hiking.hike_report import build_hike_summary, leg_at, trail_legs
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
 from src.hiking.photo_matcher import dedupe_pins
@@ -60,6 +61,7 @@ class SiteOptions:
     password: str = ""  # empty: an open site
     units: str = "us"  # "us" (mi / ft / °F) or "metric"; visitors can switch
     photo_px: int = 1800  # longest side of gallery photos
+    skip_people: bool = False  # leave out photos with people in them
     thumb_px: int = 480
     jpeg_quality: int = 84
 
@@ -470,6 +472,10 @@ def export_hike_site(
     # Photos, in the order they were taken
     say("Collecting photos…")
     ordered = sorted(dedupe_pins(list(pins)), key=lambda p: (p.date_taken or 0, p.distance_along_m))
+    people_left_out = 0
+    if opts.skip_people:
+        people_left_out = sum(1 for p in ordered if shows_people(p))
+        ordered = [p for p in ordered if not shows_people(p)]
     legs = trail_legs(route, pack.trails if pack else [])
     photos: List[Dict] = []
     kept: List[HikePhotoPin] = []
@@ -549,6 +555,7 @@ def export_hike_site(
         "index": str(folder / "index.html"),
         "photos": len(photos),
         "skipped_photos": skipped,
+        "people_photos_left_out": people_left_out,
         "files": len(files),
         "bytes": sum(p.stat().st_size for p in files),
         "protected": sealer is not None,
