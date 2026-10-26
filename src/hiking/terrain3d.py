@@ -98,23 +98,40 @@ def build_mesh(
     return mesh
 
 
-def shade_mesh(mesh: TerrainMesh, ground: Callable[[int, int], Tuple[float, float, float]]) -> None:
-    """(Re)colour the mesh: each cell's `ground(row, col)` colour, lit by a sun from the north-west, 40° up."""
-    z, cell_m = mesh.z, mesh.cell_m
-    lx, ly, lz = -0.54, 0.54, 0.64
-    color: List[List[Tuple[int, int, int]]] = []
-    for r in range(mesh.rows - 1):
-        crow = []
-        for c in range(mesh.cols - 1):
-            z00, z10, z01, z11 = z[r][c], z[r][c + 1], z[r + 1][c], z[r + 1][c + 1]
-            dzdx = ((z10 - z00) + (z11 - z01)) / (2 * cell_m)
-            dzdy = ((z01 - z00) + (z11 - z10)) / (2 * cell_m)
-            n = math.sqrt(dzdx * dzdx + dzdy * dzdy + 1.0)
-            shade = max(0.0, (-dzdx * lx - dzdy * ly + lz) / n)
-            f = 0.45 + 0.85 * shade
-            crow.append(tuple(min(255, int(ch * f)) for ch in ground(r, c)))  # type: ignore[misc]
-        color.append(crow)
-    mesh.color = color
+class MeshShader:
+    """Lights the mesh for a sun direction: each cell's ground colour and slope are worked out once,
+    so re-shading for another time of day is one pass of dot products."""
+
+    def __init__(self, mesh: TerrainMesh, ground: Callable[[int, int], Tuple[float, float, float]]) -> None:
+        z, cell_m = mesh.z, mesh.cell_m
+        self.cols = mesh.cols - 1
+        self.normals: List[Tuple[float, float, float]] = []
+        self.ground: List[Tuple[float, float, float]] = []
+        for r in range(mesh.rows - 1):
+            for c in range(mesh.cols - 1):
+                z00, z10, z01, z11 = z[r][c], z[r][c + 1], z[r + 1][c], z[r + 1][c + 1]
+                dzdx = ((z10 - z00) + (z11 - z01)) / (2 * cell_m)
+                dzdy = ((z01 - z00) + (z11 - z10)) / (2 * cell_m)
+                n = math.sqrt(dzdx * dzdx + dzdy * dzdy + 1.0)
+                self.normals.append((-dzdx / n, -dzdy / n, 1.0 / n))
+                self.ground.append(tuple(ground(r, c)))  # type: ignore[arg-type]
+
+    def colors(self, sun: Tuple[float, float, float] = (-0.54, 0.54, 0.64), ambient: float = 0.45,
+               diffuse: float = 0.85) -> List[List[Tuple[int, int, int]]]:
+        lx, ly, lz = sun
+        flat = []
+        for (nx, ny, nz), (gr, gg, gb) in zip(self.normals, self.ground):
+            f = ambient + diffuse * max(0.0, nx * lx + ny * ly + nz * lz)
+            flat.append((min(255, int(gr * f)), min(255, int(gg * f)), min(255, int(gb * f))))
+        return [flat[i:i + self.cols] for i in range(0, len(flat), self.cols)]
+
+
+def shade_mesh(mesh: TerrainMesh, ground: Callable[[int, int], Tuple[float, float, float]]) -> MeshShader:
+    """(Re)colour the mesh: each cell's `ground(row, col)` colour, lit by a sun from the north-west, 40° up.
+    Returns the shader, to light the mesh for other times of day."""
+    shader = MeshShader(mesh, ground)
+    mesh.color = shader.colors()
+    return shader
 
 
 @dataclass

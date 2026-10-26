@@ -519,7 +519,7 @@ class ReexperiencePanel(QWidget):
             month = int(started[5:7]) if started[5:7].isdigit() else None  # foliage of the hike's season
             show = bool(self.app_state.settings.get("replay_show_photos", True))
             dlg = Replay3DDialog(route, pack, self.photo_pins, "metric" if unit == "metric" else "us", self,
-                                 month=month, show_photos=show)
+                                 month=month, show_photos=show, session=session)
         dlg.exec()
         if dlg.photos_check.isEnabled() and dlg.photos_check.isChecked() != show:  # remember the choice
             self.app_state.settings.set("replay_show_photos", dlg.photos_check.isChecked())

@@ -27,6 +27,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
     QPolygonF,
+    QRadialGradient,
 )
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -41,7 +42,8 @@ from PySide6.QtWidgets import (
 )
 
 from src.gui.charts.photo_preview import format_datetime, load_photo_image, photo_pixmap
-from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin
+from src.hiking.daylight import Light, hike_clock, key_index, light_at, light_keys
+from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.replay_plan import plan_photo_stops
 from src.hiking.terrain3d import (
@@ -62,8 +64,6 @@ from src.hiking.units import format_distance, format_elevation
 from src.hiking.vegetation import build_vegetation
 from src.gui.vegetation_sprites import GROUND_FRAC, make_sprites
 
-SKY_TOP = QColor(88, 140, 196)
-SKY_HORIZON = (196, 214, 226)
 VIEW_RADIUS_M = 4200.0  # terrain drawn around the hiker
 FOG_START, FOG_END = 1800.0, 5200.0
 Z_EXAGGERATION = 1.5
@@ -140,7 +140,8 @@ class Replay3DView(QWidget):
     state_changed = Signal(str)  # "playing" | "paused" | "photo" | "done"
 
     def __init__(self, route: ComposedRoute, pack: Optional[DestinationPack], photos: List[HikePhotoPin],
-                 units: str = "us", parent: Optional[QWidget] = None, month: Optional[int] = None) -> None:
+                 units: str = "us", parent: Optional[QWidget] = None, month: Optional[int] = None,
+                 session: Optional[HikeSession] = None) -> None:
         super().__init__(parent)
         self.setMinimumSize(640, 400)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -170,7 +171,14 @@ class Replay3DView(QWidget):
             taken = [p.date_taken for p in photos if p.date_taken]
             month = datetime.fromtimestamp(min(taken), tz=timezone.utc).month if taken else None
         self.veg = build_vegetation(pack, self.mesh, self.path.pts, month)
-        shade_mesh(self.mesh, self.veg.ground_rgb)
+        self._shader = shade_mesh(self.mesh, self.veg.ground_rgb)
+        # Time of day: the sun where it stood as the hiker got there. The terrain is re-lit at a few
+        # keyframes along the hike (cached); sky, fog and tint blend between them every frame
+        self._clock = hike_clock(self.path.length, photos, session)
+        self.light_keys: List[Light] = light_keys(self.path.length, self.frame.lat0, self.frame.lon0, self._clock)
+        self._lit: Dict[int, list] = {}
+        self._lit_idx = -1
+        self.light: Light = self.light_keys[0]
         self._sprites = make_sprites(self.veg.season, self.veg.biome.rock)
         self._plant_cells: Dict[Tuple[int, int], list] = {}
         self._plant_tallest: Dict[Tuple[int, int], float] = {}  # per cell: drawn height of its tallest plant
@@ -441,9 +449,11 @@ class Replay3DView(QWidget):
         # The camera stands still while a photo is up: draw the scene once, not every frame
         key = (self.dist, self.yaw, self.next_stop, self.phase in self.PHOTO_PHASES, self.show_photos)
         if key != self._frame_key:
+            self._update_light()
             scene = QPainter(self._frame)
-            self._draw_sky(scene, w, h)
+            self._draw_sky(scene, w, h, project, cam)
             self._draw_terrain(scene, cam, project)
+            self._draw_tint(scene)
             self._draw_peaks(scene, project)
             self._draw_hiker(scene, project, (x, y, max(z, self.mesh.height_at(x, y)) + 6.0))
             self._draw_hud(scene, w, h, ele)
@@ -456,11 +466,46 @@ class Replay3DView(QWidget):
             self._draw_photo_overlay(p, w, h, project, self.stops[self.next_stop])
         p.end()
 
-    def _draw_sky(self, p: QPainter, w: int, h: int) -> None:
+    def _update_light(self) -> None:
+        """Light at the hiker; the terrain takes the nearest keyframe's shading."""
+        self.light = light_at(self.light_keys, self.dist)
+        idx = key_index(self.light_keys, self.dist)
+        if idx != self._lit_idx:
+            if idx not in self._lit:
+                k = self.light_keys[idx]
+                self._lit[idx] = self._shader.colors(k.sun, k.ambient, k.diffuse)
+            self.mesh.color = self._lit[idx]
+            self._lit_idx = idx
+
+    def _draw_sky(self, p: QPainter, w: int, h: int, project, cam) -> None:
+        light = self.light
         g = QLinearGradient(0, 0, 0, h * 0.6)
-        g.setColorAt(0.0, SKY_TOP)
-        g.setColorAt(1.0, QColor(*SKY_HORIZON))
+        g.setColorAt(0.0, QColor(*light.sky_top))
+        g.setColorAt(1.0, QColor(*light.sky_horizon))
         p.fillRect(self.rect(), QBrush(g))
+        if light.elevation > -3.0:  # the sun's glow, hidden by the terrain drawn over it
+            sx, sy, sz = light.sun
+            far = 30000.0
+            s = project(cam.x + sx * far, cam.y + sy * far, cam.z + max(sz, 0.0) * far)
+            if s:
+                warm = max(0.0, min(1.0, 1.0 - light.elevation / 25.0))
+                core = QColor(255, int(246 - 40 * warm), int(225 - 95 * warm), 235)
+                glow = QRadialGradient(QPointF(s[0], s[1]), 70.0 + 50.0 * warm)
+                glow.setColorAt(0.0, core)
+                glow.setColorAt(0.12, core)
+                edge = QColor(core)
+                edge.setAlpha(0)
+                glow.setColorAt(1.0, edge)
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(QBrush(glow))
+                p.drawEllipse(QPointF(s[0], s[1]), 70.0 + 50.0 * warm, 70.0 + 50.0 * warm)
+
+    def _draw_tint(self, p: QPainter) -> None:
+        """Golden hour, dusk and night colour everything drawn so far (one multiply over the frame)."""
+        if self.light.tint != (255, 255, 255):
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
+            p.fillRect(self.rect(), QColor(*self.light.tint))
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
     def _draw_terrain(self, p: QPainter, cam, project) -> None:
         mesh = self.mesh
@@ -496,7 +541,7 @@ class Replay3DView(QWidget):
         cells.sort(key=lambda t: -t[0])  # far to near
 
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        sky_r, sky_g, sky_b = SKY_HORIZON
+        sky_r, sky_g, sky_b = self.light.sky_horizon
         done_upto = self.path.at(self.dist)
         done_i = max(0, min(len(self._trail) - 2, int(self.dist / max(1.0, self.path.length) * (len(self._trail) - 1))))
         _ = done_upto
@@ -515,7 +560,7 @@ class Replay3DView(QWidget):
             p.drawPolygon(QPolygonF([QPointF(a[0], a[1]), QPointF(b[0], b[1]), QPointF(cc[0], cc[1]), QPointF(d[0], d[1])]))
             water = self.layers.water.get((r, c))
             if water:
-                self._draw_water(p, project, water, f)
+                self._draw_water(p, project, water, f, self.light.sky_horizon)
             layer_segs = self.layers.cells.get((r, c))
             if layer_segs:
                 self._draw_layers(p, project, layer_segs, depth)
@@ -536,10 +581,10 @@ class Replay3DView(QWidget):
                     self._draw_photo_marker(p, project, self.stops[si])
 
     @staticmethod
-    def _draw_water(p: QPainter, project, rings, fog: float) -> None:
+    def _draw_water(p: QPainter, project, rings, fog: float, sky: Tuple[int, int, int]) -> None:
         """Lake / pond pieces on this cell, tinted toward the sky colour with distance like the terrain."""
         r, g, b = 58, 116, 168
-        sr, sg, sb = SKY_HORIZON
+        sr, sg, sb = sky
         col = QColor(int(r + (sr - r) * fog), int(g + (sg - g) * fog), int(b + (sb - b) * fog))
         p.setPen(QPen(col, 1.0))
         p.setBrush(col)
@@ -751,7 +796,10 @@ class Replay3DView(QWidget):
         p.drawText(QRectF(26, 20, 310, 22), Qt.AlignmentFlag.AlignLeft, fm.elidedText(name, Qt.TextElideMode.ElideRight, 306))
         p.setFont(QFont("Sans Serif", 9))
         p.setPen(QColor("#98B2A1"))
-        p.drawText(QPointF(26, 62), f"{format_distance(self.dist, self.units)} of {format_distance(self.path.length, self.units)}")
+        line = f"{format_distance(self.dist, self.units)} of {format_distance(self.path.length, self.units)}"
+        if self.light.ts is not None:
+            line += f"  ·  {f'{datetime.fromtimestamp(self.light.ts):%I:%M %p}'.lstrip('0')}"
+        p.drawText(QPointF(26, 62), line)
         p.setFont(QFont("Sans Serif", 16, QFont.Weight.Bold))
         p.setPen(QColor("#F4D03F"))
         alt = f"▲ {format_elevation(ele, self.units)}"
@@ -954,13 +1002,13 @@ class Replay3DDialog(QDialog):
 
     def __init__(self, route: ComposedRoute, pack: Optional[DestinationPack], photos: List[HikePhotoPin],
                  units: str = "us", parent: Optional[QWidget] = None, month: Optional[int] = None,
-                 show_photos: bool = True) -> None:
+                 show_photos: bool = True, session: Optional[HikeSession] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"3D Hike Replay — {route.name}")
         self.resize(1280, 800)
         col = QVBoxLayout(self)
         col.setContentsMargins(6, 6, 6, 6)
-        self.view = Replay3DView(route, pack, photos, units, month=month)
+        self.view = Replay3DView(route, pack, photos, units, month=month, session=session)
         col.addWidget(self.view, 1)
 
         bar = QHBoxLayout()

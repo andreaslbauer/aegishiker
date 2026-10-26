@@ -771,7 +771,9 @@
   const APPROACH_M = 300, DEPART_M = 250, EASE_SHARE = 0.06, MIN_SPEED = 0.12;
   // Photo stops: the same timing as the app (src/gui/replay3d.py)
   const BLEND_IN_S = 1.0, BLEND_OUT_S = 0.9, FIRST_HOLD_S = 3.0, NEXT_HOLD_S = 1.5, XFADE_S = 0.5;
-  const SKY_TOP = [88, 140, 196], SKY_HORIZON = [196, 214, 226];
+  // The look without a time: a sun from the north-west, 40° up (DEFAULT_LIGHT in src/hiking/daylight.py)
+  const DEFAULT_LIGHT = { along: 0, sun: [-0.54, 0.54, 0.64], amb: 0.45, dif: 0.85, top: [88, 140, 196], hor: [196, 214, 226],
+    tint: [255, 255, 255], elev: 40, ts: null };
   // Map layers on the terrain (as in the app): kind -> [rgb, pen width, fades out beyond this depth]
   const LAYER_PENS = {
     water_edge: [[76, 155, 214], 1.6, FOG_END], river: [[76, 155, 214], 2.8, FOG_END],
@@ -1017,7 +1019,28 @@
     constructor(host) {
       const R = H.replay;
       const m = R.mesh;
-      this.mesh = { x0: m.x0, y0: m.y0, cell: m.cell, cols: m.cols, rows: m.rows, z: Float32Array.from(m.z), color: Uint8Array.from(m.color) };
+      this.mesh = { x0: m.x0, y0: m.y0, cell: m.cell, cols: m.cols, rows: m.rows, z: Float32Array.from(m.z),
+        color: m.ground ? new Uint8Array(m.ground.length) : Uint8Array.from(m.color) };
+      // Time of day: light keyframes along the route (sun, sky, tint). The terrain is re-lit from each
+      // cell's unlit colour and slope at the nearest keyframe (cached); sky, fog and tint blend between them
+      this.lights = R.light && R.light.length ? R.light : [DEFAULT_LIGHT];
+      this.tz = R.tz;
+      this.lit = new Map();
+      this.litIdx = -1;
+      this.light = this.lights[0];
+      if (m.ground) {
+        const C = m.cols, cells = (m.cols - 1) * (m.rows - 1), z = this.mesh.z;
+        this.ground = Uint8Array.from(m.ground);
+        this.normals = new Float32Array(cells * 3);
+        for (let r = 0, i = 0; r < m.rows - 1; r++) {
+          for (let c = 0; c < m.cols - 1; c++, i++) {
+            const z00 = z[r * C + c], z10 = z[r * C + c + 1], z01 = z[(r + 1) * C + c], z11 = z[(r + 1) * C + c + 1];
+            const dx = ((z10 - z00) + (z11 - z01)) / (2 * m.cell), dy = ((z01 - z00) + (z11 - z10)) / (2 * m.cell);
+            const len = Math.sqrt(dx * dx + dy * dy + 1);
+            this.normals[3 * i] = -dx / len; this.normals[3 * i + 1] = -dy / len; this.normals[3 * i + 2] = 1 / len;
+          }
+        }
+      }
       const xyz = R.path.xyz, n = xyz.length / 3;
       this.px = new Float64Array(n); this.py = new Float64Array(n); this.pz = new Float64Array(n);
       for (let i = 0; i < n; i++) { this.px[i] = xyz[3 * i]; this.py[i] = xyz[3 * i + 1]; this.pz[i] = xyz[3 * i + 2]; }
@@ -1337,6 +1360,66 @@
       if (weight <= 0) return chase;
       return blendCameras(chase, lookCamera(hk, stop.world, this.yaw, w, h, ga), weight);
     }
+    // time of day
+    _lightAt(d) {
+      const K = this.lights;
+      if (K.length < 2) return K[0];
+      const step = K[K.length - 1].along / (K.length - 1) || 1;
+      const i = clamp(Math.floor(d / step), 0, K.length - 2), a = K[i], b = K[i + 1];
+      const f = clamp((d - a.along) / step, 0, 1);
+      const mix = (u, v) => u.map((x, j) => Math.round(x + (v[j] - x) * f));
+      return { sun: a.sun.map((x, j) => x + (b.sun[j] - x) * f), top: mix(a.top, b.top), hor: mix(a.hor, b.hor),
+        tint: mix(a.tint, b.tint), elev: a.elev + (b.elev - a.elev) * f,
+        ts: a.ts == null || b.ts == null ? null : a.ts + (b.ts - a.ts) * f };
+    }
+    _relight() {
+      this.light = this._lightAt(this.dist);
+      if (!this.ground) return;
+      const K = this.lights, step = K.length < 2 ? 1 : (K[K.length - 1].along / (K.length - 1) || 1);
+      const idx = K.length < 2 ? 0 : clamp(Math.round(this.dist / step), 0, K.length - 1);
+      if (idx === this.litIdx) return;
+      let col = this.lit.get(idx);
+      if (!col) {
+        const k = K[idx], [lx, ly, lz] = k.sun, N = this.normals, G = this.ground;
+        col = new Uint8Array(G.length);
+        for (let i = 0; i < N.length; i += 3) {
+          const f = k.amb + k.dif * Math.max(0, N[i] * lx + N[i + 1] * ly + N[i + 2] * lz);
+          col[i] = Math.min(255, G[i] * f); col[i + 1] = Math.min(255, G[i + 1] * f); col[i + 2] = Math.min(255, G[i + 2] * f);
+        }
+        this.lit.set(idx, col);
+      }
+      this.mesh.color = col;
+      this.litIdx = idx;
+    }
+    _sky(ctx, w, h, cam, project) {
+      const L = this.light;
+      const sky = ctx.createLinearGradient(0, 0, 0, h * 0.6);
+      sky.addColorStop(0, `rgb(${L.top})`); sky.addColorStop(1, `rgb(${L.hor})`);
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+      if (L.elev > -3) { // the sun's glow, hidden by the terrain drawn over it
+        const far = 30000, s = project(cam.x + L.sun[0] * far, cam.y + L.sun[1] * far, cam.z + Math.max(L.sun[2], 0) * far);
+        if (s) {
+          const warm = clamp(1 - L.elev / 25, 0, 1), rad = 70 + 50 * warm;
+          const core = `${255},${Math.round(246 - 40 * warm)},${Math.round(225 - 95 * warm)}`;
+          const g = ctx.createRadialGradient(s[0], s[1], 0, s[0], s[1], rad);
+          g.addColorStop(0, `rgba(${core},0.92)`); g.addColorStop(0.12, `rgba(${core},0.92)`); g.addColorStop(1, `rgba(${core},0)`);
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s[0], s[1], rad, 0, 2 * Math.PI); ctx.fill();
+        }
+      }
+    }
+    _tint(ctx, w, h) { // golden hour, dusk and night colour everything drawn so far
+      const t = this.light.tint;
+      if (t[0] === 255 && t[1] === 255 && t[2] === 255) return;
+      ctx.globalCompositeOperation = "multiply";
+      ctx.fillStyle = `rgb(${t})`; ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "source-over";
+    }
+    clockText() {
+      const ts = this.light.ts;
+      if (ts == null) return "";
+      const d = new Date((ts + (this.tz || 0) * 60) * 1000); // the hike's clock, wherever the visitor is
+      return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+    }
     // rendering
     render() {
       const ctx = this.ctx, w = this.w, h = this.h;
@@ -1345,10 +1428,10 @@
       const p = this.at(this.dist);
       const cam = this.camera(w, h);
       const project = projector(cam);
-      const sky = ctx.createLinearGradient(0, 0, 0, h * 0.6);
-      sky.addColorStop(0, `rgb(${SKY_TOP})`); sky.addColorStop(1, `rgb(${SKY_HORIZON})`);
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+      this._relight();
+      this._sky(ctx, w, h, cam, project);
       this._terrain(ctx, cam, project);
+      this._tint(ctx, w, h);
       this._peaks(ctx, project);
       this._hiker(ctx, project, [p[0], p[1], Math.max(p[2], this.heightAt(p[0], p[1])) + 6]);
       this._hud(ctx, w, h, p[3]);
@@ -1384,6 +1467,7 @@
         }
       }
       cells.sort((u, v) => v[0] - u[0]);
+      const SKY_HORIZON = this.light.hor;
       const doneI = clamp(Math.floor(this.dist / this.length * (this.trail.length - 1)), 0, this.trail.length - 2);
       const photoPhase = this.phase === "blend_in" || this.phase === "hold" || this.phase === "blend_out";
       ctx.lineJoin = "round";
@@ -1556,7 +1640,8 @@
       const along = this.dist / this.scale;
       const leg = legAt(along);
       ctx.fillStyle = "#98B2A1"; ctx.font = (compact ? "11px" : "12px") + " sans-serif";
-      ctx.fillText(fmt.dist(along) + " of " + fmt.dist(G.total) + (leg && leg.named ? " · " + leg.name : ""), lx, ys[1], maxW);
+      const clock = this.clockText();
+      ctx.fillText(fmt.dist(along) + " of " + fmt.dist(G.total) + (clock ? " · " + clock : "") + (leg && leg.named ? " · " + leg.name : ""), lx, ys[1], maxW);
       ctx.fillStyle = "#F4D03F"; ctx.font = (compact ? "bold 17px" : "bold 21px") + " sans-serif";
       const alt = "▲ " + fmt.ele(ele), altW = ctx.measureText(alt).width;
       ctx.fillText(alt, lx, ys[2]);

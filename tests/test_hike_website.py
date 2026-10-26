@@ -118,6 +118,10 @@ def test_export_open_site(seeded_db: Database, tmp_path: Path) -> None:
     assert [t["name"] for t in data["summary"]["trails"]][1] == "Crow Hill Ledges North Climb"
     assert len(data["photos"]) == len(pins) and data["photos"][0]["trail"] == "Crow Hill Trail"
     assert data["replay"]["mesh"]["cols"] > 10 and data["replay"]["stops"]
+    light, mesh = data["replay"]["light"], data["replay"]["mesh"]
+    assert len(light) >= 2 and all(k["ts"] for k in light), "light keyframes over the hike's morning"
+    assert light[0]["elev"] > 0 and isinstance(data["replay"]["tz"], int)
+    assert len(mesh["ground"]) == (mesh["cols"] - 1) * (mesh["rows"] - 1) * 3, "unlit colours, lit in the browser"
     veg, mesh = data["replay"]["veg"], data["replay"]["mesh"]
     assert veg["season"] == "autumn", "the hike's month (October) sets the foliage"
     assert len(veg["grid"]) == (mesh["cols"] - 1) * (mesh["rows"] - 1) * veg["sub"] ** 2

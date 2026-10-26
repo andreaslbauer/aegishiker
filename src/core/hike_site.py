@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from src.hiking.geo import haversine_m, simplify_polyline_dp
+from src.hiking.daylight import hike_clock, light_keys
 from src.hiking.hike_info import shows_people
 from src.hiking.hike_report import build_hike_summary, leg_at, trail_legs
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
@@ -280,7 +281,8 @@ def build_basemap(pack: Optional[DestinationPack], bb) -> Dict:
 
 
 def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
-                 pins: Sequence[HikePhotoPin], month: Optional[int] = None) -> Dict:
+                 pins: Sequence[HikePhotoPin], month: Optional[int] = None,
+                 session: Optional[HikeSession] = None) -> Dict:
     """Terrain mesh, route path, photo stops, peak labels and vegetation for the browser 3D replay
     (the same scene as the desktop replay in src/gui/replay3d.py)."""
     coords = route.coords_3d
@@ -301,7 +303,9 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
         taken = [p.date_taken for p in pins if p.date_taken]
         month = datetime.fromtimestamp(min(taken), tz=timezone.utc).month if taken else None
     veg = build_vegetation(pack, mesh, path.pts, month)
-    shade_mesh(mesh, veg.ground_rgb)
+    shader = shade_mesh(mesh, veg.ground_rgb)
+    # Time of day: light keyframes along the route; the browser re-lights the terrain from them
+    lights = light_keys(path.length, frame.lat0, frame.lon0, hike_clock(path.length, pins, session))
     habitats, grid = veg.habitat_grid()
     index_of = {id(pin): i for i, pin in enumerate(pins)}
     stops = []
@@ -340,13 +344,15 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
             "x0": round(mesh.x0, 2), "y0": round(mesh.y0, 2), "cell": mesh.cell_m,
             "cols": mesh.cols, "rows": mesh.rows,
             "z": [round(v, 1) for row in mesh.z for v in row],
-            "color": [ch for row in mesh.color for col in row for ch in col],
+            "ground": [int(ch) for rgb in shader.ground for ch in rgb],  # unlit cell colours
         },
         "path": {
             "xyz": [round(v, 1) for p in path.pts for v in p],
             "ele": [round(e, 1) for e in path.ele],
         },
         "stops": stops,
+        "light": [k.to_json() for k in lights],
+        "tz": round(_tz_offset_min(lights[0].ts)) if lights[0].ts is not None else None,
         "peaks": peaks,
         "veg": {
             "season": veg.season, "rock": list(veg.biome.rock), "treeline": veg.treeline,
@@ -355,6 +361,12 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
             "grid": "".join(chr(VEG_GRID_BASE + i) for i in grid),  # one character per land-cover sample
         },
     }
+
+
+def _tz_offset_min(ts: float) -> float:
+    """This computer's UTC offset at `ts` (minutes): the replay shows the hike's clock times as here."""
+    offset = datetime.fromtimestamp(ts).astimezone().utcoffset()
+    return offset.total_seconds() / 60.0 if offset else 0.0
 
 
 # ── encryption ─────────────────────────────────────────────────────────────────
@@ -508,7 +520,8 @@ def export_hike_site(
 
     say("Building the 3D replay terrain…")
     date = summary.get("date_iso") or ""
-    replay = build_replay(route, pack, kept, month=int(date[5:7]) if date[5:7].isdigit() else None)
+    replay = build_replay(route, pack, kept, month=int(date[5:7]) if date[5:7].isdigit() else None,
+                          session=session)
 
     cum = [0.0]
     for a, b in zip(route.coords_3d, route.coords_3d[1:]):
