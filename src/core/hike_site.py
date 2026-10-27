@@ -29,6 +29,7 @@ from src.hiking.geo import haversine_m, simplify_polyline_dp
 from src.hiking.daylight import hike_clock, light_keys
 from src.hiking.hike_info import shows_people
 from src.hiking.hike_report import build_hike_summary, hike_details, leg_at, trail_legs
+from src.hiking.mood import stop_mood
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.replay_plan import plan_photo_stops
@@ -317,8 +318,10 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
             continue
         first = pins[shown[0]]
         x, y = frame.to_xy(first.lat, first.lon)
+        mood = stop_mood([p.ai_mood for p in plan.shown])  # how it felt there grades the scene around the stop
         stops.append({"photos": shown, "hidden": plan.hidden, "along": round(plan.along_m, 1),
-                      "world": [round(x, 1), round(y, 1), round(mesh.height_at(x, y) + 6.0, 1)]})
+                      "world": [round(x, 1), round(y, 1), round(mesh.height_at(x, y) + 6.0, 1)],
+                      "mood": mood.to_json() if mood else None})
     peaks = []
     if pack:
         x_lo, y_lo = mesh.x0, mesh.y0

@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
 from src.gui.charts.photo_preview import format_datetime, load_photo_image, photo_pixmap
 from src.hiking.daylight import Light, hike_clock, key_index, light_at, light_keys
 from src.hiking.hike_report import hike_details
+from src.hiking.mood import NEUTRAL, Mood, mix_rgb, mood_at, stop_mood
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.replay_plan import plan_photo_stops
@@ -247,6 +248,9 @@ class Replay3DView(QWidget):
             items = [PhotoItem(pin, photo_pixmap(pin, 300)) for pin in plan.shown]
             self.stops.append(PhotoStop(items, plan.along_m, (x, y, self.mesh.height_at(x, y) + 6.0), plan.hidden))
         self.photo_stops = self.stops  # all of them; `stops` is empty while photos are hidden
+        # How the hike felt there: each stop's photos' mood grades the scene around it
+        self._moods = [(st.along_m, stop_mood([it.pin.ai_mood for it in st.items])) for st in self.photo_stops]
+        self.mood: Tuple[Mood, float] = (NEUTRAL, 0.0)
         # Full-size photos are decoded off the GUI thread just ahead of being shown
         self._loader = ThreadPoolExecutor(max_workers=2, thread_name_prefix="replay-photo")
 
@@ -406,7 +410,8 @@ class Replay3DView(QWidget):
     def speed_factor(self) -> float:
         """Walking speed multiplier: eases down into a stop and back up after it (never zero)."""
         slow = max(self._approach(), self._departure())
-        return max(MIN_SPEED_FACTOR, 1.0 - slow * (1.0 - MIN_SPEED_FACTOR))
+        mood, w = mood_at(self._moods, self.dist)  # calm and grand moments are walked more slowly
+        return max(MIN_SPEED_FACTOR, (1.0 - slow * (1.0 - MIN_SPEED_FACTOR)) * (1.0 - mood.slow * w))
 
     def advance(self, dt: float) -> None:
         """Advance the animation by dt seconds (also used by tests without a timer)."""
@@ -461,7 +466,9 @@ class Replay3DView(QWidget):
         """Chase camera, blended toward a closer view of the photo spot around stops."""
         x, y, z, _ele = self.path.at(self.dist)
         hiker = (x, y, max(z, self.mesh.height_at(x, y)))
-        chase = chase_camera(hiker, self.yaw, w, h, ground_at=self.mesh.height_at)
+        mood, mw = mood_at(self._moods, self.dist)  # dramatic moments: pull back for the wider view
+        chase = chase_camera(hiker, self.yaw, w, h, back_m=1300.0 + 600.0 * mood.wide * mw,
+                             up_m=600.0 + 200.0 * mood.wide * mw, ground_at=self.mesh.height_at)
         if self.phase in self.PHOTO_PHASES:
             weight, stop = 1.0, self.stops[self.next_stop]
         else:
@@ -493,11 +500,13 @@ class Replay3DView(QWidget):
         if key != self._frame_key:
             self._update_light()
             self._sway = self._sway_now()
+            self.mood = mood_at(self._moods, self.dist)
             scene = QPainter(self._frame)
             self._draw_sky(scene, w, h, project, cam)
             self._draw_terrain(scene, cam, project)
             self._draw_tint(scene)
             self._draw_weather(scene, w, h)
+            self._draw_mood(scene, w, h)
             self._draw_peaks(scene, project)
             self._draw_hiker(scene, project, (x, y, max(z, self.mesh.height_at(x, y)) + 6.0))
             self._draw_hud(scene, w, h, ele)
@@ -620,6 +629,25 @@ class Replay3DView(QWidget):
             if ph < 0.08 or 0.17 < ph < 0.23:
                 p.fillRect(QRectF(0, 0, w, h), QColor(235, 240, 255, 95))
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+
+    def _draw_mood(self, p: QPainter, w: int, h: int) -> None:
+        """The colour grade of the mood felt here: a tint, a soft pale lift and a darkened edge."""
+        mood, k = self.mood
+        if k <= 0.01:
+            return
+        tint = mix_rgb((255, 255, 255), mood.tint, k)
+        if tint != (255, 255, 255):
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
+            p.fillRect(self.rect(), QColor(*tint))
+        if mood.lift_alpha > 0:
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
+            p.fillRect(self.rect(), QColor(*mood.lift, int(255 * mood.lift_alpha * k)))
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        if mood.vignette > 0:
+            g = QRadialGradient(QPointF(w / 2, h * 0.45), math.hypot(w, h) * 0.62)
+            g.setColorAt(0.45, QColor(0, 0, 0, 0))
+            g.setColorAt(1.0, QColor(0, 0, 0, int(215 * mood.vignette * k)))
+            p.fillRect(self.rect(), QBrush(g))
 
     def _draw_tint(self, p: QPainter) -> None:
         """Golden hour, dusk and night colour everything drawn so far (one multiply over the frame)."""

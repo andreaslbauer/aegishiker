@@ -796,8 +796,8 @@
       return [c.cx + c.focal * (dx * rx + dy * ry + dz * rz) / depth, c.cy - c.focal * (dx * ux + dy * uy + dz * uz) / depth, depth];
     };
   }
-  function chaseCamera(t, yaw, w, h, groundAt) {
-    const back = 1300, up = 600, ahead = 500, clearance = 150;
+  function chaseCamera(t, yaw, w, h, groundAt, wide = 0) {
+    const back = 1300 + 600 * wide, up = 600 + 200 * wide, ahead = 500, clearance = 150;
     const cx = t[0] - Math.cos(yaw) * back, cy = t[1] - Math.sin(yaw) * back;
     const cz = Math.max(t[2] + up, groundAt(cx, cy) + clearance);
     return makeCamera(cx, cy, cz, yaw, Math.atan2(cz - t[2], back + ahead), w * 0.85, w / 2, h * 0.42);
@@ -821,6 +821,7 @@
   // Plants are drawn taller than life so they read from the chase camera (~1.5 km back)
   const VEG_SCALE = 1.6, VEG_NEAR = 1300, VEG_FAR = 2700, VEG_MIN_PX = 1.5, VEG_FULL_PX = 6;
   const SWAY_MIN_PX = 14, SWAY_FAR = 1600; // plants this tall on screen and this near bend in the wind
+  const MOOD_REACH_M = 650, MOOD_FULL_M = 160; // a photo's mood is felt this far either side of its stop, fully within
   const SHADE_ALPHA = 0.42; // how dark plants in shadow (cloud or terrain) are drawn
   const CLOUD_PUFFS = 16, CLOUD_SKY_M = 22000; // clouds in the sky when overcast, and how far out they hang
   const mod = (a, n) => ((a % n) + n) % n;
@@ -1140,6 +1141,9 @@
         this.waterCells.get(key).push(w.ring);
       }
       this.stops = R.stops.map(s => ({ photos: s.photos.map(i => H.photos[i]), hidden: s.hidden, along: s.along * this.scale, world: s.world }));
+      // How the hike felt there: each stop's photos' mood grades the scene around it
+      this.moods = R.stops.filter(s => s.mood).map(s => [s.along * this.scale, s.mood]);
+      this.mood = [null, 0];
       this.stopCells = new Map();
       this.stops.forEach((s, i) => {
         const k = this.cellKey(s.world[0], s.world[1]);
@@ -1372,7 +1376,22 @@
       const gone = this.dist - prev.along;
       return gone >= 0 ? 1 - smoothstep(gone / this.easeM(DEPART_M)) : 0;
     }
-    speedFactor() { const slow = Math.max(this.approach(), this.departure()); return Math.max(MIN_SPEED, 1 - slow * (1 - MIN_SPEED)); }
+    speedFactor() {
+      const slow = Math.max(this.approach(), this.departure());
+      const [mood, w] = this.moodAt(this.dist); // calm and grand moments are walked more slowly
+      return Math.max(MIN_SPEED, (1 - slow * (1 - MIN_SPEED)) * (1 - (mood ? mood.slow * w : 0)));
+    }
+    moodAt(d) {
+      // The mood felt at d and how strongly: the nearest stop's within reach (as mood_at in src/hiking/mood.py)
+      let best = [null, 0];
+      for (const [along, mood] of this.moods) {
+        const gap = Math.abs(d - along);
+        let w = gap <= MOOD_FULL_M ? 1 : gap >= MOOD_REACH_M ? 0 : 1 - (gap - MOOD_FULL_M) / (MOOD_REACH_M - MOOD_FULL_M);
+        if (w > 0 && w < 1) w = w * w * (3 - 2 * w);
+        if (w > best[1]) best = [mood, w];
+      }
+      return best;
+    }
     holdS(k) { return k === 0 ? FIRST_HOLD_S : NEXT_HOLD_S; }
     advance(dt) {
       this._prefetch();
@@ -1411,7 +1430,8 @@
       const p = this.at(this.dist);
       const hk = [p[0], p[1], Math.max(p[2], this.heightAt(p[0], p[1]))];
       const ga = (x, y) => this.heightAt(x, y);
-      const chase = chaseCamera(hk, this.yaw, w, h, ga);
+      const [mood, mw] = this.moodAt(this.dist); // dramatic moments: pull back for the wider view
+      const chase = chaseCamera(hk, this.yaw, w, h, ga, mood ? mood.wide * mw : 0);
       let weight, stop;
       if (this.phase === "blend_in" || this.phase === "hold" || this.phase === "blend_out") { weight = 1; stop = this.stops[this.nextStop]; }
       else {
@@ -1540,6 +1560,20 @@
         if (ph < 0.08 || (ph > 0.17 && ph < 0.23)) { ctx.fillStyle = "rgba(235,240,255,0.37)"; ctx.fillRect(0, 0, w, h); }
       }
     }
+    _grade(ctx, w, h) {
+      // The colour grade of the mood felt here: a tint, a soft pale lift and a darkened edge
+      const [mood, k] = this.mood;
+      if (!mood || k <= 0.01) return;
+      const tint = mood.tint.map(c => Math.round(255 + (c - 255) * k));
+      if (tint.some(c => c !== 255)) { ctx.globalCompositeOperation = "multiply"; ctx.fillStyle = `rgb(${tint})`; ctx.fillRect(0, 0, w, h); }
+      if (mood.liftA > 0) { ctx.globalCompositeOperation = "screen"; ctx.fillStyle = `rgba(${mood.lift},${(mood.liftA * k).toFixed(3)})`; ctx.fillRect(0, 0, w, h); }
+      ctx.globalCompositeOperation = "source-over";
+      if (mood.vig > 0) {
+        const g = ctx.createRadialGradient(w / 2, h * 0.45, 0, w / 2, h * 0.45, Math.hypot(w, h) * 0.62);
+        g.addColorStop(0.45, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,0,${(0.84 * mood.vig * k).toFixed(3)})`);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      }
+    }
     _tint(ctx, w, h) { // golden hour, dusk and night colour everything drawn so far
       const t = this.light.tint;
       if (t[0] === 255 && t[1] === 255 && t[2] === 255) return;
@@ -1567,6 +1601,8 @@
       this._terrain(ctx, cam, project);
       this._tint(ctx, w, h);
       this._weather(ctx, w, h);
+      this.mood = this.moodAt(this.dist);
+      this._grade(ctx, w, h);
       this._peaks(ctx, project);
       this._hiker(ctx, project, [p[0], p[1], Math.max(p[2], this.heightAt(p[0], p[1])) + 6]);
       this._hud(ctx, w, h, p[3]);
