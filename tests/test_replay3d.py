@@ -2,6 +2,7 @@
 import math
 import os
 from pathlib import Path
+from typing import Optional
 
 from src.hiking.terrain3d import Camera, LocalFrame, build_mesh, chase_camera, route_path
 
@@ -25,7 +26,8 @@ def test_projection_and_chase_camera_above_terrain() -> None:
     assert 790 < path.length < 810 and abs(path.at(path.length / 2)[3] - 350.0) < 1.0
 
 
-def _view(tmp_path: Path, n_photos: int = 1, spacing_m: float = 0.0, seconds_apart: int = 60):
+def _view(tmp_path: Path, n_photos: int = 1, spacing_m: float = 0.0, seconds_apart: int = 60,
+          bearing: Optional[float] = None):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PIL import Image
     from PySide6.QtWidgets import QApplication
@@ -40,7 +42,10 @@ def _view(tmp_path: Path, n_photos: int = 1, spacing_m: float = 0.0, seconds_apa
     trail = next(t for t in pack.trails if t.name == "White Dot Trail")
     route = route_from_trail_segment(trail)
     img = tmp_path / "summit.jpg"
-    Image.new("RGB", (600, 400), (120, 160, 200)).save(img)
+    exif = Image.Exif()
+    if bearing is not None:
+        exif[0x8825] = {16: "T", 17: bearing}  # GPSImgDirection: the way the camera faced
+    Image.new("RGB", (600, 400), (120, 160, 200)).save(img, exif=exif)
     c = route.coords_3d[len(route.coords_3d) // 2]
     pins = [
         HikePhotoPin(id=f"p{i}", lat=c[1], lon=c[0], photo_path=str(img), date_taken=1755180000 + i * seconds_apart,
@@ -237,22 +242,62 @@ def test_photos_can_be_hidden_and_shown_again(tmp_path: Path) -> None:
     no_photos.view.shutdown()
 
 
-def test_scene_is_drawn_once_while_a_photo_is_up(tmp_path: Path) -> None:
-    """The camera stands still during a photo: its frames reuse the scene instead of redrawing it."""
-    from src.gui.replay3d import BLEND_IN_S
+def test_camera_turns_to_the_photos_view_and_back(tmp_path: Path) -> None:
+    """At a stop the camera turns smoothly to look the way the photo was taken, the photo zooms in
+    over the still-visible scene, zooms back out and the camera turns back to the trail."""
+    from src.gui.replay3d import TURN_S
+    from src.hiking.terrain3d import compass_to_yaw
 
-    view, _route = _view(tmp_path)
-    drawn = []
-    real = view._draw_terrain
-    view._draw_terrain = lambda *a: (drawn.append(1), real(*a))
-    view.dist = view.stops[0].along_m
-    view.phase, view.phase_t, view.photo_k = "blend_in", 0.0, 0
-    for _ in range(4):
-        view.advance(BLEND_IN_S / 3)
-        assert not view.grab().isNull()
-    assert view.phase == "hold" and len(drawn) == 1
+    view, _route = _view(tmp_path, bearing=135.0)
+    stop = view.stops[0]
+    assert stop.view_yaw is not None and abs(stop.view_yaw - compass_to_yaw(135.0)) < 1e-9
+    view.dist = stop.along_m - 1.0
     view.phase = "playing"
-    view.advance(0.5)
-    view.grab()
-    assert len(drawn) == 2, "moving again redraws the scene"
+    while view.phase == "playing":
+        view.advance(0.1)
+    assert view.phase == "turn_in"
+    chase = view._camera(800, 500)
+
+    phases, cams = [], []
+    while view.phase != "playing":
+        view.advance(1 / 30)
+        phases.append(view.phase)
+        cams.append(view._camera(800, 500))
+    order = [ph for i, ph in enumerate(phases) if i == 0 or phases[i - 1] != ph]
+    assert order == ["turn_in", "blend_in", "hold", "blend_out", "turn_out", "playing"], order
+    looking = cams[phases.index("hold")]
+    assert abs(math.remainder(looking.yaw - stop.view_yaw, math.tau)) < 1e-6, "facing the way the photo was taken"
+    for a, b in zip(cams, cams[1:]):  # no jumps: every frame moves the camera only a little
+        assert math.hypot(b.x - a.x, b.y - a.y) < 120.0 and abs(math.remainder(b.yaw - a.yaw, math.tau)) < 0.12
+    back = cams[-1]
+    assert math.hypot(back.x - chase.x, back.y - chase.y) < 30.0, "back behind the hiker"
+
+    # Skipping while turning in turns back from where it is
+    view.dist, view.next_stop = stop.along_m, 0
+    view.phase, view.phase_t = "turn_in", TURN_S * 0.25
+    view.skip_photo()
+    assert view.phase == "turn_out" and abs(view._turn() - smooth_quarter()) < 0.05
+    # The photo is a print over the scene: it never covers the whole view
+    view.phase, view.phase_t = "hold", 0.0
+    rect = view._fit_rect(view.wait_for_photo(0), 800, 500)
+    assert rect.width() < 800 * 0.7 and rect.height() < 500 * 0.7 and not view.grab().isNull()
+    view.shutdown()
+
+
+def test_no_turn_without_a_recorded_direction(tmp_path: Path) -> None:
+    view, _route = _view(tmp_path)
+    assert view.stops[0].view_yaw is None
+    view.dist = view.stops[0].along_m - 1.0
+    view.phase = "playing"
+    while view.phase == "playing":
+        view.advance(0.1)
+    assert view.phase == "blend_in", "straight to the photo"
+    chase = view._camera(800, 500)
+    seen = set()
+    while view.phase != "playing":
+        view.advance(0.1)
+        seen.add(view.phase)
+        cam = view._camera(800, 500)
+        assert (cam.x, cam.y, cam.yaw) == (chase.x, chase.y, chase.yaw), "the camera stays put"
+    assert "turn_out" not in seen
     view.shutdown()

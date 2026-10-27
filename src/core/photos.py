@@ -1,5 +1,7 @@
 """Trail photo storage, thumbnail generation, and optional EXIF stripping."""
 import hashlib
+import math
+from functools import lru_cache
 from io import BytesIO
 import logging
 from pathlib import Path
@@ -48,3 +50,24 @@ def save_trail_photo(
         photo_path.write_bytes(image_bytes)
         return (photo_path, None)
 
+
+
+GPS_IFD = 0x8825
+GPS_IMG_DIRECTION = 17
+
+
+@lru_cache(maxsize=512)
+def photo_direction_deg(path: str) -> Optional[float]:
+    """Compass bearing (degrees, 0 = north, clockwise) the camera faced, from the photo's EXIF
+    GPSImgDirection, or None when the photo doesn't record it."""
+    if not path:
+        return None
+    try:
+        from PIL import Image
+
+        with Image.open(path) as img:
+            value = img.getexif().get_ifd(GPS_IFD).get(GPS_IMG_DIRECTION)
+        deg = float(value)
+    except Exception:
+        return None
+    return deg % 360.0 if math.isfinite(deg) else None

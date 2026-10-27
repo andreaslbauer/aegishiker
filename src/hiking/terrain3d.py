@@ -293,22 +293,27 @@ def chase_camera(
     return Camera(cxw, cyw, czw, yaw, pitch, focal=width * 0.85, cx=width / 2.0, cy=height * 0.42)
 
 
-def look_camera(
-    hiker: Tuple[float, float, float], target: Tuple[float, float, float], fallback_yaw: float,
-    width: int, height: int, back_m: float = 750.0, up_m: float = 380.0,
-    ground_at=None, clearance_m: float = 150.0,
+def compass_to_yaw(bearing_deg: float) -> float:
+    """Compass bearing (0 = north, clockwise) as a world heading (radians, 0 = east, anticlockwise)."""
+    return math.radians(90.0 - bearing_deg)
+
+
+def photo_camera(
+    spot: Tuple[float, float, float], yaw: float, width: int, height: int,
+    back_m: float = 450.0, up_m: float = 220.0, ahead_m: float = 900.0,
+    ground_at=None, clearance_m: float = 120.0,
 ) -> Camera:
-    """Closer camera behind the hiker that looks at `target` (where a photo was taken)."""
-    hx, hy, hz = hiker
-    dx, dy = target[0] - hx, target[1] - hy
-    yaw = math.atan2(dy, dx) if math.hypot(dx, dy) > 40.0 else fallback_yaw
-    cxw = hx - math.cos(yaw) * back_m
-    cyw = hy - math.sin(yaw) * back_m
-    czw = hz + up_m
+    """Camera just behind and above where a photo was taken, looking the way the photo was."""
+    sx, sy, sz = spot
+    cxw = sx - math.cos(yaw) * back_m
+    cyw = sy - math.sin(yaw) * back_m
+    czw = sz + up_m
+    tz = sz
     if ground_at is not None:
         czw = max(czw, ground_at(cxw, cyw) + clearance_m)
-    horiz = max(1.0, math.hypot(target[0] - cxw, target[1] - cyw))
-    pitch = math.atan2(czw - target[2], horiz)
+        tz = ground_at(sx + math.cos(yaw) * ahead_m, sy + math.sin(yaw) * ahead_m)
+    # Down onto the land ahead, but never so far up or down that the view is all sky or all ground
+    pitch = max(-0.05, min(0.45, math.atan2(czw - tz, back_m + ahead_m)))
     return Camera(cxw, cyw, czw, yaw, pitch, focal=width * 0.85, cx=width / 2.0, cy=height * 0.42)
 
 

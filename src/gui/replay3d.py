@@ -2,8 +2,9 @@
 
 A chase camera follows the hiker along the route over a shaded terrain mesh built from the
 region's elevation model. A HUD shows the trail, distance, altitude, an elevation profile and a
-mini map. When the hiker reaches a photo, the view zooms from the photo's spot into the photo
-until it fills the frame, lingers, zooms back out and the hike continues.
+mini map. When the hiker reaches a photo, the camera turns to look the way the photo was taken
+(when the photo records it), the photo zooms out of its spot into a framed print over the scene,
+lingers, zooms back, the camera turns back to the trail and the hike continues.
 """
 import math
 import random
@@ -14,7 +15,7 @@ from datetime import datetime, timezone
 from operator import itemgetter
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QLineF, QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -43,6 +44,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.core.photos import photo_direction_deg
 from src.gui.charts.photo_preview import format_datetime, load_photo_image, photo_pixmap
 from src.hiking.daylight import Light, hike_clock, key_index, light_at, light_keys
 from src.hiking.hike_report import hike_details
@@ -57,8 +59,9 @@ from src.hiking.terrain3d import (
     blend_cameras,
     build_mesh,
     chase_camera,
+    compass_to_yaw,
     lerp_angle,
-    look_camera,
+    photo_camera,
     replay_map_layers,
     route_path,
     shade_mesh,
@@ -95,17 +98,20 @@ VEG_MIN_PX, VEG_FULL_PX = 1.5, 6.0  # a plant fades in from this drawn height to
 
 BASE_DURATION_S = 75.0  # whole route at 1x (photos excluded)
 
-# Smooth photo stops: slow down and turn toward the photo, blend it in, cross-fade through the
-# stop's photos, blend back out, turn back to the trail and speed up again.
-APPROACH_M = 300.0  # start slowing / turning toward a stop this far before it
-DEPART_M = 250.0  # speed back up / turn back to the trail over this distance after it
+# Smooth photo stops: slow down, turn to look where the photo was taken, zoom the photo in,
+# cross-fade through the stop's photos, zoom back out, turn back to the trail and speed up again.
+APPROACH_M = 300.0  # start slowing down for a stop this far before it
+DEPART_M = 250.0  # speed back up over this distance after it
+TURN_S = 1.4  # camera turns to the photo's view (and back) over this long; no turn without a direction
 EASE_SHARE = 0.06  # on short hikes both shrink to this share of the route, so it doesn't crawl throughout
 MIN_SPEED_FACTOR = 0.12  # crawl speed right at a stop (never a dead stop)
-BLEND_IN_S = 1.0  # photo grows from its spot and fades in while the scene blurs
+BLEND_IN_S = 1.0  # photo grows from its spot into a framed print over the (still sharp) scene
 BLEND_OUT_S = 0.9
 FIRST_HOLD_S = 3.0  # first photo of a stop holds this long…
 NEXT_HOLD_S = 1.5  # …further photos of the same stop
 XFADE_S = 0.5  # cross-fade between photos of one stop
+PRINT_W, PRINT_H = 0.62, 0.6  # the zoomed-in photo fits within this share of the view…
+CAPTION_H = 86  # …above the caption band
 LINGER_S = FIRST_HOLD_S  # (kept for callers/tests)
 
 
@@ -125,6 +131,7 @@ class PhotoStop:
     along_m: float
     world: Tuple[float, float, float]  # where the first photo was taken
     hidden: int = 0  # further photos here not shown ("+N more")
+    view_yaw: Optional[float] = None  # the way the camera faced (radians, 0 = east), if recorded
 
     @property
     def pin(self) -> HikePhotoPin:
@@ -247,7 +254,9 @@ class Replay3DView(QWidget):
             first = plan.shown[0]
             x, y = self.frame.to_xy(first.lat, first.lon)
             items = [PhotoItem(pin, photo_pixmap(pin, 300)) for pin in plan.shown]
-            self.stops.append(PhotoStop(items, plan.along_m, (x, y, self.mesh.height_at(x, y) + 6.0), plan.hidden))
+            bearing = photo_direction_deg(first.photo_path)
+            self.stops.append(PhotoStop(items, plan.along_m, (x, y, self.mesh.height_at(x, y) + 6.0), plan.hidden,
+                                        None if bearing is None else compass_to_yaw(bearing)))
         self.photo_stops = self.stops  # all of them; `stops` is empty while photos are hidden
         # How the hike felt there: each stop's photos' mood grades the scene around it
         self._moods = [(st.along_m, stop_mood([it.pin.ai_mood for it in st.items])) for st in self.photo_stops]
@@ -262,17 +271,16 @@ class Replay3DView(QWidget):
         self.phase_t = 0.0
         self.photo_k = 0  # photo of the current stop being held
         self.yaw = self.path.heading(0.0)
+        self._view_yaw = self.yaw  # where the camera looks (turns away from the trail at photo stops)
         self._last_tick = time.monotonic()
-        self._frame: Optional[QPixmap] = None
-        self._frame_key: Optional[tuple] = None  # what _frame shows; reused while a photo is up
-        self._soft: Optional[QPixmap] = None  # blurred copy of _frame behind the photo
         self.timer = QTimer(self)
         self.timer.setInterval(33)
         self.timer.timeout.connect(self._tick)
 
     # ── control ──────────────────────────────────────────────────────────
 
-    PHOTO_PHASES = ("blend_in", "hold", "blend_out")
+    PHOTO_PHASES = ("blend_in", "hold", "blend_out")  # the photo is up
+    STOP_PHASES = ("turn_in", *PHOTO_PHASES, "turn_out")  # stopped at a photo spot
 
     @property
     def speed_mps(self) -> float:
@@ -286,7 +294,7 @@ class Replay3DView(QWidget):
         self._last_tick = time.monotonic()
         self._prefetch()
         self.timer.start()
-        self.state_changed.emit("photo" if self.phase in self.PHOTO_PHASES else "playing")
+        self.state_changed.emit("photo" if self.phase in self.STOP_PHASES else "playing")
 
     def pause(self) -> None:
         self.timer.stop()
@@ -301,7 +309,7 @@ class Replay3DView(QWidget):
     def seek(self, fraction: float) -> None:
         self.dist = max(0.0, min(1.0, fraction)) * self.path.length
         self.next_stop = next((i for i, s in enumerate(self.stops) if s.along_m >= self.dist - 1.0), len(self.stops))
-        if self.phase in (*self.PHOTO_PHASES, "done"):
+        if self.phase in (*self.STOP_PHASES, "done"):
             self.phase = "playing" if self.timer.isActive() else "paused"
         self.photo_k = 0
         self.yaw = self.path.heading(self.dist)
@@ -316,7 +324,7 @@ class Replay3DView(QWidget):
         """Show photos (stop, zoom in, linger) or hike straight through with no markers."""
         if show == self.show_photos:
             return
-        if self.phase in self.PHOTO_PHASES:  # leave the photo being shown at once
+        if self.phase in self.STOP_PHASES:  # leave the photo being shown at once
             self.phase = "playing" if self.timer.isActive() else "paused"
             self.state_changed.emit(self.phase)
         self.stops = self.photo_stops if show else []
@@ -326,8 +334,11 @@ class Replay3DView(QWidget):
         self.update()
 
     def skip_photo(self) -> None:
-        """Leave the current stop (blending out from wherever it is)."""
-        if self.phase == "blend_in":
+        """Leave the current stop (blending / turning back from wherever it is)."""
+        if self.phase == "turn_in":
+            done = min(1.0, self.phase_t / TURN_S)
+            self.phase, self.phase_t = "turn_out", (1.0 - done) * TURN_S
+        elif self.phase == "blend_in":
             # reverse from the current point of the blend so it doesn't jump
             done = min(1.0, self.phase_t / BLEND_IN_S)
             self.phase, self.phase_t = "blend_out", (1.0 - done) * BLEND_OUT_S
@@ -422,7 +433,8 @@ class Replay3DView(QWidget):
             target_yaw = self.path.heading(self.dist)
             self.yaw = lerp_angle(self.yaw, target_yaw, min(1.0, dt * 1.8))
             if self.next_stop < len(self.stops) and self.dist >= self.stops[self.next_stop].along_m:
-                self.phase, self.phase_t, self.photo_k = "blend_in", 0.0, 0
+                turns = self.stops[self.next_stop].view_yaw is not None
+                self.phase, self.phase_t, self.photo_k = ("turn_in" if turns else "blend_in"), 0.0, 0
                 self.state_changed.emit("photo")
             elif self.dist >= self.path.length:
                 self.phase = "done"
@@ -430,11 +442,13 @@ class Replay3DView(QWidget):
                 self.state_changed.emit("done")
                 self.finished.emit()
             self.progress_changed.emit(self.dist / max(1.0, self.path.length))
-        elif self.phase in self.PHOTO_PHASES:
+        elif self.phase in self.STOP_PHASES:
             # Photo time runs in real time regardless of the hiking speed
             stop = self.stops[self.next_stop]
             self.phase_t += dt
-            if self.phase == "blend_in" and self.phase_t >= BLEND_IN_S:
+            if self.phase == "turn_in" and self.phase_t >= TURN_S:
+                self.phase, self.phase_t = "blend_in", 0.0
+            elif self.phase == "blend_in" and self.phase_t >= BLEND_IN_S:
                 self.phase, self.phase_t = "hold", 0.0
             elif self.phase == "hold" and self.phase_t >= stop.hold_s(self.photo_k):
                 if self.photo_k + 1 < len(stop.items):
@@ -442,11 +456,19 @@ class Replay3DView(QWidget):
                 else:
                     self.phase, self.phase_t = "blend_out", 0.0
             elif self.phase == "blend_out" and self.phase_t >= BLEND_OUT_S:
-                self.next_stop += 1
-                self.photo_k = 0
-                self.phase = "playing"
-                self.state_changed.emit("playing")
+                if stop.view_yaw is not None:
+                    self.phase, self.phase_t = "turn_out", 0.0
+                else:
+                    self._leave_stop()
+            elif self.phase == "turn_out" and self.phase_t >= TURN_S:
+                self._leave_stop()
         self.update()
+
+    def _leave_stop(self) -> None:
+        self.next_stop += 1
+        self.photo_k = 0
+        self.phase = "playing"
+        self.state_changed.emit("playing")
 
     def _tick(self) -> None:
         now = time.monotonic()
@@ -456,7 +478,7 @@ class Replay3DView(QWidget):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Space:
             self.pause() if self.timer.isActive() else self.play()
-        elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Return) and self.phase in ("blend_in", "hold"):
+        elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Return) and self.phase in ("turn_in", "blend_in", "hold"):
             self.skip_photo()
         else:
             super().keyPressEvent(event)
@@ -464,58 +486,49 @@ class Replay3DView(QWidget):
     # ── rendering ────────────────────────────────────────────────────────
 
     def _camera(self, w: int, h: int):
-        """Chase camera, blended toward a closer view of the photo spot around stops."""
+        """Chase camera, turned to look the way the photo was taken while stopped at one."""
         x, y, z, _ele = self.path.at(self.dist)
         hiker = (x, y, max(z, self.mesh.height_at(x, y)))
         mood, mw = mood_at(self._moods, self.dist)  # dramatic moments: pull back for the wider view
         chase = chase_camera(hiker, self.yaw, w, h, back_m=1300.0 + 600.0 * mood.wide * mw,
                              up_m=600.0 + 200.0 * mood.wide * mw, ground_at=self.mesh.height_at)
-        if self.phase in self.PHOTO_PHASES:
-            weight, stop = 1.0, self.stops[self.next_stop]
-        else:
-            a, d = self._approach(), self._departure()
-            if a >= d and self.next_stop < len(self.stops):
-                weight, stop = a, self.stops[self.next_stop]
-            elif d > 0:
-                weight, stop = d, self.stops[self.next_stop - 1]
-            else:
-                return chase
+        weight = self._turn()
         if weight <= 0.0:
             return chase
-        look = look_camera(hiker, stop.world, self.yaw, w, h, ground_at=self.mesh.height_at)
-        return blend_cameras(chase, look, weight)
+        stop = self.stops[self.next_stop]
+        view = photo_camera(stop.world, stop.view_yaw, w, h, ground_at=self.mesh.height_at)
+        return blend_cameras(chase, view, weight)
+
+    def _turn(self) -> float:
+        """0 = the chase camera … 1 = looking the way the current stop's photo was taken."""
+        if self.phase not in self.STOP_PHASES or self.stops[self.next_stop].view_yaw is None:
+            return 0.0
+        if self.phase == "turn_in":
+            return smoothstep(self.phase_t / TURN_S)
+        if self.phase == "turn_out":
+            return 1.0 - smoothstep(self.phase_t / TURN_S)
+        return 1.0
 
     def paintEvent(self, event: QPaintEvent) -> None:
         w, h = self.width(), self.height()
-        dpr = self.devicePixelRatioF() or 1.0
-        if self._frame is None or self._frame.size() != QSize(int(w * dpr), int(h * dpr)):
-            self._frame = QPixmap(int(w * dpr), int(h * dpr))
-            self._frame.setDevicePixelRatio(dpr)
-            self._frame_key = None
         x, y, z, ele = self.path.at(self.dist)
         cam = self._camera(w, h)
+        self._view_yaw = cam.yaw  # the mini map's view wedge
         project = cam.projector()
+        self._update_light()
+        self._sway = self._sway_now()
+        self.mood = mood_at(self._moods, self.dist)
 
-        # The camera stands still while a photo is up: draw the scene once, not every frame
-        key = (self.dist, self.yaw, self.next_stop, self.phase in self.PHOTO_PHASES, self.show_photos)
-        if key != self._frame_key:
-            self._update_light()
-            self._sway = self._sway_now()
-            self.mood = mood_at(self._moods, self.dist)
-            scene = QPainter(self._frame)
-            self._draw_sky(scene, w, h, project, cam)
-            self._draw_terrain(scene, cam, project)
-            self._draw_tint(scene)
-            self._draw_weather(scene, w, h)
-            self._draw_mood(scene, w, h)
-            self._draw_peaks(scene, project)
-            self._draw_hiker(scene, project, (x, y, max(z, self.mesh.height_at(x, y)) + 6.0))
-            self._draw_hud(scene, w, h, ele)
-            scene.end()
-            self._frame_key, self._soft = key, None
-
+        # The scene stays sharp and alive (wind, weather) behind the photo
         p = QPainter(self)
-        p.drawPixmap(0, 0, self._frame)
+        self._draw_sky(p, w, h, project, cam)
+        self._draw_terrain(p, cam, project)
+        self._draw_tint(p)
+        self._draw_weather(p, w, h)
+        self._draw_mood(p, w, h)
+        self._draw_peaks(p, project)
+        self._draw_hiker(p, project, (x, y, max(z, self.mesh.height_at(x, y)) + 6.0))
+        self._draw_hud(p, w, h, ele)
         if self.phase in self.PHOTO_PHASES and self.next_stop < len(self.stops):
             self._draw_photo_overlay(p, w, h, project, self.stops[self.next_stop])
         p.end()
@@ -1072,7 +1085,7 @@ class Replay3DView(QWidget):
         p.setBrush(QColor(244, 208, 63, 90))
         wedge = QPainterPath(here)
         for da in (-0.45, 0.45):
-            wedge.lineTo(QPointF(here.x() + 26 * math.cos(self.yaw + da), here.y() - 26 * math.sin(self.yaw + da)))
+            wedge.lineTo(QPointF(here.x() + 26 * math.cos(self._view_yaw + da), here.y() - 26 * math.sin(self._view_yaw + da)))
         wedge.closeSubpath()
         p.drawPath(wedge)
         p.setPen(QPen(QColor("#FFFFFF"), 1.5))
@@ -1083,7 +1096,7 @@ class Replay3DView(QWidget):
         p.drawText(QRectF(rect.right() - 22, rect.top() + 4, 16, 14), Qt.AlignmentFlag.AlignCenter, "N")
 
     def _blend(self) -> float:
-        """0 = only the 3D scene … 1 = the photo fills the frame."""
+        """0 = only the 3D scene … 1 = the photo zoomed in as a print over the scene."""
         if self.phase == "blend_in":
             return smoothstep(self.phase_t / BLEND_IN_S)
         if self.phase == "blend_out":
@@ -1091,23 +1104,11 @@ class Replay3DView(QWidget):
         return 1.0 if self.phase == "hold" else 0.0
 
     def _draw_photo_overlay(self, p: QPainter, w: int, h: int, project, stop: PhotoStop) -> None:
-        """The scene blurs and dims while the photo grows out of its marker and fades in; within a
-        stop the photos cross-fade; leaving reverses it back into the marker."""
+        """The photo grows out of its marker into a framed print over the middle of the scene (which
+        stays visible around it); within a stop the photos cross-fade; leaving shrinks it back."""
         t = self._blend()
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-
-        # Soft focus: a heavily downscaled copy of the scene, scaled back up, faded over it
-        if t > 0.01 and self._frame is not None:
-            if self._soft is None:
-                self._soft = self._frame.scaled(max(8, w // 14), max(6, h // 14),
-                                                Qt.AspectRatioMode.IgnoreAspectRatio,
-                                                Qt.TransformationMode.SmoothTransformation)
-            small = self._soft
-            p.setOpacity(min(1.0, t * 1.1))
-            p.drawPixmap(QRectF(0, 0, w, h), small, QRectF(small.rect()))
-            p.setOpacity(1.0)
-            p.fillRect(self.rect(), QColor(5, 10, 7, int(150 * t)))
 
         k = min(self.photo_k, len(stop.items) - 1)
         if self.phase == "blend_out":
@@ -1146,12 +1147,24 @@ class Replay3DView(QWidget):
 
     @staticmethod
     def _fit_rect(pix: Optional[QPixmap], w: int, h: int) -> QRectF:
+        """The zoomed-in print: as large as fits in the middle of the view, above the caption."""
         aspect = (pix.width() / pix.height()) if pix is not None and pix.height() else 1.5
-        fw, fh = (w, w / aspect) if w / h < aspect else (h * aspect, h)
-        return QRectF((w - fw) / 2, (h - fh) / 2, fw, fh)
+        bw, bh = w * PRINT_W, max(20.0, min(h * PRINT_H, h - CAPTION_H - 40))
+        fw, fh = (bw, bw / aspect) if bw / bh < aspect else (bh * aspect, bh)
+        return QRectF((w - fw) / 2, (h - CAPTION_H - fh) / 2 + 6, fw, fh)
 
     def _paint_photo(self, p: QPainter, pix: Optional[QPixmap], rect: QRectF, opacity: float, scale_t: float) -> None:
         p.setOpacity(max(0.0, min(1.0, opacity)))
+        # A white border and soft shadow make it a print held up against the landscape
+        border = 1.0 + 9.0 * scale_t
+        paper = rect.adjusted(-border, -border, border, border)
+        p.setPen(Qt.PenStyle.NoPen)
+        for i in range(4):
+            spread = (2 + 3 * i) * scale_t
+            p.setBrush(QColor(0, 0, 0, 34 - 7 * i))
+            p.drawRoundedRect(paper.adjusted(-spread, -spread + 4 * scale_t, spread, spread + 4 * scale_t), 3, 3)
+        p.setBrush(QColor(246, 244, 238))
+        p.drawRect(paper)
         if pix is not None:
             p.drawPixmap(rect, pix, QRectF(pix.rect()))
         else:
@@ -1165,7 +1178,7 @@ class Replay3DView(QWidget):
 
     def _draw_caption(self, p: QPainter, w: int, h: int, stop: PhotoStop, item: PhotoItem, k: int, alpha: float) -> None:
         a = int(255 * max(0.0, min(1.0, alpha)))
-        band = QRectF(0, h - 86, w, 72)
+        band = QRectF(0, h - CAPTION_H, w, 72)
         p.fillRect(band, QColor(0, 0, 0, int(a * 0.6)))
         p.setPen(QColor(244, 208, 63, a))
         p.setFont(QFont("Sans Serif", 13, QFont.Weight.Bold))

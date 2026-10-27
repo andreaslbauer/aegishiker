@@ -38,6 +38,7 @@ from src.hiking.vegetation import TRAIL_CLEAR_M, build_vegetation
 from src.hiking.weather_fx import CLOUD_TEX_M, CLOUD_TEX_N, cloud_noise, weather_track
 
 from . import paths
+from .photos import photo_direction_deg
 
 Progress = Optional[Callable[[str], None]]
 
@@ -319,8 +320,10 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
         first = pins[shown[0]]
         x, y = frame.to_xy(first.lat, first.lon)
         mood = stop_mood([p.ai_mood for p in plan.shown])  # how it felt there grades the scene around the stop
+        bearing = photo_direction_deg(first.photo_path)  # the camera turns to look this way
         stops.append({"photos": shown, "hidden": plan.hidden, "along": round(plan.along_m, 1),
                       "world": [round(x, 1), round(y, 1), round(mesh.height_at(x, y) + 6.0, 1)],
+                      "bearing": None if bearing is None else round(bearing, 1),
                       "mood": mood.to_json() if mood else None})
     peaks = []
     if pack:

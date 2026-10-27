@@ -54,4 +54,6 @@ def test_desktop_replay_grades_slows_and_widens_at_a_dramatic_stop(tmp_path: Pat
     assert grand._camera(640, 400).z > plain._camera(640, 400).z, "pulled back and up for the view"
     g, p = grand.grab().toImage(), plain.grab().toImage()
     assert grand.mood[0].name == "dramatic" and plain.mood[1] == 0
-    assert g.pixelColor(8, 200).value() < p.pixelColor(8, 200).value(), "darkened edges"
+    grand._draw_mood = lambda *a: None  # the same view without its grade
+    ungraded = grand.grab().toImage()
+    assert g.pixelColor(8, 200).value() < ungraded.pixelColor(8, 200).value(), "darkened edges"

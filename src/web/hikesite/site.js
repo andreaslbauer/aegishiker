@@ -771,7 +771,9 @@
   const VIEW_RADIUS_M = 4200, FOG_END = 5200, BASE_DURATION_S = 75, PRECIP_MAX = 520;
   const APPROACH_M = 300, DEPART_M = 250, EASE_SHARE = 0.06, MIN_SPEED = 0.12;
   // Photo stops: the same timing as the app (src/gui/replay3d.py)
-  const BLEND_IN_S = 1.0, BLEND_OUT_S = 0.9, FIRST_HOLD_S = 3.0, NEXT_HOLD_S = 1.5, XFADE_S = 0.5;
+  const TURN_S = 1.4, BLEND_IN_S = 1.0, BLEND_OUT_S = 0.9, FIRST_HOLD_S = 3.0, NEXT_HOLD_S = 1.5, XFADE_S = 0.5;
+  const PRINT_W = 0.62, PRINT_H = 0.6, CAPTION_H = 86; // the zoomed-in photo's share of the view, above the caption
+  const PHOTO_PHASES = ["blend_in", "hold", "blend_out"], STOP_PHASES = ["turn_in", ...PHOTO_PHASES, "turn_out"];
   // The look without a time: a sun from the north-west, 40° up (DEFAULT_LIGHT in src/hiking/daylight.py)
   const DEFAULT_LIGHT = { along: 0, sun: [-0.54, 0.54, 0.64], amb: 0.45, dif: 0.85, top: [88, 140, 196], hor: [196, 214, 226],
     tint: [255, 255, 255], elev: 40, ts: null, cloud: 0, fog: [1800, 5200], rain: 0, snow: 0, wind: 8, windFrom: 270, storm: false };
@@ -802,14 +804,13 @@
     const cz = Math.max(t[2] + up, groundAt(cx, cy) + clearance);
     return makeCamera(cx, cy, cz, yaw, Math.atan2(cz - t[2], back + ahead), w * 0.85, w / 2, h * 0.42);
   }
-  function lookCamera(hk, target, fallbackYaw, w, h, groundAt) {
-    const back = 750, up = 380, clearance = 150;
-    const dx = target[0] - hk[0], dy = target[1] - hk[1];
-    const yaw = Math.hypot(dx, dy) > 40 ? Math.atan2(dy, dx) : fallbackYaw;
-    const cx = hk[0] - Math.cos(yaw) * back, cy = hk[1] - Math.sin(yaw) * back;
-    const cz = Math.max(hk[2] + up, groundAt(cx, cy) + clearance);
-    const horiz = Math.max(1, Math.hypot(target[0] - cx, target[1] - cy));
-    return makeCamera(cx, cy, cz, yaw, Math.atan2(cz - target[2], horiz), w * 0.85, w / 2, h * 0.42);
+  function photoCamera(spot, yaw, w, h, groundAt) {
+    // Just behind and above where the photo was taken, looking the way it was (photo_camera in terrain3d.py)
+    const back = 450, up = 220, ahead = 900, clearance = 120;
+    const cx = spot[0] - Math.cos(yaw) * back, cy = spot[1] - Math.sin(yaw) * back;
+    const cz = Math.max(spot[2] + up, groundAt(cx, cy) + clearance);
+    const tz = groundAt(spot[0] + Math.cos(yaw) * ahead, spot[1] + Math.sin(yaw) * ahead);
+    return makeCamera(cx, cy, cz, yaw, clamp(Math.atan2(cz - tz, back + ahead), -0.05, 0.45), w * 0.85, w / 2, h * 0.42);
   }
   function blendCameras(a, b, t) {
     t = clamp(t, 0, 1);
@@ -1148,7 +1149,8 @@
         if (!this.waterCells.has(key)) this.waterCells.set(key, []);
         this.waterCells.get(key).push(w.ring);
       }
-      this.stops = R.stops.map(s => ({ photos: s.photos.map(i => H.photos[i]), hidden: s.hidden, along: s.along * this.scale, world: s.world }));
+      this.stops = R.stops.map(s => ({ photos: s.photos.map(i => H.photos[i]), hidden: s.hidden, along: s.along * this.scale, world: s.world,
+        viewYaw: s.bearing == null ? null : (90 - s.bearing) * Math.PI / 180 }));
       // How the hike felt there: each stop's photos' mood grades the scene around it
       this.moods = R.stops.filter(s => s.mood).map(s => [s.along * this.scale, s.mood]);
       this.mood = [null, 0];
@@ -1310,17 +1312,16 @@
       this.canvas.addEventListener("pointerup", e => {
         if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 10) { down = null; return; }
         down = null;
-        if (this.phase === "blend_in" || this.phase === "hold") this.skipPhoto(); else this.toggle();
+        if (["turn_in", "blend_in", "hold"].includes(this.phase)) this.skipPhoto(); else this.toggle();
       });
       host.append(this.root);
       this.ctx = this.canvas.getContext("2d");
-      this.small = document.createElement("canvas");
       this.ro = new ResizeObserver(() => this.resize());
       this.ro.observe(this.stage);
       this.onKey = e => {
         if (!this.root.isConnected || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
         if (e.code === "Space") { e.preventDefault(); this.toggle(); }
-        else if ((e.key === "ArrowRight" || e.key === "Enter") && (this.phase === "blend_in" || this.phase === "hold")) this.skipPhoto();
+        else if ((e.key === "ArrowRight" || e.key === "Enter") && ["turn_in", "blend_in", "hold"].includes(this.phase)) this.skipPhoto();
       };
       document.addEventListener("keydown", this.onKey);
     }
@@ -1357,17 +1358,18 @@
       this.dist = clamp(f, 0, 1) * this.length;
       this.nextStop = this.stops.findIndex(s => s.along >= this.dist - 1);
       if (this.nextStop < 0) this.nextStop = this.stops.length;
-      if (["blend_in", "hold", "blend_out", "done"].includes(this.phase)) this.phase = this.running ? "playing" : "paused";
+      if (STOP_PHASES.includes(this.phase) || this.phase === "done") this.phase = this.running ? "playing" : "paused";
       this.photoK = 0; this.yaw = this.heading(this.dist);
       this._sync(); this.render();
     }
     seekAlong(alongM) { this.seek(alongM * this.scale / this.length); }
     skipPhoto() {
-      if (this.phase === "blend_in") { const done = Math.min(1, this.phaseT / BLEND_IN_S); this.phase = "blend_out"; this.phaseT = (1 - done) * BLEND_OUT_S; }
+      if (this.phase === "turn_in") { const done = Math.min(1, this.phaseT / TURN_S); this.phase = "turn_out"; this.phaseT = (1 - done) * TURN_S; }
+      else if (this.phase === "blend_in") { const done = Math.min(1, this.phaseT / BLEND_IN_S); this.phase = "blend_out"; this.phaseT = (1 - done) * BLEND_OUT_S; }
       else if (this.phase === "hold") { this.phase = "blend_out"; this.phaseT = 0; }
     }
     _sync() {
-      const photo = this.phase === "blend_in" || this.phase === "hold" || this.phase === "blend_out";
+      const photo = STOP_PHASES.includes(this.phase);
       this.playBtn.textContent = this.running ? "⏸ Pause" : (this.phase === "done" ? "↺ Replay" : "▶ Play");
       this.skipBtn.disabled = !photo;
       this.slider.value = Math.round(this.dist / this.length * 1000);
@@ -1407,23 +1409,25 @@
         this.dist = Math.min(this.length, this.dist + this.speedMps * this.speedFactor() * dt);
         this.yaw = lerpAngle(this.yaw, this.heading(this.dist), Math.min(1, dt * 1.8));
         if (this.nextStop < this.stops.length && this.dist >= this.stops[this.nextStop].along) {
-          this.phase = "blend_in"; this.phaseT = 0; this.photoK = 0; this._sync();
+          this.phase = this.stops[this.nextStop].viewYaw == null ? "blend_in" : "turn_in"; this.phaseT = 0; this.photoK = 0; this._sync();
         } else if (this.dist >= this.length) {
           this.phase = "done"; this.running = false; this._sync();
         }
         this.slider.value = Math.round(this.dist / this.length * 1000);
-      } else if (this.phase === "blend_in" || this.phase === "hold" || this.phase === "blend_out") {
+      } else if (STOP_PHASES.includes(this.phase)) {
         const stop = this.stops[this.nextStop];
         this.phaseT += dt;
-        if (this.phase === "blend_in" && this.phaseT >= BLEND_IN_S) { this.phase = "hold"; this.phaseT = 0; }
+        if (this.phase === "turn_in" && this.phaseT >= TURN_S) { this.phase = "blend_in"; this.phaseT = 0; }
+        else if (this.phase === "blend_in" && this.phaseT >= BLEND_IN_S) { this.phase = "hold"; this.phaseT = 0; }
         else if (this.phase === "hold" && this.phaseT >= this.holdS(this.photoK)) {
           if (this.photoK + 1 < stop.photos.length) { this.photoK++; this.phaseT = 0; }
           else { this.phase = "blend_out"; this.phaseT = 0; }
         } else if (this.phase === "blend_out" && this.phaseT >= BLEND_OUT_S) {
-          this.nextStop++; this.photoK = 0; this.phase = "playing"; this._sync();
-        }
+          if (stop.viewYaw != null) { this.phase = "turn_out"; this.phaseT = 0; } else this._leaveStop();
+        } else if (this.phase === "turn_out" && this.phaseT >= TURN_S) this._leaveStop();
       }
     }
+    _leaveStop() { this.nextStop++; this.photoK = 0; this.phase = "playing"; this._sync(); }
     _prefetch() {
       const want = [];
       const s = this.stops[this.nextStop];
@@ -1440,16 +1444,17 @@
       const ga = (x, y) => this.heightAt(x, y);
       const [mood, mw] = this.moodAt(this.dist); // dramatic moments: pull back for the wider view
       const chase = chaseCamera(hk, this.yaw, w, h, ga, mood ? mood.wide * mw : 0);
-      let weight, stop;
-      if (this.phase === "blend_in" || this.phase === "hold" || this.phase === "blend_out") { weight = 1; stop = this.stops[this.nextStop]; }
-      else {
-        const a = this.approach(), d = this.departure();
-        if (a >= d && this.nextStop < this.stops.length) { weight = a; stop = this.stops[this.nextStop]; }
-        else if (d > 0) { weight = d; stop = this.stops[this.nextStop - 1]; }
-        else return chase;
-      }
+      const weight = this.turn();
       if (weight <= 0) return chase;
-      return blendCameras(chase, lookCamera(hk, stop.world, this.yaw, w, h, ga), weight);
+      const stop = this.stops[this.nextStop];
+      return blendCameras(chase, photoCamera(stop.world, stop.viewYaw, w, h, ga), weight);
+    }
+    turn() {
+      // 0 = the chase camera … 1 = looking the way the current stop's photo was taken
+      if (!STOP_PHASES.includes(this.phase) || this.stops[this.nextStop].viewYaw == null) return 0;
+      if (this.phase === "turn_in") return smoothstep(this.phaseT / TURN_S);
+      if (this.phase === "turn_out") return 1 - smoothstep(this.phaseT / TURN_S);
+      return 1;
     }
     // time of day
     _lightAt(d) {
@@ -1605,6 +1610,7 @@
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       const p = this.at(this.dist);
       const cam = this.camera(w, h);
+      this.viewYaw = cam.yaw; // the mini map's view wedge
       const project = projector(cam);
       this._relight();
       this.sway = this._swayNow();
@@ -1617,7 +1623,7 @@
       this._peaks(ctx, project);
       this._hiker(ctx, project, [p[0], p[1], Math.max(p[2], this.heightAt(p[0], p[1])) + 6]);
       this._hud(ctx, w, h, p[3]);
-      if ((this.phase === "blend_in" || this.phase === "hold" || this.phase === "blend_out") && this.nextStop < this.stops.length) {
+      if (PHOTO_PHASES.includes(this.phase) && this.nextStop < this.stops.length) {
         this._overlay(ctx, w, h, project, this.stops[this.nextStop]);
       }
     }
@@ -1660,7 +1666,7 @@
         cx0 = M.x0 + 0.5 * M.cell - Math.sin(to) * run; cy0 = M.y0 + 0.5 * M.cell - Math.cos(to) * run;
       }
       const doneI = clamp(Math.floor(this.dist / this.length * (this.trail.length - 1)), 0, this.trail.length - 2);
-      const photoPhase = this.phase === "blend_in" || this.phase === "hold" || this.phase === "blend_out";
+      const photoPhase = PHOTO_PHASES.includes(this.phase);
       ctx.lineJoin = "round";
       for (const cell of cells) {
         const depth = cell[0], r = cell[1], c = cell[2], a = cell[3], b = cell[4], cc = cell[5], d = cell[6];
@@ -1886,7 +1892,7 @@
         ctx.strokeStyle = "rgba(236,245,238,0.65)"; ctx.lineWidth = 2; ctx.stroke();
         const p = this.at(this.dist), hx = ox + p[0] * sc, hy = oy - p[1] * sc;
         ctx.fillStyle = "rgba(244,208,63,0.35)"; ctx.beginPath(); ctx.moveTo(hx, hy);
-        for (const da of [-0.45, 0.45]) ctx.lineTo(hx + 26 * Math.cos(this.yaw + da), hy - 26 * Math.sin(this.yaw + da));
+        for (const da of [-0.45, 0.45]) ctx.lineTo(hx + 26 * Math.cos(this.viewYaw + da), hy - 26 * Math.sin(this.viewYaw + da));
         ctx.closePath(); ctx.fill();
         ctx.fillStyle = "#E74C3C"; ctx.beginPath(); ctx.arc(hx, hy, 5, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
         ctx.fillStyle = "#ECF5EE"; ctx.font = "bold 10px sans-serif"; ctx.fillText("N", mx + size - 18, my + 15);
@@ -1898,30 +1904,26 @@
       return this.phase === "hold" ? 1 : 0;
     }
     _fit(img, w, h) {
+      // The zoomed-in print: as large as fits in the middle of the view, above the caption
       const ar = img && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1.5;
-      const fw = w / h < ar ? w : h * ar, fh = w / h < ar ? w / ar : h;
-      return { x: (w - fw) / 2, y: (h - fh) / 2, w: fw, h: fh };
+      const bw = w * PRINT_W, bh = Math.max(20, Math.min(h * PRINT_H, h - CAPTION_H - 40));
+      const fw = bw / bh < ar ? bw : bh * ar, fh = bw / bh < ar ? bw / ar : bh;
+      return { x: (w - fw) / 2, y: (h - CAPTION_H - fh) / 2 + 6, w: fw, h: fh };
     }
-    _paintPhoto(ctx, img, r, opacity) {
+    _paintPhoto(ctx, img, r, opacity, scaleT = 1) {
       ctx.globalAlpha = clamp(opacity, 0, 1);
+      // A white border and soft shadow make it a print held up against the landscape
+      const b = 1 + 9 * scaleT;
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 18 * scaleT; ctx.shadowOffsetY = 5 * scaleT;
+      ctx.fillStyle = "rgb(246,244,238)"; ctx.fillRect(r.x - b, r.y - b, r.w + 2 * b, r.h + 2 * b);
+      ctx.restore();
       if (img) ctx.drawImage(img, r.x, r.y, r.w, r.h);
       else { ctx.fillStyle = "#0b1610"; ctx.fillRect(r.x, r.y, r.w, r.h); ctx.strokeStyle = "#F39C12"; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h); }
       ctx.globalAlpha = 1;
     }
     _overlay(ctx, w, h, project, stop) {
       const t = this.blend();
-      if (t > 0.01) {
-        // soft focus: the scene shrunk and stretched back over itself
-        const sw = Math.max(8, Math.round(w / 14)), sh = Math.max(6, Math.round(h / 14));
-        this.small.width = sw; this.small.height = sh;
-        const sctx = this.small.getContext("2d");
-        sctx.drawImage(this.canvas, 0, 0, sw, sh);
-        ctx.globalAlpha = Math.min(1, t * 1.1);
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(this.small, 0, 0, w, h);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = `rgba(5,10,7,${(0.59 * t).toFixed(3)})`; ctx.fillRect(0, 0, w, h);
-      }
       let k = Math.min(this.photoK, stop.photos.length - 1);
       if (this.phase === "blend_out") k = stop.photos.length - 1;
       const ph = stop.photos[k];
@@ -1930,7 +1932,7 @@
       const start = mr || { x: w / 2 - 23, y: h / 2 - 17, w: 46, h: 34 };
       const full = this._fit(img, w, h);
       const rect = { x: start.x + (full.x - start.x) * t, y: start.y + (full.y - start.y) * t, w: start.w + (full.w - start.w) * t, h: start.h + (full.h - start.h) * t };
-      this._paintPhoto(ctx, img, rect, 0.45 + 0.55 * t);
+      this._paintPhoto(ctx, img, rect, 0.45 + 0.55 * t, t);
       let capPh = ph, capA = 1;
       if (this.phase === "hold" && k + 1 < stop.photos.length) {
         const remaining = this.holdS(k) - this.phaseT;
@@ -1944,7 +1946,7 @@
       }
       const cap = Math.max(0, (t - 0.7) / 0.3) * capA;
       if (cap > 0.01) {
-        ctx.fillStyle = `rgba(0,0,0,${(0.6 * cap).toFixed(3)})`; ctx.fillRect(0, h - 86, w, 72);
+        ctx.fillStyle = `rgba(0,0,0,${(0.6 * cap).toFixed(3)})`; ctx.fillRect(0, h - CAPTION_H, w, 72);
         ctx.globalAlpha = cap;
         ctx.fillStyle = "rgb(244,208,63)"; ctx.font = "bold 16px sans-serif";
         let head = capPh.time_iso ? fmt.datetime(capPh.time_iso) : "";
@@ -2219,7 +2221,7 @@
   function viewPlay(main) {
     const S = H.summary;
     main.append(el("p", { class: "muted intro", style: { margin: "0 0 12px" },
-      text: "Follow " + S.title + " in 3D over the real terrain. At each photo the view turns toward where it was taken and the photo grows to fill the screen." }));
+      text: "Follow " + S.title + " in 3D over the real terrain. At each photo the view turns to look the way it was taken and the photo zooms in over the landscape." }));
     const r = new Replay3D(main);
     // A phone held sideways has room for the replay alone: bring it fully into view
     if (device.phone && window.innerWidth > window.innerHeight) setTimeout(() => r.root.scrollIntoView({ block: "start" }), 50);
