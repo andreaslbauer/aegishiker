@@ -825,6 +825,13 @@
   const SHADE_ALPHA = 0.42; // how dark plants in shadow (cloud or terrain) are drawn
   const CLOUD_PUFFS = 16, CLOUD_SKY_M = 22000; // clouds in the sky when overcast, and how far out they hang
   const mod = (a, n) => ((a % n) + n) % n;
+  function unpackBits(b64, n) {
+    // A cast-shadow mask from the export (8 cells a byte, base64) as one byte per cell; null when none
+    if (!b64) return null;
+    const bin = atob(b64), out = new Uint8Array(n);
+    for (let i = 0; i < n; i++) out[i] = (bin.charCodeAt(i >> 3) >> (i & 7)) & 1;
+    return out;
+  }
   // As cloud_shadow_cover in src/hiking/weather_fx.py: no patches under a clear or an overcast sky
   const cloudShadowCover = c => (c <= 0.08 || c >= 0.92 ? 0 : Math.min(0.75, c * 0.85));
   function shadedLevels(sprite) {
@@ -1069,8 +1076,9 @@
       // cell's unlit colour and slope at the nearest keyframe (cached); sky, fog and tint blend between them
       this.lights = R.light && R.light.length ? R.light : [DEFAULT_LIGHT];
       this.tz = R.tz;
-      this.lit = new Map();
+      this.lit = new Map(); // keyframe -> [cell colours, cast shadow mask]
       this.litIdx = -1;
+      this.cast = null;
       let seed = 7; // the same drops every time
       const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
       this.precipSeeds = Float32Array.from({ length: PRECIP_MAX * 3 }, rnd);
@@ -1466,20 +1474,23 @@
       const K = this.lights, step = K.length < 2 ? 1 : (K[K.length - 1].along / (K.length - 1) || 1);
       const idx = K.length < 2 ? 0 : clamp(Math.round(this.dist / step), 0, K.length - 1);
       if (idx === this.litIdx) return;
-      let col = this.lit.get(idx);
-      if (!col) {
+      let lit = this.lit.get(idx);
+      if (!lit) {
         const k = K[idx], [lx, ly, lz] = k.sun, N = this.normals, G = this.ground;
+        const cast = unpackBits(k.cast, N.length / 3); // cells in the shadow of the terrain: no direct sun
         const cover = Math.min(0.85, (k.snow || 0) * 1.3); // snow whitens the ground, most on gentle slopes
-        col = new Uint8Array(G.length);
+        const col = new Uint8Array(G.length);
         for (let i = 0; i < N.length; i += 3) {
-          const f = k.amb + k.dif * Math.max(0, N[i] * lx + N[i + 1] * ly + N[i + 2] * lz);
+          const f = cast && cast[i / 3] ? k.amb : k.amb + k.dif * Math.max(0, N[i] * lx + N[i + 1] * ly + N[i + 2] * lz);
           let gr = G[i], gg = G[i + 1], gb = G[i + 2];
           if (cover > 0) { const s = cover * Math.pow(N[i + 2], 6); gr += (232 - gr) * s; gg += (236 - gg) * s; gb += (242 - gb) * s; }
           col[i] = Math.min(255, gr * f); col[i + 1] = Math.min(255, gg * f); col[i + 2] = Math.min(255, gb * f);
         }
-        this.lit.set(idx, col);
+        lit = [col, cast];
+        this.lit.set(idx, lit);
       }
-      this.mesh.color = col;
+      this.mesh.color = lit[0];
+      this.cast = lit[1];
       this.litIdx = idx;
     }
     _sky(ctx, w, h, cam, project) {
@@ -1642,7 +1653,7 @@
       const SKY_HORIZON = this.light.hor;
       // Cloud shadows: the drifting cloud field, sampled at each cell's centre
       const CF = this.cloudField, cover = cloudShadowCover(this.light.cloud), sunShare = Math.min(1, this.light.dif / 0.85);
-      const clouds = CF && cover > 0 && sunShare > 0.05;
+      const clouds = CF && cover > 0 && sunShare > 0.05, cast = sunShare > 0.3 && this.cast ? this.cast : null;
       let cx0 = 0, cy0 = 0;
       if (clouds) {
         const to = (this.light.windFrom + 180) * Math.PI / 180, run = performance.now() / 1000 * (25 + 2.5 * this.light.wind);
@@ -1655,7 +1666,8 @@
         const depth = cell[0], r = cell[1], c = cell[2], a = cell[3], b = cell[4], cc = cell[5], d = cell[6];
         const ci = (r * (C - 1) + c) * 3;
         const f = depth <= fogStart ? 0 : Math.min(1, (depth - fogStart) / (fogEnd - fogStart));
-        let cr = M.color[ci], cg = M.color[ci + 1], cb = M.color[ci + 2], shaded = false;
+        let cr = M.color[ci], cg = M.color[ci + 1], cb = M.color[ci + 2];
+        let shaded = cast !== null && cast[ci / 3] === 1; // plants in a hill's shadow are dark too
         if (clouds) {
           const n = CF.field[mod(Math.floor((cy0 + r * M.cell) / CF.m), CF.n) * CF.n + mod(Math.floor((cx0 + c * M.cell) / CF.m), CF.n)] / 255;
           const sh = (cover - n) * 16 + 0.5; // soft edge

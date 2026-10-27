@@ -356,7 +356,8 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
             "ele": [round(e, 1) for e in path.ele],
         },
         "stops": stops,
-        "light": [k.to_json() for k in lights],
+        "light": [dict(k.to_json(), cast=_cast_bits(shader.shadows(k.sun) if k.diffuse > 0.02 else None))
+                  for k in lights],
         # the cloud field whose shadows drift over the terrain (as in the app), 0..255 row by row
         "clouds": {"n": CLOUD_TEX_N, "m": CLOUD_TEX_M, "field": [round(v * 255) for v in cloud_noise()]},
         "tz": round(_tz_offset_min(lights[0].ts)) if lights[0].ts is not None else None,
@@ -368,6 +369,17 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
             "grid": "".join(chr(VEG_GRID_BASE + i) for i in grid),  # one character per land-cover sample
         },
     }
+
+
+def _cast_bits(mask: Optional[bytearray]) -> Optional[str]:
+    """A cast-shadow mask (one byte per cell) packed 8 cells a byte, base64; None when there is none."""
+    if mask is None or not any(mask):
+        return None
+    packed = bytearray((len(mask) + 7) // 8)
+    for i, v in enumerate(mask):
+        if v:
+            packed[i >> 3] |= 1 << (i & 7)
+    return base64.b64encode(bytes(packed)).decode("ascii")
 
 
 def _tz_offset_min(ts: float) -> float:

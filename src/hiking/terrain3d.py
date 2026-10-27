@@ -104,29 +104,68 @@ class MeshShader:
 
     def __init__(self, mesh: TerrainMesh, ground: Callable[[int, int], Tuple[float, float, float]]) -> None:
         z, cell_m = mesh.z, mesh.cell_m
-        self.cols = mesh.cols - 1
+        self.cols, self.rows, self.cell_m = mesh.cols - 1, mesh.rows - 1, cell_m
         self.normals: List[Tuple[float, float, float]] = []
         self.ground: List[Tuple[float, float, float]] = []
+        self.heights: List[float] = []  # true height of each cell's centre (m), for cast shadows
+        zx = mesh.frame.zx or 1.0
         for r in range(mesh.rows - 1):
             for c in range(mesh.cols - 1):
                 z00, z10, z01, z11 = z[r][c], z[r][c + 1], z[r + 1][c], z[r + 1][c + 1]
+                self.heights.append((z00 + z10 + z01 + z11) / (4.0 * zx))
                 dzdx = ((z10 - z00) + (z11 - z01)) / (2 * cell_m)
                 dzdy = ((z01 - z00) + (z11 - z10)) / (2 * cell_m)
                 n = math.sqrt(dzdx * dzdx + dzdy * dzdy + 1.0)
                 self.normals.append((-dzdx / n, -dzdy / n, 1.0 / n))
                 self.ground.append(tuple(ground(r, c)))  # type: ignore[arg-type]
 
+    def shadows(self, sun: Tuple[float, float, float]) -> Optional[bytearray]:
+        """Cells in the shadow of terrain between them and the sun (1) or lit (0), row by row; None when
+        the sun is overhead or set. One sweep, not a ray per cell: cells are taken nearest the sun first,
+        and each carries on the shadow line of the point 1.5 cells sunward of it (already done),
+        sinking by the sun's slope over that step."""
+        lx, ly, lz = sun
+        flat = math.hypot(lx, ly)
+        if lz <= 0.0 or flat < 1e-3 or lz / flat > 6.0:
+            return None
+        ux, uy = lx / flat, ly / flat
+        step = 1.5  # cells; the sunward point's four neighbours are all nearer the sun than this cell
+        drop = step * self.cell_m * lz / flat
+        cols, rows, hts = self.cols, self.rows, self.heights
+        line = [-1e9] * (cols * rows)  # shadow line height over each cell
+        order = sorted(range(cols * rows), key=lambda i: -((i % cols) * ux + (i // cols) * uy))
+        out = bytearray(cols * rows)
+        for i in order:
+            c, r = i % cols, i // cols
+            fx, fy = c + ux * step, r + uy * step
+            h = hts[i]
+            if 0.0 <= fx <= cols - 1 and 0.0 <= fy <= rows - 1:
+                c0, r0 = min(int(fx), cols - 2), min(int(fy), rows - 2)
+                tx, ty = fx - c0, fy - r0
+                j = r0 * cols + c0
+                top = line[j] + (line[j + 1] - line[j]) * tx
+                bot = line[j + cols] + (line[j + cols + 1] - line[j + cols]) * tx
+                over = top + (bot - top) * ty - drop
+                if over > h + 2.0:
+                    out[i] = 1
+                    line[i] = over
+                    continue
+            line[i] = h
+        return out
+
     def colors(self, sun: Tuple[float, float, float] = (-0.54, 0.54, 0.64), ambient: float = 0.45,
-               diffuse: float = 0.85, snow: float = 0.0) -> List[List[Tuple[int, int, int]]]:
-        """Cell colours lit by `sun`; `snow` (0..1) whitens the ground, most on gentle slopes."""
+               diffuse: float = 0.85, snow: float = 0.0,
+               shadow: Optional[bytearray] = None) -> List[List[Tuple[int, int, int]]]:
+        """Cell colours lit by `sun`; `snow` (0..1) whitens the ground, most on gentle slopes; cells
+        marked in `shadow` get no direct sun."""
         lx, ly, lz = sun
         cover = min(0.85, snow * 1.3)
         flat = []
-        for (nx, ny, nz), (gr, gg, gb) in zip(self.normals, self.ground):
+        for i, ((nx, ny, nz), (gr, gg, gb)) in enumerate(zip(self.normals, self.ground)):
             if cover > 0.0:
                 k = cover * nz ** 6  # steep rock sheds the snow
                 gr, gg, gb = gr + (232 - gr) * k, gg + (236 - gg) * k, gb + (242 - gb) * k
-            f = ambient + diffuse * max(0.0, nx * lx + ny * ly + nz * lz)
+            f = ambient if shadow is not None and shadow[i] else ambient + diffuse * max(0.0, nx * lx + ny * ly + nz * lz)
             flat.append((min(255, int(gr * f)), min(255, int(gg * f)), min(255, int(gb * f))))
         return [flat[i:i + self.cols] for i in range(0, len(flat), self.cols)]
 

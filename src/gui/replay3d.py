@@ -210,7 +210,8 @@ class Replay3DView(QWidget):
         self.weather = weather_track(hike_details(session)) if session else None
         self.light_keys: List[Light] = light_keys(self.path.length, self.frame.lat0, self.frame.lon0, self._clock,
                                                   self.weather)
-        self._lit: Dict[int, list] = {}
+        self._lit: Dict[int, tuple] = {}  # keyframe -> (cell colours, cast shadow mask)
+        self._cast: Optional[bytearray] = None  # cells in the shadow of the terrain now
         self._sway: Tuple[float, float, float, float, float] = (0.0, 0.0, 0.0, 1.0, 0.0)
         rng = random.Random(7)  # the same drops and clouds every time
         self._precip_seeds = [(rng.random(), rng.random(), rng.random()) for _ in range(PRECIP_MAX)]
@@ -520,14 +521,15 @@ class Replay3DView(QWidget):
         p.end()
 
     def _update_light(self) -> None:
-        """Light at the hiker; the terrain takes the nearest keyframe's shading."""
+        """Light at the hiker; the terrain takes the nearest keyframe's shading and cast shadows."""
         self.light = light_at(self.light_keys, self.dist)
         idx = key_index(self.light_keys, self.dist)
         if idx != self._lit_idx:
             if idx not in self._lit:
                 k = self.light_keys[idx]
-                self._lit[idx] = self._shader.colors(k.sun, k.ambient, k.diffuse, k.snow)
-            self.mesh.color = self._lit[idx]
+                shadow = self._shader.shadows(k.sun) if k.diffuse > 0.02 else None
+                self._lit[idx] = (self._shader.colors(k.sun, k.ambient, k.diffuse, k.snow, shadow), shadow)
+            self.mesh.color, self._cast = self._lit[idx]
             self._lit_idx = idx
 
     def _draw_sky(self, p: QPainter, w: int, h: int, project, cam) -> None:
@@ -712,9 +714,10 @@ class Replay3DView(QWidget):
             cx0 = mesh.x0 + 0.5 * cm - math.sin(to) * run
             cy0 = mesh.y0 + 0.5 * cm - math.cos(to) * run
 
+        cast, ccols = self._cast if sun_share > 0.3 else None, mesh.cols - 1
         for depth, r, c, a, b, cc, d in cells:
             cr, cg, cb = mesh.color[r][c]
-            shaded = False
+            shaded = cast is not None and cast[r * ccols + c] == 1  # plants in a hill's shadow are dark too
             if clouds:
                 n = field[(int((cy0 + r * cm) // tm) % tn) * tn + int((cx0 + c * cm) // tm) % tn]
                 sh = (cover - n) * 16.0 + 0.5  # soft edge
