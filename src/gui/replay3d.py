@@ -29,6 +29,7 @@ from PySide6.QtGui import (
     QPixmap,
     QPolygonF,
     QRadialGradient,
+    QTransform,
 )
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -68,6 +69,7 @@ from src.hiking.weather_fx import weather_track
 from src.gui.vegetation_sprites import GROUND_FRAC, make_sprites
 
 VIEW_RADIUS_M = 4200.0  # terrain drawn around the hiker
+SWAY_MIN_PX, SWAY_FAR = 14.0, 1600.0  # plants this tall on screen and this near bend in the wind
 PRECIP_MAX = 520  # rain streaks / snowflakes on screen at full intensity
 FOG_END = 5200.0  # a clear day's haze; the hike's weather closes it in (Light.fog_start / fog_end)
 Z_EXAGGERATION = 1.5
@@ -84,6 +86,7 @@ LAYER_PENS = {
 VEG_SCALE = 1.6
 VEG_BOOST = {"krummholz": 2.0, "shrub": 2.4, "sage": 2.4, "grass": 4.0, "boulder": 1.6}  # small plants, more so
 SMALL_PLANTS = frozenset(VEG_BOOST)
+STILL_PLANTS = frozenset({"boulder"})  # don't sway
 VEG_NEAR, VEG_FAR = 1300.0, 2700.0  # plants sorted back to front within this / none beyond
 VEG_MIN_PX, VEG_FULL_PX = 1.5, 6.0  # a plant fades in from this drawn height to fully opaque at that
 
@@ -183,6 +186,7 @@ class Replay3DView(QWidget):
         self.light_keys: List[Light] = light_keys(self.path.length, self.frame.lat0, self.frame.lon0, self._clock,
                                                   self.weather)
         self._lit: Dict[int, list] = {}
+        self._sway: Tuple[float, float, float, float, float] = (0.0, 0.0, 0.0, 1.0, 0.0)
         rng = random.Random(7)
         self._precip_seeds = [(rng.random(), rng.random(), rng.random()) for _ in range(PRECIP_MAX)]
         self._lit_idx = -1
@@ -458,6 +462,7 @@ class Replay3DView(QWidget):
         key = (self.dist, self.yaw, self.next_stop, self.phase in self.PHOTO_PHASES, self.show_photos)
         if key != self._frame_key:
             self._update_light()
+            self._sway = self._sway_now()
             scene = QPainter(self._frame)
             self._draw_sky(scene, w, h, project, cam)
             self._draw_terrain(scene, cam, project)
@@ -508,6 +513,16 @@ class Replay3DView(QWidget):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QBrush(glow))
                 p.drawEllipse(QPointF(s[0], s[1]), 70.0 + 50.0 * warm, 70.0 + 50.0 * warm)
+
+    def _sway_now(self) -> Tuple[float, float, float, float, float]:
+        """(clock, lean, sway amplitude, downwind x, y) for the plants this frame: they lean with the wind
+        across the view and sway more the stronger it blows."""
+        light = self.light
+        to = math.radians(light.wind_from + 180.0)
+        dx, dy = math.sin(to), math.cos(to)
+        across = dx * math.sin(self.yaw) - dy * math.cos(self.yaw)
+        strength = max(0.12, min(1.0, light.wind_kmh / 40.0))
+        return time.monotonic(), 0.07 * strength * across, 0.035 * strength, dx, dy
 
     def _draw_weather(self, p: QPainter, w: int, h: int) -> None:
         """Falling rain or snow, blown by the wind across the view, and lightning in a thunderstorm.
@@ -675,10 +690,11 @@ class Replay3DView(QWidget):
         only grow as the camera nears them, each fading in while still a few pixels tall, so none pop."""
         plants = self._plant_cells.get((r, c))
         if plants is None:
-            # (x, y, z, drawn height in mesh units, sprite, small) — prepared once per cell
+            # (x, y, z, drawn height in mesh units, sprite, sway: 0 rock / 1 tree / 2 small plant), once per cell
             k = self.frame.zx * VEG_SCALE
             plants = self._plant_cells[(r, c)] = [
-                (x, y, z, k * height_m * VEG_BOOST.get(sp, 1.0), self._sprites[sp][variant], sp in SMALL_PLANTS)
+                (x, y, z, k * height_m * VEG_BOOST.get(sp, 1.0), self._sprites[sp][variant],
+                 0 if sp in STILL_PLANTS else 2 if sp in SMALL_PLANTS else 1)
                 for x, y, z, sp, variant, height_m in self.veg.plants(r, c)
             ]
         if not plants:
@@ -689,12 +705,12 @@ class Replay3DView(QWidget):
         if focal * tallest / max(1.0, depth - self.mesh.cell_m) < VEG_MIN_PX:
             return  # even its tallest plant at the cell's nearest corner is too small to see
         visible = []
-        for x, y, z, hk, sprite, _small in plants:
+        for x, y, z, hk, sprite, bend in plants:
             s = project(x, y, z)
             if s is not None:
                 hpx = focal * hk / s[2]
                 if hpx >= VEG_MIN_PX:
-                    visible.append((s[2], s[0], s[1], hpx, sprite))
+                    visible.append((s[2], s[0], s[1], hpx, sprite, x, y, bend))
         if not visible:
             return
         if depth < VEG_NEAR:  # farther away the order within a cell isn't noticeable
@@ -704,7 +720,8 @@ class Replay3DView(QWidget):
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         draw = p.drawPixmap
         fading = False
-        for _d, sx, sy, hpx, sprite in visible:
+        sway = self._sway if depth < SWAY_FAR else None
+        for _d, sx, sy, hpx, sprite, wx, wy, bend in visible:
             if hpx < VEG_FULL_PX:  # still tiny: fade in with size instead of appearing at once
                 p.setOpacity(alpha * (hpx - VEG_MIN_PX) / (VEG_FULL_PX - VEG_MIN_PX))
                 fading = True
@@ -713,6 +730,16 @@ class Replay3DView(QWidget):
                 fading = False
             pix, src = sprite.level_for(hpx)
             w = hpx * sprite.aspect
+            if sway is not None and bend and hpx >= SWAY_MIN_PX:
+                # Bend in the wind: shear the sprite about its ground point
+                t, lean, amp, dx, dy = sway
+                gust = 0.55 + 0.45 * math.sin(t * 0.8 - (wx * dx + wy * dy) * 0.004)  # gusts roll downwind
+                small = bend == 2
+                k = (lean * gust + amp * math.sin(t * (2.3 if small else 1.6) + wx * 0.05 + wy * 0.07)) * (1.6 if small else 1.0)
+                p.setWorldTransform(QTransform(1.0, 0.0, -k, 1.0, sx, sy))
+                draw(QRectF(-w * 0.5, -hpx * GROUND_FRAC, w, hpx), pix, src)
+                p.resetTransform()
+                continue
             draw(QRectF(sx - w * 0.5, sy - hpx * GROUND_FRAC, w, hpx), pix, src)  # ground point at (sx, sy)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
         p.setOpacity(1.0)

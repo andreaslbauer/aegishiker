@@ -82,3 +82,41 @@ def test_desktop_replay_draws_the_hikes_weather(tmp_path) -> None:
         v.dist = v.path.length / 2
         assert not v.grab().isNull() and v.light.cloud > 0.8
     assert v.light.fog_end < 5200
+
+
+def test_plants_lean_and_sway_with_the_wind() -> None:
+    import math
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.replay3d import STILL_PLANTS, Replay3DView
+    from src.hiking.models import HikeSession
+    from src.hiking.routing import route_from_trail_segment
+    from test_replay3d import view_pack
+
+    QApplication.instance() or QApplication([])
+    pack = view_pack()
+    route = route_from_trail_segment(next(t for t in pack.trails if t.name == "White Dot Trail"))
+
+    def view(weather: str, wind: str) -> Replay3DView:
+        s = HikeSession(route_id=route.id)
+        s.conditions_logged.update({"weather": weather, "wind_kmh": wind})
+        v = Replay3DView(route, pack, [], "us", session=s)
+        v.resize(640, 400)
+        return v
+
+    gale, calm = view("Overcast", "45"), view("Clear sky", "3")
+    gale.light.wind_from = 270.0  # from the west, blowing east: to the right when facing north
+    gale.yaw = math.pi / 2
+    _t, lean, amp, _dx, _dy = gale._sway_now()
+    assert lean > 0.05 and amp > 0.03
+    gale.yaw = -math.pi / 2
+    assert gale._sway_now()[1] < -0.05, "facing south it blows to the left"
+    assert abs(calm._sway_now()[1]) < 0.01 and calm._sway_now()[2] < 0.01, "a calm day: barely a stir"
+    gale.dist = gale.path.length * 0.3
+    assert not gale.grab().isNull()
+    drawn = [pl for plants in gale._plant_cells.values() for pl in plants]
+    assert {pl[5] for pl in drawn} >= {1}, "trees sway"
+    assert "boulder" in STILL_PLANTS

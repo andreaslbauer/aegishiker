@@ -820,6 +820,7 @@
   // ── vegetation (ports of the plant scatter in src/hiking/vegetation.py and src/gui/vegetation_sprites.py) ──
   // Plants are drawn taller than life so they read from the chase camera (~1.5 km back)
   const VEG_SCALE = 1.6, VEG_NEAR = 1300, VEG_FAR = 2700, VEG_MIN_PX = 1.5, VEG_FULL_PX = 6;
+  const SWAY_MIN_PX = 14, SWAY_FAR = 1600; // plants this tall on screen and this near bend in the wind
   const VEG_BOOST = { krummholz: 2.0, shrub: 2.4, sage: 2.4, grass: 4.0, boulder: 1.6 };
   const VEG_GRID_BASE = 48, PLANTS_PER_SUBCELL = 6;
   const SPECIES_HEIGHT_M = {
@@ -1154,7 +1155,7 @@
       return false;
     }
     _cellPlants(r, c) {
-      // [x, y, z, drawn height in mesh units, sprite], made once per cell (as Vegetation.plants in the app)
+      // [x, y, z, drawn height in mesh units, sprite, sway kind], made once per cell (as Vegetation.plants in the app)
       const key = r * 100000 + c;
       let out = this.plantCells.get(key);
       if (out) return out;
@@ -1180,7 +1181,9 @@
             if (TREES.has(sp) && V.treeline != null && ele > V.treeline - 200) {
               height *= Math.max(0.35, 0.45 + 0.55 * (V.treeline - ele) / 200); // stunted near treeline
             }
-            out.push([x, y, this.heightAt(x, y), this.zx * VEG_SCALE * height * (VEG_BOOST[sp] || 1), this.sprites[sp][variant]]);
+            out.push([x, y, this.heightAt(x, y), this.zx * VEG_SCALE * height * (VEG_BOOST[sp] || 1), this.sprites[sp][variant],
+              sp === "boulder" ? 0 : sp in VEG_BOOST ? 2 : 1]); // sway: 0 rock, 1 tree, 2 small plant (faster)
+
           }
         }
       }
@@ -1198,16 +1201,27 @@
         const s = project(pl[0], pl[1], pl[2]);
         if (!s) continue;
         const hpx = focal * pl[3] / s[2];
-        if (hpx >= VEG_MIN_PX) vis.push([s[2], s[0], s[1], hpx, pl[4]]);
+        if (hpx >= VEG_MIN_PX) vis.push([s[2], s[0], s[1], hpx, pl[4], pl[0], pl[1], pl[5]]);
       }
       if (!vis.length) return;
       if (depth < VEG_NEAR) vis.sort((a, b) => b[0] - a[0]); // farther away the order within a cell isn't noticeable
       const alpha = (1 - fog * 0.9) * Math.min(1, (VEG_FAR - depth) / 500);
+      const sway = depth < SWAY_FAR ? this.sway : null, dpr = this.dpr;
       for (const v of vis) {
         const hpx = v[3], sprite = v[4];
         ctx.globalAlpha = hpx < VEG_FULL_PX ? alpha * (hpx - VEG_MIN_PX) / (VEG_FULL_PX - VEG_MIN_PX) : alpha;
         const img = sprite.levels[Math.min(sprite.levels.length - 1, hpx <= 16 ? 3 : hpx <= 32 ? 2 : hpx <= 64 ? 1 : 0)];
         const w = hpx * sprite.aspect;
+        if (sway && v[7] && hpx >= SWAY_MIN_PX) {
+          // Bend in the wind: shear the sprite about its ground point
+          const [t, lean, amp, dx, dy] = sway, small = v[7] === 2;
+          const gust = 0.55 + 0.45 * Math.sin(t * 0.8 - (v[5] * dx + v[6] * dy) * 0.004); // gusts roll downwind
+          const k = (lean * gust + amp * Math.sin(t * (small ? 2.3 : 1.6) + v[5] * 0.05 + v[6] * 0.07)) * (small ? 1.6 : 1);
+          ctx.setTransform(dpr, 0, -k * dpr, dpr, v[1] * dpr, v[2] * dpr);
+          ctx.drawImage(img, -w * 0.5, -hpx * GROUND_FRAC, w, hpx);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          continue;
+        }
         ctx.drawImage(img, v[1] - w * 0.5, v[2] - hpx * GROUND_FRAC, w, hpx); // ground point at (sx, sy)
       }
       ctx.globalAlpha = 1;
@@ -1420,6 +1434,13 @@
         }
       }
     }
+    _swayNow() {
+      // [clock, lean, sway amplitude, downwind x, y]: plants lean with the wind across the view and sway
+      // more the stronger it blows
+      const L = this.light, to = (L.windFrom + 180) * Math.PI / 180, dx = Math.sin(to), dy = Math.cos(to);
+      const across = dx * Math.sin(this.yaw) - dy * Math.cos(this.yaw), strength = clamp(L.wind / 40, 0.12, 1);
+      return [performance.now() / 1000, 0.07 * strength * across, 0.035 * strength, dx, dy];
+    }
     _weather(ctx, w, h) {
       // Falling rain or snow, blown by the wind across the view, and lightning in a thunderstorm.
       // Stateless: every drop's place follows from its seed and the clock, so nothing is simulated
@@ -1477,6 +1498,7 @@
       const cam = this.camera(w, h);
       const project = projector(cam);
       this._relight();
+      this.sway = this._swayNow();
       this._sky(ctx, w, h, cam, project);
       this._terrain(ctx, cam, project);
       this._tint(ctx, w, h);
