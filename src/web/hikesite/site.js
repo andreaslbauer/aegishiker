@@ -821,6 +821,47 @@
   // Plants are drawn taller than life so they read from the chase camera (~1.5 km back)
   const VEG_SCALE = 1.6, VEG_NEAR = 1300, VEG_FAR = 2700, VEG_MIN_PX = 1.5, VEG_FULL_PX = 6;
   const SWAY_MIN_PX = 14, SWAY_FAR = 1600; // plants this tall on screen and this near bend in the wind
+  const SHADE_ALPHA = 0.42; // how dark plants in shadow (cloud or terrain) are drawn
+  const CLOUD_PUFFS = 16, CLOUD_SKY_M = 22000; // clouds in the sky when overcast, and how far out they hang
+  const mod = (a, n) => ((a % n) + n) % n;
+  // As cloud_shadow_cover in src/hiking/weather_fx.py: no patches under a clear or an overcast sky
+  const cloudShadowCover = c => (c <= 0.08 || c >= 0.92 ? 0 : Math.min(0.75, c * 0.85));
+  function shadedLevels(sprite) {
+    // The sprite's mip levels darkened as in shadow (made on first use)
+    if (!sprite.shaded) {
+      sprite.shaded = sprite.levels.map(src => {
+        const dst = document.createElement("canvas");
+        dst.width = src.width; dst.height = src.height;
+        const g = dst.getContext("2d");
+        g.drawImage(src, 0, 0);
+        g.globalCompositeOperation = "source-atop";
+        g.fillStyle = `rgba(8,16,34,${SHADE_ALPHA})`; g.fillRect(0, 0, dst.width, dst.height);
+        return dst;
+      });
+    }
+    return sprite.shaded;
+  }
+  const cloudCache = {};
+  function cloudSprites(white) {
+    // Soft clouds: overlapping round puffs, flat-bottomed, fading at the edges; white 255 fair-weather, lower grey
+    if (cloudCache[white]) return cloudCache[white];
+    return (cloudCache[white] = [0, 1, 2].map(v => {
+      let seed = 100 + v;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+      const cv = document.createElement("canvas");
+      cv.width = 320; cv.height = 140;
+      const g = cv.getContext("2d");
+      for (let i = 0; i < 14; i++) {
+        const cx = 60 + 200 * rnd(), r = 26 + 26 * rnd(), cy = 112 - r * (0.5 + 0.5 * rnd());
+        const gr = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+        gr.addColorStop(0, `rgba(${white},${white},${Math.min(255, white + 4)},0.78)`);
+        gr.addColorStop(0.6, `rgba(${white - 7},${white - 5},${white - 3},0.47)`);
+        gr.addColorStop(1, `rgba(${white - 15},${white - 11},${white - 7},0)`);
+        g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r, 0, 2 * Math.PI); g.fill();
+      }
+      return cv;
+    }));
+  }
   const VEG_BOOST = { krummholz: 2.0, shrub: 2.4, sage: 2.4, grass: 4.0, boulder: 1.6 };
   const VEG_GRID_BASE = 48, PLANTS_PER_SUBCELL = 6;
   const SPECIES_HEIGHT_M = {
@@ -1032,6 +1073,9 @@
       let seed = 7; // the same drops every time
       const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
       this.precipSeeds = Float32Array.from({ length: PRECIP_MAX * 3 }, rnd);
+      // Clouds: a drifting field whose shadows pass over the terrain, and puffs in the sky
+      this.cloudField = R.clouds ? { n: R.clouds.n, m: R.clouds.m, field: Uint8Array.from(R.clouds.field) } : null;
+      this.cloudPuffs = Array.from({ length: CLOUD_PUFFS }, () => [rnd() * 2 * Math.PI, 0.6 + 3.9 * rnd(), 0.7 + 0.8 * rnd(), Math.floor(rnd() * 3)]);
       this.light = this.lights[0];
       if (m.ground) {
         const C = m.cols, cells = (m.cols - 1) * (m.rows - 1), z = this.mesh.z;
@@ -1191,7 +1235,7 @@
       this.plantCells.set(key, out);
       return out;
     }
-    _plants(ctx, project, focal, r, c, depth, fog) {
+    _plants(ctx, project, focal, r, c, depth, fog, shaded) {
       // This cell's trees, shrubs, grass and boulders, back to front. Always the same plants: they only
       // grow as the camera nears them, each fading in while still a few pixels tall, so none pop
       const plants = this._cellPlants(r, c);
@@ -1210,7 +1254,8 @@
       for (const v of vis) {
         const hpx = v[3], sprite = v[4];
         ctx.globalAlpha = hpx < VEG_FULL_PX ? alpha * (hpx - VEG_MIN_PX) / (VEG_FULL_PX - VEG_MIN_PX) : alpha;
-        const img = sprite.levels[Math.min(sprite.levels.length - 1, hpx <= 16 ? 3 : hpx <= 32 ? 2 : hpx <= 64 ? 1 : 0)];
+        const levels = shaded ? shadedLevels(sprite) : sprite.levels;
+        const img = levels[Math.min(levels.length - 1, hpx <= 16 ? 3 : hpx <= 32 ? 2 : hpx <= 64 ? 1 : 0)];
         const w = hpx * sprite.aspect;
         if (sway && v[7] && hpx >= SWAY_MIN_PX) {
           // Bend in the wind: shear the sprite about its ground point
@@ -1389,7 +1434,7 @@
       const lerp = (u, v) => (u == null ? 0 : u) + ((v == null ? 0 : v) - (u == null ? 0 : u)) * f;
       const turn = ((((b.windFrom || 270) - (a.windFrom || 270) + 540) % 360) - 180);
       return { sun: a.sun.map((x, j) => x + (b.sun[j] - x) * f), top: mix(a.top, b.top), hor: mix(a.hor, b.hor),
-        tint: mix(a.tint, b.tint), elev: a.elev + (b.elev - a.elev) * f,
+        tint: mix(a.tint, b.tint), elev: a.elev + (b.elev - a.elev) * f, amb: lerp(a.amb, b.amb), dif: lerp(a.dif, b.dif),
         ts: a.ts == null || b.ts == null ? null : a.ts + (b.ts - a.ts) * f,
         cloud: lerp(a.cloud, b.cloud), fog: mix(a.fog || DEFAULT_LIGHT.fog, b.fog || DEFAULT_LIGHT.fog),
         rain: lerp(a.rain, b.rain), snow: lerp(a.snow, b.snow), wind: lerp(a.wind, b.wind),
@@ -1433,6 +1478,25 @@
           ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s[0], s[1], rad, 0, 2 * Math.PI); ctx.fill();
         }
       }
+      this._clouds(ctx, w, cam, project);
+    }
+    _clouds(ctx, w, cam, project) {
+      // Clouds hanging low over the horizon all around, drifting with the wind; the terrain drawn afterwards
+      // hides those behind the hills. Overcast skies get more and greyer ones
+      const L = this.light, n = Math.round(CLOUD_PUFFS * Math.min(1, L.cloud * 1.2));
+      if (!n) return;
+      const drift = performance.now() / 1000 * (0.002 + 0.00012 * L.wind);
+      const sprites = L.cloud > 0.7 || L.rain > 0.2 ? cloudSprites(168) : cloudSprites(255);
+      ctx.globalAlpha = 0.55 + 0.4 * L.cloud;
+      for (const [a0, el, size, k] of this.cloudPuffs.slice(0, n)) {
+        const a = a0 + drift, d = CLOUD_SKY_M;
+        const s = project(cam.x + Math.cos(a) * d, cam.y + Math.sin(a) * d, cam.z + d * Math.tan(el * Math.PI / 180));
+        if (!s) continue;
+        const cw = cam.focal * 6000 * size / s[2], ch = cw * 140 / 320;
+        if (s[0] + cw < 0 || s[0] - cw > w || s[1] < -ch) continue;
+        ctx.drawImage(sprites[k], s[0] - cw / 2, s[1] - ch * 0.8, cw, ch);
+      }
+      ctx.globalAlpha = 1;
     }
     _swayNow() {
       // [clock, lean, sway amplitude, downwind x, y]: plants lean with the wind across the view and sway
@@ -1540,6 +1604,14 @@
       }
       cells.sort((u, v) => v[0] - u[0]);
       const SKY_HORIZON = this.light.hor;
+      // Cloud shadows: the drifting cloud field, sampled at each cell's centre
+      const CF = this.cloudField, cover = cloudShadowCover(this.light.cloud), sunShare = Math.min(1, this.light.dif / 0.85);
+      const clouds = CF && cover > 0 && sunShare > 0.05;
+      let cx0 = 0, cy0 = 0;
+      if (clouds) {
+        const to = (this.light.windFrom + 180) * Math.PI / 180, run = performance.now() / 1000 * (25 + 2.5 * this.light.wind);
+        cx0 = M.x0 + 0.5 * M.cell - Math.sin(to) * run; cy0 = M.y0 + 0.5 * M.cell - Math.cos(to) * run;
+      }
       const doneI = clamp(Math.floor(this.dist / this.length * (this.trail.length - 1)), 0, this.trail.length - 2);
       const photoPhase = this.phase === "blend_in" || this.phase === "hold" || this.phase === "blend_out";
       ctx.lineJoin = "round";
@@ -1547,9 +1619,14 @@
         const depth = cell[0], r = cell[1], c = cell[2], a = cell[3], b = cell[4], cc = cell[5], d = cell[6];
         const ci = (r * (C - 1) + c) * 3;
         const f = depth <= fogStart ? 0 : Math.min(1, (depth - fogStart) / (fogEnd - fogStart));
-        const col = "rgb(" + Math.round(M.color[ci] + (SKY_HORIZON[0] - M.color[ci]) * f) + "," +
-          Math.round(M.color[ci + 1] + (SKY_HORIZON[1] - M.color[ci + 1]) * f) + "," +
-          Math.round(M.color[ci + 2] + (SKY_HORIZON[2] - M.color[ci + 2]) * f) + ")";
+        let cr = M.color[ci], cg = M.color[ci + 1], cb = M.color[ci + 2], shaded = false;
+        if (clouds) {
+          const n = CF.field[mod(Math.floor((cy0 + r * M.cell) / CF.m), CF.n) * CF.n + mod(Math.floor((cx0 + c * M.cell) / CF.m), CF.n)] / 255;
+          const sh = (cover - n) * 16 + 0.5; // soft edge
+          if (sh > 0) { const k = 1 - 0.38 * sunShare * Math.min(1, sh); cr *= k; cg *= k; cb *= k; shaded = sh > 0.5 && sunShare > 0.3; }
+        }
+        const col = "rgb(" + Math.round(cr + (SKY_HORIZON[0] - cr) * f) + "," + Math.round(cg + (SKY_HORIZON[1] - cg) * f) + "," +
+          Math.round(cb + (SKY_HORIZON[2] - cb) * f) + ")";
         ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(cc[0], cc[1]); ctx.lineTo(d[0], d[1]); ctx.closePath();
         ctx.fill(); ctx.stroke();
@@ -1572,7 +1649,7 @@
         }
         const lsegs = this.layerCells.get(key);
         if (lsegs) this._layers(ctx, project, lsegs, depth);
-        if (this.veg && depth < VEG_FAR && depth < fogEnd) this._plants(ctx, project, cam.focal, r, c, depth, f);
+        if (this.veg && depth < VEG_FAR && depth < fogEnd) this._plants(ctx, project, cam.focal, r, c, depth, f, shaded);
         // Trail and photo markers on this cell are drawn now, so nearer terrain hides them
         const segs = this.trailCells.get(key);
         if (segs) {

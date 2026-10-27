@@ -122,6 +122,8 @@ def test_export_open_site(seeded_db: Database, tmp_path: Path) -> None:
     assert len(light) >= 2 and all(k["ts"] for k in light), "light keyframes over the hike's morning"
     assert light[0]["elev"] > 0 and isinstance(data["replay"]["tz"], int)
     assert light[0]["cloud"] < 0.1, "the test hike's weather: clear sky"
+    clouds = data["replay"]["clouds"]
+    assert len(clouds["field"]) == clouds["n"] ** 2 and max(clouds["field"]) == 255
     assert len(mesh["ground"]) == (mesh["cols"] - 1) * (mesh["rows"] - 1) * 3, "unlit colours, lit in the browser"
     veg, mesh = data["replay"]["veg"], data["replay"]["mesh"]
     assert veg["season"] == "autumn", "the hike's month (October) sets the foliage"

@@ -34,7 +34,7 @@ from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.replay_plan import plan_photo_stops
 from src.hiking.terrain3d import LAYER_STYLES, LocalFrame, build_mesh, replay_map_layers, route_path, shade_mesh
 from src.hiking.vegetation import TRAIL_CLEAR_M, build_vegetation
-from src.hiking.weather_fx import weather_track
+from src.hiking.weather_fx import CLOUD_TEX_M, CLOUD_TEX_N, cloud_noise, weather_track
 
 from . import paths
 
@@ -354,6 +354,8 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
         },
         "stops": stops,
         "light": [k.to_json() for k in lights],
+        # the cloud field whose shadows drift over the terrain (as in the app), 0..255 row by row
+        "clouds": {"n": CLOUD_TEX_N, "m": CLOUD_TEX_M, "field": [round(v * 255) for v in cloud_noise()]},
         "tz": round(_tz_offset_min(lights[0].ts)) if lights[0].ts is not None else None,
         "peaks": peaks,
         "veg": {

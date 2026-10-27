@@ -65,12 +65,14 @@ from src.hiking.terrain3d import (
 )
 from src.hiking.units import format_distance, format_elevation
 from src.hiking.vegetation import build_vegetation
-from src.hiking.weather_fx import weather_track
+from src.hiking.weather_fx import CLOUD_TEX_M, CLOUD_TEX_N, cloud_noise, cloud_shadow_cover, weather_track
 from src.gui.vegetation_sprites import GROUND_FRAC, make_sprites
 
 VIEW_RADIUS_M = 4200.0  # terrain drawn around the hiker
 SWAY_MIN_PX, SWAY_FAR = 14.0, 1600.0  # plants this tall on screen and this near bend in the wind
-PRECIP_MAX = 520  # rain streaks / snowflakes on screen at full intensity
+PRECIP_MAX = 520
+CLOUD_PUFFS = 16  # clouds in the sky when overcast; fewer as it clears
+CLOUD_SKY_M = 22000.0  # how far out the sky's clouds hang  # rain streaks / snowflakes on screen at full intensity
 FOG_END = 5200.0  # a clear day's haze; the hike's weather closes it in (Light.fog_start / fog_end)
 Z_EXAGGERATION = 1.5
 # Map layers on the terrain: kind -> (rgb, pen width, fades out beyond this depth in metres)
@@ -135,6 +137,28 @@ class PhotoStop:
         return FIRST_HOLD_S if k == 0 else NEXT_HOLD_S
 
 
+def _cloud_sprite(variant: int, white: int) -> QPixmap:
+    """A soft cloud: overlapping round puffs, flat-bottomed, fading at the edges; `white` 255 for a
+    fair-weather cloud, lower for a grey one."""
+    rng = random.Random(100 + variant)
+    pix = QPixmap(320, 140)
+    pix.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    p.setPen(Qt.PenStyle.NoPen)
+    for _ in range(14):
+        cx, r = rng.uniform(60, 260), rng.uniform(26, 52)
+        cy = 112 - r * rng.uniform(0.5, 1.0)
+        g = QRadialGradient(QPointF(cx, cy), r)
+        g.setColorAt(0.0, QColor(white, white, min(255, white + 4), 200))
+        g.setColorAt(0.6, QColor(white - 7, white - 5, white - 3, 120))
+        g.setColorAt(1.0, QColor(white - 15, white - 11, white - 7, 0))
+        p.setBrush(QBrush(g))
+        p.drawEllipse(QPointF(cx, cy), r, r)
+    p.end()
+    return pix
+
+
 def _ease(t: float) -> float:
     return smoothstep(t)
 
@@ -187,8 +211,14 @@ class Replay3DView(QWidget):
                                                   self.weather)
         self._lit: Dict[int, list] = {}
         self._sway: Tuple[float, float, float, float, float] = (0.0, 0.0, 0.0, 1.0, 0.0)
-        rng = random.Random(7)
+        rng = random.Random(7)  # the same drops and clouds every time
         self._precip_seeds = [(rng.random(), rng.random(), rng.random()) for _ in range(PRECIP_MAX)]
+        # Clouds: a drifting field whose shadows pass over the terrain, and puffs in the sky
+        self._cloud_field = cloud_noise()
+        self._cloud_puffs = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.6, 4.5), rng.uniform(0.7, 1.5), rng.randrange(3))
+                             for _ in range(CLOUD_PUFFS)]
+        self._cloud_sprites = [_cloud_sprite(k, 255) for k in range(3)]
+        self._cloud_sprites_grey = [_cloud_sprite(k, 168) for k in range(3)]  # heavy, rain-bearing
         self._lit_idx = -1
         self.light: Light = self.light_keys[0]
         self._sprites = make_sprites(self.veg.season, self.veg.biome.rock)
@@ -513,6 +543,32 @@ class Replay3DView(QWidget):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QBrush(glow))
                 p.drawEllipse(QPointF(s[0], s[1]), 70.0 + 50.0 * warm, 70.0 + 50.0 * warm)
+        self._draw_clouds(p, project, cam)
+
+    def _draw_clouds(self, p: QPainter, project, cam) -> None:
+        """Clouds hanging low over the horizon all around, drifting with the wind; the terrain drawn
+        afterwards hides those behind the hills. Overcast skies get more and greyer ones."""
+        light = self.light
+        n = int(round(CLOUD_PUFFS * min(1.0, light.cloud * 1.2)))
+        if n == 0:
+            return
+        drift = time.monotonic() * (0.002 + 0.00012 * light.wind_kmh)  # radians: the sky turns slowly
+        sprites = self._cloud_sprites_grey if light.cloud > 0.7 or light.rain > 0.2 else self._cloud_sprites
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        for a0, el, size, k in self._cloud_puffs[:n]:
+            a = a0 + drift
+            d = CLOUD_SKY_M
+            s = project(cam.x + math.cos(a) * d, cam.y + math.sin(a) * d, cam.z + d * math.tan(math.radians(el)))
+            if not s:
+                continue
+            w = cam.focal * 6000.0 * size / s[2]
+            h = w * 140.0 / 320.0
+            if s[0] + w < 0 or s[0] - w > self.width() or s[1] < -h:
+                continue
+            p.setOpacity(0.55 + 0.4 * light.cloud)
+            p.drawPixmap(QRectF(s[0] - w / 2, s[1] - h * 0.8, w, h), sprites[k], QRectF(0, 0, 320, 140))
+        p.setOpacity(1.0)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
 
     def _sway_now(self) -> Tuple[float, float, float, float, float]:
         """(clock, lean, sway amplitude, downwind x, y) for the plants this frame: they lean with the wind
@@ -617,8 +673,27 @@ class Replay3DView(QWidget):
         for i, s in enumerate(self.stops):
             stop_cells.setdefault(mesh.cell_of(s.world[0], s.world[1]), []).append(i)
 
+        # Cloud shadows: the drifting cloud field, sampled at each cell's centre
+        cover = cloud_shadow_cover(self.light.cloud)
+        sun_share = min(1.0, self.light.diffuse / 0.85)
+        clouds = cover > 0.0 and sun_share > 0.05
+        if clouds:
+            to = math.radians(self.light.wind_from + 180.0)
+            run = time.monotonic() * (25.0 + 2.5 * self.light.wind_kmh)  # clouds race by in the fast replay
+            field, tn, tm, cm = self._cloud_field, CLOUD_TEX_N, CLOUD_TEX_M, mesh.cell_m
+            cx0 = mesh.x0 + 0.5 * cm - math.sin(to) * run
+            cy0 = mesh.y0 + 0.5 * cm - math.cos(to) * run
+
         for depth, r, c, a, b, cc, d in cells:
             cr, cg, cb = mesh.color[r][c]
+            shaded = False
+            if clouds:
+                n = field[(int((cy0 + r * cm) // tm) % tn) * tn + int((cx0 + c * cm) // tm) % tn]
+                sh = (cover - n) * 16.0 + 0.5  # soft edge
+                if sh > 0.0:
+                    k = 1.0 - 0.38 * sun_share * min(1.0, sh)
+                    cr, cg, cb = cr * k, cg * k, cb * k
+                    shaded = sh > 0.5 and sun_share > 0.3
             f = 0.0 if depth <= fog_start else min(1.0, (depth - fog_start) / (fog_end - fog_start))
             col = QColor(int(cr + (sky_r - cr) * f), int(cg + (sky_g - cg) * f), int(cb + (sky_b - cb) * f))
             p.setPen(QPen(col, 1.0))
@@ -631,7 +706,7 @@ class Replay3DView(QWidget):
             if layer_segs:
                 self._draw_layers(p, project, layer_segs, depth)
             if depth < VEG_FAR and depth < fog_end:
-                self._draw_plants(p, project, cam.focal, r, c, depth, f)
+                self._draw_plants(p, project, cam.focal, r, c, depth, f, shaded)
             # Trail and photo markers on this cell are drawn now, so nearer terrain hides them
             for i in self._trail_cells.get((r, c), ()):
                 s0 = project(*self._trail[i])
@@ -685,7 +760,8 @@ class Replay3DView(QWidget):
                 p.drawLines(lines)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
-    def _draw_plants(self, p: QPainter, project, focal: float, r: int, c: int, depth: float, fog: float) -> None:
+    def _draw_plants(self, p: QPainter, project, focal: float, r: int, c: int, depth: float, fog: float,
+                     shaded: bool = False) -> None:
         """This cell's trees, shrubs, grass and boulders, back to front. Always the same plants: they
         only grow as the camera nears them, each fading in while still a few pixels tall, so none pop."""
         plants = self._plant_cells.get((r, c))
@@ -728,7 +804,7 @@ class Replay3DView(QWidget):
             elif fading:
                 p.setOpacity(alpha)
                 fading = False
-            pix, src = sprite.level_for(hpx)
+            pix, src = sprite.level_for(hpx, shaded)
             w = hpx * sprite.aspect
             if sway is not None and bend and hpx >= SWAY_MIN_PX:
                 # Bend in the wind: shear the sprite about its ground point

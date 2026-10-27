@@ -3,11 +3,14 @@ any moment. From the hour-by-hour series kept when the weather was looked up (se
 core.weather.hourly_rows), else from the weather summary typed or fetched for the hike, which then
 holds for the whole hike."""
 import json
+import random
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
 
 CALM_KMH = 8.0
+CLOUD_TEX_N = 64  # cloud shadow field: CLOUD_TEX_N x CLOUD_TEX_N texels ..
+CLOUD_TEX_M = 170.0  # .. this many metres apart, tiling every ~11 km
 
 
 @dataclass
@@ -141,3 +144,37 @@ def weather_track(details: Optional[Dict[str, str]]) -> Optional[WeatherTrack]:
     sky = sky_from_summary(details.get("weather", ""), details.get("precip_mm", ""), details.get("wind_kmh", ""),
                            details.get("temp_low_c", ""))
     return WeatherTrack([(0.0, sky)]) if sky else None
+
+
+def cloud_noise(n: int = CLOUD_TEX_N, seed: int = 11) -> List[float]:
+    """A tiling field of puffy cloud shapes, row by row, equalised to 0..1 so that the texels below
+    `cover` are the shadows of a sky that much covered."""
+    rng = random.Random(seed)
+    field = [0.0] * (n * n)
+    for freq, weight in ((4, 1.0), (8, 0.5), (16, 0.25)):
+        grid = [[rng.random() for _ in range(freq)] for _ in range(freq)]
+        step = n / freq
+        for y in range(n):
+            gy, fy = divmod(y / step, 1.0)
+            y0, y1 = int(gy) % freq, (int(gy) + 1) % freq
+            sy = fy * fy * (3 - 2 * fy)
+            for x in range(n):
+                gx, fx = divmod(x / step, 1.0)
+                x0, x1 = int(gx) % freq, (int(gx) + 1) % freq
+                sx = fx * fx * (3 - 2 * fx)
+                top = grid[y0][x0] + (grid[y0][x1] - grid[y0][x0]) * sx
+                bot = grid[y1][x0] + (grid[y1][x1] - grid[y1][x0]) * sx
+                field[y * n + x] += weight * (top + (bot - top) * sy)
+    order = sorted(range(n * n), key=field.__getitem__)
+    out = [0.0] * (n * n)
+    for rank, i in enumerate(order):
+        out[i] = rank / (n * n - 1)
+    return out
+
+
+def cloud_shadow_cover(cloud: float) -> float:
+    """How much of the ground lies in cloud shadow: none under a clear sky, and an overcast sky
+    shades everything evenly (its dimming is in the light itself), so no patches either."""
+    if cloud <= 0.08 or cloud >= 0.92:
+        return 0.0
+    return min(0.75, cloud * 0.85)

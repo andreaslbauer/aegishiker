@@ -9,7 +9,7 @@ import math
 import random
 import zlib
 from functools import lru_cache
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPixmap, QPolygonF, QRadialGradient, QLinearGradient
@@ -17,6 +17,7 @@ from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPixmap, QPoly
 BASE_PX = 128
 GROUND_FRAC = (BASE_PX - 5) / BASE_PX  # where the plant meets the ground, as a share of sprite height
 VARIANTS = 4
+SHADE_ALPHA = 0.42  # how dark plants in shadow (cloud or terrain) are drawn
 ASPECT = {  # sprite width / height
     "broadleaf": 0.85, "aspen": 0.5, "spruce": 0.42, "fir": 0.62, "pine": 0.62, "lodgepole": 0.38,
     "juniper": 1.0, "joshua": 0.95, "krummholz": 2.4, "shrub": 1.5, "sage": 1.6, "grass": 1.8, "boulder": 1.5,
@@ -38,10 +39,24 @@ class Sprite:
                              Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
         self.levels = [(pix, QRectF(pix.rect())) for pix in self.mips]  # with their source rects
+        self._shaded: Optional[List[Tuple[QPixmap, QRectF]]] = None
 
-    def level_for(self, height_px: float) -> Tuple[QPixmap, QRectF]:
+    def shaded_levels(self) -> List[Tuple[QPixmap, QRectF]]:
+        """The mip levels darkened as in shadow (made on first use)."""
+        if self._shaded is None:
+            self._shaded = []
+            for pix, src in self.levels:
+                dark = QPixmap(pix)
+                p = QPainter(dark)
+                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
+                p.fillRect(dark.rect(), QColor(8, 16, 34, int(255 * SHADE_ALPHA)))
+                p.end()
+                self._shaded.append((dark, src))
+        return self._shaded
+
+    def level_for(self, height_px: float, shaded: bool = False) -> Tuple[QPixmap, QRectF]:
         """Smallest mip level at least `height_px` tall (so it is only ever scaled down)."""
-        levels = self.levels
+        levels = self.shaded_levels() if shaded else self.levels
         if height_px <= 16 and len(levels) > 3:
             return levels[3]
         if height_px <= 32 and len(levels) > 2:

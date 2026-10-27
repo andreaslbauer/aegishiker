@@ -120,3 +120,46 @@ def test_plants_lean_and_sway_with_the_wind() -> None:
     drawn = [pl for plants in gale._plant_cells.values() for pl in plants]
     assert {pl[5] for pl in drawn} >= {1}, "trees sway"
     assert "boulder" in STILL_PLANTS
+
+
+def test_cloud_field_and_its_shadows() -> None:
+    from src.hiking.weather_fx import CLOUD_TEX_N, cloud_noise, cloud_shadow_cover
+
+    field = cloud_noise()
+    assert len(field) == CLOUD_TEX_N ** 2 and field == cloud_noise(), "the same clouds every time"
+    assert abs(sum(v < 0.3 for v in field) / len(field) - 0.3) < 0.01, "equalised: cover 0.3 shades 30%"
+    n = CLOUD_TEX_N
+    seam = sum(abs(field[y * n] - field[y * n + n - 1]) for y in range(n)) / n
+    inner = sum(abs(field[y * n + 31] - field[y * n + 32]) for y in range(n)) / n
+    assert seam < inner * 3, "tiles without a seam"
+    assert cloud_shadow_cover(0.0) == 0 and cloud_shadow_cover(1.0) == 0, "no patches when clear or overcast"
+    assert 0.3 < cloud_shadow_cover(0.5) < 0.6
+
+
+def test_desktop_clouds_shade_terrain_and_plants() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.replay3d import Replay3DView
+    from src.hiking.models import HikeSession
+    from src.hiking.routing import route_from_trail_segment
+    from test_replay3d import view_pack
+
+    QApplication.instance() or QApplication([])
+    pack = view_pack()
+    route = route_from_trail_segment(next(t for t in pack.trails if t.name == "White Dot Trail"))
+    s = HikeSession(route_id=route.id, started_at="2026-08-14T15:00:00+00:00", ended_at="2026-08-14T16:00:00+00:00")
+    s.conditions_logged["weather"] = "Partly cloudy"
+    v = Replay3DView(route, pack, [], "us", session=s)
+    v.resize(640, 400)
+    v.dist = v.path.length * 0.4
+    assert not v.grab().isNull()
+    sprites = [sp for variants in v._sprites.values() for sp in variants]
+    assert any(sp._shaded for sp in sprites), "plants under a cloud are drawn darker"
+    dark = sprites[0].shaded_levels()[0][0].toImage()
+    lit = sprites[0].levels[0][0].toImage()
+    cx, cy = lit.width() // 2, lit.height() // 2
+    assert dark.pixelColor(cx, cy).value() < lit.pixelColor(cx, cy).value()
+    assert dark.pixelColor(0, 0).alpha() == lit.pixelColor(0, 0).alpha(), "only the plant darkens, not around it"
