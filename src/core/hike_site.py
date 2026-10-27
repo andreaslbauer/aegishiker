@@ -28,12 +28,13 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from src.hiking.geo import haversine_m, simplify_polyline_dp
 from src.hiking.daylight import hike_clock, light_keys
 from src.hiking.hike_info import shows_people
-from src.hiking.hike_report import build_hike_summary, leg_at, trail_legs
+from src.hiking.hike_report import build_hike_summary, hike_details, leg_at, trail_legs
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.replay_plan import plan_photo_stops
 from src.hiking.terrain3d import LAYER_STYLES, LocalFrame, build_mesh, replay_map_layers, route_path, shade_mesh
 from src.hiking.vegetation import TRAIL_CLEAR_M, build_vegetation
+from src.hiking.weather_fx import weather_track
 
 from . import paths
 
@@ -305,7 +306,8 @@ def build_replay(route: ComposedRoute, pack: Optional[DestinationPack],
     veg = build_vegetation(pack, mesh, path.pts, month)
     shader = shade_mesh(mesh, veg.ground_rgb)
     # Time of day: light keyframes along the route; the browser re-lights the terrain from them
-    lights = light_keys(path.length, frame.lat0, frame.lon0, hike_clock(path.length, pins, session))
+    weather = weather_track(hike_details(session)) if session else None
+    lights = light_keys(path.length, frame.lat0, frame.lon0, hike_clock(path.length, pins, session), weather)
     habitats, grid = veg.habitat_grid()
     index_of = {id(pin): i for i, pin in enumerate(pins)}
     stops = []

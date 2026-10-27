@@ -6,6 +6,7 @@ mini map. When the hiker reaches a photo, the view zooms from the photo's spot i
 until it fills the frame, lingers, zooms back out and the hike continues.
 """
 import math
+import random
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -43,6 +44,7 @@ from PySide6.QtWidgets import (
 
 from src.gui.charts.photo_preview import format_datetime, load_photo_image, photo_pixmap
 from src.hiking.daylight import Light, hike_clock, key_index, light_at, light_keys
+from src.hiking.hike_report import hike_details
 from src.hiking.models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession
 from src.hiking.photo_matcher import dedupe_pins
 from src.hiking.replay_plan import plan_photo_stops
@@ -62,10 +64,12 @@ from src.hiking.terrain3d import (
 )
 from src.hiking.units import format_distance, format_elevation
 from src.hiking.vegetation import build_vegetation
+from src.hiking.weather_fx import weather_track
 from src.gui.vegetation_sprites import GROUND_FRAC, make_sprites
 
 VIEW_RADIUS_M = 4200.0  # terrain drawn around the hiker
-FOG_START, FOG_END = 1800.0, 5200.0
+PRECIP_MAX = 520  # rain streaks / snowflakes on screen at full intensity
+FOG_END = 5200.0  # a clear day's haze; the hike's weather closes it in (Light.fog_start / fog_end)
 Z_EXAGGERATION = 1.5
 # Map layers on the terrain: kind -> (rgb, pen width, fades out beyond this depth in metres)
 LAYER_PENS = {
@@ -175,8 +179,12 @@ class Replay3DView(QWidget):
         # Time of day: the sun where it stood as the hiker got there. The terrain is re-lit at a few
         # keyframes along the hike (cached); sky, fog and tint blend between them every frame
         self._clock = hike_clock(self.path.length, photos, session)
-        self.light_keys: List[Light] = light_keys(self.path.length, self.frame.lat0, self.frame.lon0, self._clock)
+        self.weather = weather_track(hike_details(session)) if session else None
+        self.light_keys: List[Light] = light_keys(self.path.length, self.frame.lat0, self.frame.lon0, self._clock,
+                                                  self.weather)
         self._lit: Dict[int, list] = {}
+        rng = random.Random(7)
+        self._precip_seeds = [(rng.random(), rng.random(), rng.random()) for _ in range(PRECIP_MAX)]
         self._lit_idx = -1
         self.light: Light = self.light_keys[0]
         self._sprites = make_sprites(self.veg.season, self.veg.biome.rock)
@@ -454,6 +462,7 @@ class Replay3DView(QWidget):
             self._draw_sky(scene, w, h, project, cam)
             self._draw_terrain(scene, cam, project)
             self._draw_tint(scene)
+            self._draw_weather(scene, w, h)
             self._draw_peaks(scene, project)
             self._draw_hiker(scene, project, (x, y, max(z, self.mesh.height_at(x, y)) + 6.0))
             self._draw_hud(scene, w, h, ele)
@@ -473,7 +482,7 @@ class Replay3DView(QWidget):
         if idx != self._lit_idx:
             if idx not in self._lit:
                 k = self.light_keys[idx]
-                self._lit[idx] = self._shader.colors(k.sun, k.ambient, k.diffuse)
+                self._lit[idx] = self._shader.colors(k.sun, k.ambient, k.diffuse, k.snow)
             self.mesh.color = self._lit[idx]
             self._lit_idx = idx
 
@@ -483,13 +492,13 @@ class Replay3DView(QWidget):
         g.setColorAt(0.0, QColor(*light.sky_top))
         g.setColorAt(1.0, QColor(*light.sky_horizon))
         p.fillRect(self.rect(), QBrush(g))
-        if light.elevation > -3.0:  # the sun's glow, hidden by the terrain drawn over it
+        if light.elevation > -3.0 and light.cloud < 0.9:  # the sun's glow, hidden by the terrain drawn over it
             sx, sy, sz = light.sun
             far = 30000.0
             s = project(cam.x + sx * far, cam.y + sy * far, cam.z + max(sz, 0.0) * far)
             if s:
                 warm = max(0.0, min(1.0, 1.0 - light.elevation / 25.0))
-                core = QColor(255, int(246 - 40 * warm), int(225 - 95 * warm), 235)
+                core = QColor(255, int(246 - 40 * warm), int(225 - 95 * warm), int(235 * (1.0 - light.cloud)))
                 glow = QRadialGradient(QPointF(s[0], s[1]), 70.0 + 50.0 * warm)
                 glow.setColorAt(0.0, core)
                 glow.setColorAt(0.12, core)
@@ -499,6 +508,47 @@ class Replay3DView(QWidget):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QBrush(glow))
                 p.drawEllipse(QPointF(s[0], s[1]), 70.0 + 50.0 * warm, 70.0 + 50.0 * warm)
+
+    def _draw_weather(self, p: QPainter, w: int, h: int) -> None:
+        """Falling rain or snow, blown by the wind across the view, and lightning in a thunderstorm.
+        Stateless: every drop's place follows from its seed and the clock, so nothing is simulated."""
+        light = self.light
+        if light.rain < 0.03 and light.snow < 0.03 and not light.storm:
+            return
+        t = time.monotonic()
+        to = math.radians(light.wind_from + 180.0)  # where the wind blows to: x east, y north
+        across = math.sin(to) * math.sin(self.yaw) - math.cos(to) * math.cos(self.yaw)  # + blows to the right
+        push = across * min(1.0, light.wind_kmh / 45.0)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if light.rain >= 0.03:
+            n = int(PRECIP_MAX * light.rain)
+            lines = []
+            for u, v, z in self._precip_seeds[:n]:
+                fall = 950.0 * (0.75 + 0.5 * z)
+                ln = 13.0 + 12.0 * z
+                x = (u * w * 1.3 + t * fall * push * 0.6) % (w * 1.3) - w * 0.15
+                y = (v * h * 1.2 + t * fall) % (h * 1.2) - h * 0.1
+                lines.append(QLineF(x, y, x - push * ln * 0.6, y - ln))
+            p.setPen(QPen(QColor(208, 218, 232, int(60 + 70 * light.rain)), 1.1))
+            p.drawLines(lines)
+        if light.snow >= 0.03:
+            n = int(PRECIP_MAX * light.snow)
+            sizes: Dict[int, List[QPointF]] = {}
+            for u, v, z in self._precip_seeds[:n]:
+                fall = 55.0 * (0.6 + 0.8 * z)
+                x = (u * w * 1.3 + t * (fall * push * 2.2) + math.sin(t * 1.3 + u * 40.0) * 10.0) % (w * 1.3) - w * 0.15
+                y = (v * h * 1.2 + t * fall) % (h * 1.2) - h * 0.1
+                sizes.setdefault(int(z * 3), []).append(QPointF(x, y))
+            for k, pts in sizes.items():
+                pen = QPen(QColor(246, 248, 252, 215), 1.6 + 1.3 * k)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                p.setPen(pen)
+                p.drawPoints(pts)
+        if light.storm:
+            ph = t % 7.3
+            if ph < 0.08 or 0.17 < ph < 0.23:
+                p.fillRect(QRectF(0, 0, w, h), QColor(235, 240, 255, 95))
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
     def _draw_tint(self, p: QPainter) -> None:
         """Golden hour, dusk and night colour everything drawn so far (one multiply over the frame)."""
@@ -525,6 +575,7 @@ class Replay3DView(QWidget):
 
         cells = []
         w, h = self.width(), self.height()
+        fog_start, fog_end = self.light.fog_start, self.light.fog_end
         for r in range(r0, r1 + 1):
             for c in range(c0, c1 + 1):
                 a, b, cc, d = pv(r, c), pv(r, c + 1), pv(r + 1, c + 1), pv(r + 1, c)
@@ -535,7 +586,7 @@ class Replay3DView(QWidget):
                 if max(xs) < 0 or min(xs) > w or max(ys) < 0 or min(ys) > h:
                     continue
                 depth = (a[2] + b[2] + cc[2] + d[2]) / 4.0
-                if depth > FOG_END + 600:
+                if depth > fog_end + 600:
                     continue
                 cells.append((depth, r, c, a, b, cc, d))
         cells.sort(key=lambda t: -t[0])  # far to near
@@ -553,7 +604,7 @@ class Replay3DView(QWidget):
 
         for depth, r, c, a, b, cc, d in cells:
             cr, cg, cb = mesh.color[r][c]
-            f = 0.0 if depth <= FOG_START else min(1.0, (depth - FOG_START) / (FOG_END - FOG_START))
+            f = 0.0 if depth <= fog_start else min(1.0, (depth - fog_start) / (fog_end - fog_start))
             col = QColor(int(cr + (sky_r - cr) * f), int(cg + (sky_g - cg) * f), int(cb + (sky_b - cb) * f))
             p.setPen(QPen(col, 1.0))
             p.setBrush(col)
@@ -564,7 +615,7 @@ class Replay3DView(QWidget):
             layer_segs = self.layers.cells.get((r, c))
             if layer_segs:
                 self._draw_layers(p, project, layer_segs, depth)
-            if depth < VEG_FAR:
+            if depth < VEG_FAR and depth < fog_end:
                 self._draw_plants(p, project, cam.focal, r, c, depth, f)
             # Trail and photo markers on this cell are drawn now, so nearer terrain hides them
             for i in self._trail_cells.get((r, c), ()):
@@ -612,7 +663,8 @@ class Replay3DView(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         for kind, lines in batches.items():
             rgb, width, reach = LAYER_PENS[kind]
-            fade = 1.0 if depth <= FOG_START else max(0.0, 1.0 - (depth - FOG_START) / max(1.0, reach - FOG_START))
+            fog_start, reach = self.light.fog_start, min(reach, self.light.fog_end)
+            fade = 1.0 if depth <= fog_start else max(0.0, 1.0 - (depth - fog_start) / max(1.0, reach - fog_start))
             if fade >= 0.08:
                 p.setPen(QPen(QColor(rgb[0], rgb[1], rgb[2], int(225 * fade)), width))
                 p.drawLines(lines)
@@ -708,7 +760,7 @@ class Replay3DView(QWidget):
         placed: List[QRectF] = []
         for name, x, y, z, ele in self.peaks:
             s = project(x, y, z)
-            if not s or s[2] > FOG_END or not (0 <= s[0] <= self.width() and 0 <= s[1] <= self.height()):
+            if not s or s[2] > self.light.fog_end or not (0 <= s[0] <= self.width() and 0 <= s[1] <= self.height()):
                 continue
             label = f"{name}  {format_elevation(ele, self.units)}"
             rect = fm.boundingRect(label).translated(s[0] - fm.horizontalAdvance(label) / 2, s[1] - 14)

@@ -56,6 +56,7 @@ class HikeDetailsForm(QWidget):
         self.when_where = when_where
         self.us = str(app_state.settings.get("unit_system", "metric")) != "metric"
         self._source = ""
+        self._hourly = ""
         form = QFormLayout(self)
         form.setContentsMargins(0, 0, 0, 0)
         self.companions = QLineEdit()
@@ -107,6 +108,7 @@ class HikeDetailsForm(QWidget):
         except ValueError:
             self.wind.setText("")
         self._source = d.get("weather_source", "")
+        self._hourly = d.get("weather_hourly", "")
         self.source_lbl.setText(f"Weather from {self._source}" if self._source else "")
 
     def details(self) -> Dict[str, str]:
@@ -123,6 +125,7 @@ class HikeDetailsForm(QWidget):
             "precip_mm": num(self.precip, 25.4 if self.us else 1.0),
             "wind_kmh": num(self.wind, 1.609 if self.us else 1.0),
             "weather_source": self._source if self.weather.text().strip() else "",
+            "weather_hourly": self._hourly if self.weather.text().strip() else "",
         }
 
     def look_up_weather(self) -> None:

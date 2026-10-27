@@ -117,10 +117,15 @@ class MeshShader:
                 self.ground.append(tuple(ground(r, c)))  # type: ignore[arg-type]
 
     def colors(self, sun: Tuple[float, float, float] = (-0.54, 0.54, 0.64), ambient: float = 0.45,
-               diffuse: float = 0.85) -> List[List[Tuple[int, int, int]]]:
+               diffuse: float = 0.85, snow: float = 0.0) -> List[List[Tuple[int, int, int]]]:
+        """Cell colours lit by `sun`; `snow` (0..1) whitens the ground, most on gentle slopes."""
         lx, ly, lz = sun
+        cover = min(0.85, snow * 1.3)
         flat = []
         for (nx, ny, nz), (gr, gg, gb) in zip(self.normals, self.ground):
+            if cover > 0.0:
+                k = cover * nz ** 6  # steep rock sheds the snow
+                gr, gg, gb = gr + (232 - gr) * k, gg + (236 - gg) * k, gb + (242 - gb) * k
             f = ambient + diffuse * max(0.0, nx * lx + ny * ly + nz * lz)
             flat.append((min(255, int(gr * f)), min(255, int(gg * f)), min(255, int(gb * f))))
         return [flat[i:i + self.cols] for i in range(0, len(flat), self.cols)]

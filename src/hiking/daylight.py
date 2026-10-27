@@ -1,22 +1,26 @@
 """Time of day for the 3D replays: when the hiker was where along the route, where the sun stood
 then, and the light that gives the scene (sun direction for the terrain shading, sky colours and a
-tint over the whole scene for golden hour, dusk and night).
+tint over the whole scene for golden hour, dusk and night), dimmed, greyed and closed in by the
+hike's weather (clouds, fog, rain, snow; see weather_fx).
 
 An approximation that keeps the replays fast: the sun comes from the NOAA low-precision formulas
 (well under a degree off), and the light is worked out at a handful of keyframes along the hike
 (one per LIGHT_STEP_S of hiking time). The terrain is re-shaded per keyframe; sky and tint blend
-smoothly between them. No cast shadows."""
+smoothly between them."""
 import math
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import List, Optional, Sequence, Tuple
 
 from .models import HikePhotoPin, HikeSession
+from .weather_fx import CALM_KMH, Sky, WeatherTrack
 
 LIGHT_STEP_S = 900.0  # a keyframe per 15 minutes of hiking (the sun moves ~4°)
 MAX_KEYS = 32
 WALK_MPS = 1.1  # pace to extrapolate with when the hike's own pace is unknown
+
+FOG_START_M, FOG_END_M = 1800.0, 5200.0  # haze of a clear day
 
 RGB = Tuple[int, int, int]
 
@@ -32,12 +36,24 @@ class Light:
     tint: RGB  # multiplied over the scene (255, 255, 255: none)
     elevation: float = 40.0  # sun above the horizon, degrees
     ts: Optional[float] = None  # UTC time, when known
+    # Weather
+    cloud: float = 0.0  # 0 clear .. 1 overcast (also hides the sun's glow)
+    fog_start: float = FOG_START_M  # terrain fades into the horizon colour from here ..
+    fog_end: float = FOG_END_M  # .. to here, and isn't drawn beyond
+    rain: float = 0.0  # 0 .. 1
+    snow: float = 0.0  # 0 .. 1 (also whitens the ground)
+    wind_kmh: float = CALM_KMH
+    wind_from: float = 270.0  # degrees
+    storm: bool = False
 
     def to_json(self) -> dict:
         return {"along": round(self.along_m, 1), "sun": [round(v, 4) for v in self.sun],
                 "amb": round(self.ambient, 3), "dif": round(self.diffuse, 3), "top": list(self.sky_top),
                 "hor": list(self.sky_horizon), "tint": list(self.tint), "elev": round(self.elevation, 1),
-                "ts": None if self.ts is None else int(self.ts)}
+                "ts": None if self.ts is None else int(self.ts), "cloud": round(self.cloud, 3),
+                "fog": [round(self.fog_start), round(self.fog_end)], "rain": round(self.rain, 3),
+                "snow": round(self.snow, 3), "wind": round(self.wind_kmh, 1), "windFrom": round(self.wind_from),
+                "storm": self.storm}
 
 
 # The look without a time: a sun from the north-west, 40° up, in a clear sky
@@ -110,6 +126,33 @@ def light_for_sun(azimuth: float, elevation: float, along_m: float = 0.0, ts: Op
     return Light(along_m, sun, 0.45, diffuse, top, hor, tint, elevation, ts)
 
 
+def _grey(c: RGB, k: float = 1.0) -> RGB:
+    lum = (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]) * k
+    return (int(min(255, lum * 0.97)), int(min(255, lum * 0.99)), int(min(255, lum * 1.03)))
+
+
+def with_weather(light: Light, sky: Optional[Sky]) -> Light:
+    """The light under this sky: clouds soften the sun's shading and grey the sky, fog and falling rain
+    or snow close in the view."""
+    if sky is None:
+        return light
+    c, wet = sky.cloud, max(sky.rain, sky.snow)
+    murk = max(sky.fog, 0.35 * sky.rain, 0.55 * sky.snow)
+    dim = 1.0 - 0.18 * c - 0.15 * sky.rain - (0.1 if sky.storm else 0.0)
+    top = _mix(light.sky_top, _grey(light.sky_horizon, 0.9 * dim), 0.85 * c)
+    hor = _mix(light.sky_horizon, _grey(light.sky_horizon, 0.97 * dim), 0.75 * c)
+    hor = _mix(hor, _grey(light.sky_horizon, 1.04), 0.6 * sky.fog)  # fog glows pale
+    tint = _mix(light.tint, _grey(light.tint, dim), 0.7 * c)
+    # The chase camera is ~1.4 km from the hiker: even dense fog leaves the hiker's surroundings in sight,
+    # misty from a few hundred metres
+    fog_end = max(2300.0, FOG_END_M * (1.0 - 0.6 * murk) * (1.0 - 0.15 * wet))
+    fog_start = fog_end * (FOG_START_M / FOG_END_M - 0.25 * murk)
+    return replace(light, diffuse=light.diffuse * (1.0 - 0.8 * c), ambient=light.ambient + 0.12 * c,
+                   sky_top=top, sky_horizon=hor, tint=tint, cloud=c, fog_start=fog_start,
+                   fog_end=fog_end, rain=sky.rain, snow=sky.snow, wind_kmh=sky.wind_kmh, wind_from=sky.wind_from,
+                   storm=sky.storm)
+
+
 def _parse_ts(iso: str) -> Optional[float]:
     """UTC seconds for a stored time; times without a zone are the computer's local time."""
     try:
@@ -157,11 +200,12 @@ def time_at(anchors: Sequence[Tuple[float, float]], d: float) -> float:
     return anchors[-1][1]
 
 
-def light_keys(route_len: float, lat: float, lon: float, anchors: Sequence[Tuple[float, float]]) -> List[Light]:
+def light_keys(route_len: float, lat: float, lon: float, anchors: Sequence[Tuple[float, float]],
+               weather: Optional[WeatherTrack] = None) -> List[Light]:
     """Keyframes of light along the route, one per LIGHT_STEP_S of hiking (at most MAX_KEYS);
-    just DEFAULT_LIGHT when the hike's time is unknown."""
+    just DEFAULT_LIGHT (under the hike's weather, when known) when the hike's time is unknown."""
     if not anchors:
-        return [DEFAULT_LIGHT]
+        return [with_weather(DEFAULT_LIGHT, weather.at(None) if weather else None)]
     t0, t1 = time_at(anchors, 0.0), time_at(anchors, route_len)
     n = max(1, min(MAX_KEYS - 1, int(math.ceil(abs(t1 - t0) / LIGHT_STEP_S))))
     keys = []
@@ -169,7 +213,7 @@ def light_keys(route_len: float, lat: float, lon: float, anchors: Sequence[Tuple
         d = route_len * k / n
         ts = time_at(anchors, d)
         az, el = sun_position(ts, lat, lon)
-        keys.append(light_for_sun(az, el, d, ts))
+        keys.append(with_weather(light_for_sun(az, el, d, ts), weather.at(ts) if weather else None))
     return keys
 
 
@@ -190,7 +234,14 @@ def light_at(keys: Sequence[Light], d: float) -> Light:
     a, b = keys[i], keys[i + 1]
     f = max(0.0, min(1.0, (d - a.along_m) / step))
     sun = tuple(x + (y - x) * f for x, y in zip(a.sun, b.sun))
-    return Light(d, sun, a.ambient + (b.ambient - a.ambient) * f, a.diffuse + (b.diffuse - a.diffuse) * f,  # type: ignore[arg-type]
+
+    def lerp(u: float, v: float) -> float:
+        return u + (v - u) * f
+
+    turn = ((b.wind_from - a.wind_from + 540.0) % 360.0) - 180.0
+    return Light(d, sun, lerp(a.ambient, b.ambient), lerp(a.diffuse, b.diffuse),  # type: ignore[arg-type]
                  _mix(a.sky_top, b.sky_top, f), _mix(a.sky_horizon, b.sky_horizon, f), _mix(a.tint, b.tint, f),
-                 a.elevation + (b.elevation - a.elevation) * f,
-                 None if a.ts is None or b.ts is None else a.ts + (b.ts - a.ts) * f)
+                 lerp(a.elevation, b.elevation), None if a.ts is None or b.ts is None else lerp(a.ts, b.ts),
+                 lerp(a.cloud, b.cloud), lerp(a.fog_start, b.fog_start), lerp(a.fog_end, b.fog_end),
+                 lerp(a.rain, b.rain), lerp(a.snow, b.snow), lerp(a.wind_kmh, b.wind_kmh),
+                 (a.wind_from + turn * f) % 360.0, a.storm if f < 0.5 else b.storm)

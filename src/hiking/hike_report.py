@@ -17,7 +17,8 @@ from .hike_info import hike_date_label, hike_people, hike_start, hike_title, rea
 from .models import ComposedRoute, DestinationPack, HikePhotoPin, HikeSession, TrailSegment
 
 # Free-form hike details stored in HikeSession.conditions_logged
-DETAIL_KEYS = ("companions", "weather", "temp_low_c", "temp_high_c", "precip_mm", "wind_kmh", "weather_source")
+DETAIL_KEYS = ("companions", "weather", "temp_low_c", "temp_high_c", "precip_mm", "wind_kmh", "weather_source",
+               "weather_hourly")  # weather_hourly: JSON rows from core.weather.hourly_rows, for the replays
 
 ON_TRAIL_M = 30.0  # a route vertex this close to a trail is walking on it
 MIN_LEG_M = 60.0  # shorter runs (junction jitter, overlapping trails) merge into their neighbours

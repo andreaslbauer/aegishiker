@@ -767,13 +767,14 @@
   }
 
   // ── 3D replay (port of src/gui/replay3d.py) ───────────────────────────────
-  const VIEW_RADIUS_M = 4200, FOG_START = 1800, FOG_END = 5200, BASE_DURATION_S = 75;
+  // FOG_END: a clear day's haze; the hike's weather closes it in (light.fog)
+  const VIEW_RADIUS_M = 4200, FOG_END = 5200, BASE_DURATION_S = 75, PRECIP_MAX = 520;
   const APPROACH_M = 300, DEPART_M = 250, EASE_SHARE = 0.06, MIN_SPEED = 0.12;
   // Photo stops: the same timing as the app (src/gui/replay3d.py)
   const BLEND_IN_S = 1.0, BLEND_OUT_S = 0.9, FIRST_HOLD_S = 3.0, NEXT_HOLD_S = 1.5, XFADE_S = 0.5;
   // The look without a time: a sun from the north-west, 40° up (DEFAULT_LIGHT in src/hiking/daylight.py)
   const DEFAULT_LIGHT = { along: 0, sun: [-0.54, 0.54, 0.64], amb: 0.45, dif: 0.85, top: [88, 140, 196], hor: [196, 214, 226],
-    tint: [255, 255, 255], elev: 40, ts: null };
+    tint: [255, 255, 255], elev: 40, ts: null, cloud: 0, fog: [1800, 5200], rain: 0, snow: 0, wind: 8, windFrom: 270, storm: false };
   // Map layers on the terrain (as in the app): kind -> [rgb, pen width, fades out beyond this depth]
   const LAYER_PENS = {
     water_edge: [[76, 155, 214], 1.6, FOG_END], river: [[76, 155, 214], 2.8, FOG_END],
@@ -1027,6 +1028,9 @@
       this.tz = R.tz;
       this.lit = new Map();
       this.litIdx = -1;
+      let seed = 7; // the same drops every time
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+      this.precipSeeds = Float32Array.from({ length: PRECIP_MAX * 3 }, rnd);
       this.light = this.lights[0];
       if (m.ground) {
         const C = m.cols, cells = (m.cols - 1) * (m.rows - 1), z = this.mesh.z;
@@ -1363,14 +1367,19 @@
     // time of day
     _lightAt(d) {
       const K = this.lights;
-      if (K.length < 2) return K[0];
+      if (K.length < 2) return Object.assign({}, DEFAULT_LIGHT, K[0]);
       const step = K[K.length - 1].along / (K.length - 1) || 1;
       const i = clamp(Math.floor(d / step), 0, K.length - 2), a = K[i], b = K[i + 1];
       const f = clamp((d - a.along) / step, 0, 1);
       const mix = (u, v) => u.map((x, j) => Math.round(x + (v[j] - x) * f));
+      const lerp = (u, v) => (u == null ? 0 : u) + ((v == null ? 0 : v) - (u == null ? 0 : u)) * f;
+      const turn = ((((b.windFrom || 270) - (a.windFrom || 270) + 540) % 360) - 180);
       return { sun: a.sun.map((x, j) => x + (b.sun[j] - x) * f), top: mix(a.top, b.top), hor: mix(a.hor, b.hor),
         tint: mix(a.tint, b.tint), elev: a.elev + (b.elev - a.elev) * f,
-        ts: a.ts == null || b.ts == null ? null : a.ts + (b.ts - a.ts) * f };
+        ts: a.ts == null || b.ts == null ? null : a.ts + (b.ts - a.ts) * f,
+        cloud: lerp(a.cloud, b.cloud), fog: mix(a.fog || DEFAULT_LIGHT.fog, b.fog || DEFAULT_LIGHT.fog),
+        rain: lerp(a.rain, b.rain), snow: lerp(a.snow, b.snow), wind: lerp(a.wind, b.wind),
+        windFrom: ((a.windFrom || 270) + turn * f + 360) % 360, storm: f < 0.5 ? !!a.storm : !!b.storm };
     }
     _relight() {
       this.light = this._lightAt(this.dist);
@@ -1381,10 +1390,13 @@
       let col = this.lit.get(idx);
       if (!col) {
         const k = K[idx], [lx, ly, lz] = k.sun, N = this.normals, G = this.ground;
+        const cover = Math.min(0.85, (k.snow || 0) * 1.3); // snow whitens the ground, most on gentle slopes
         col = new Uint8Array(G.length);
         for (let i = 0; i < N.length; i += 3) {
           const f = k.amb + k.dif * Math.max(0, N[i] * lx + N[i + 1] * ly + N[i + 2] * lz);
-          col[i] = Math.min(255, G[i] * f); col[i + 1] = Math.min(255, G[i + 1] * f); col[i + 2] = Math.min(255, G[i + 2] * f);
+          let gr = G[i], gg = G[i + 1], gb = G[i + 2];
+          if (cover > 0) { const s = cover * Math.pow(N[i + 2], 6); gr += (232 - gr) * s; gg += (236 - gg) * s; gb += (242 - gb) * s; }
+          col[i] = Math.min(255, gr * f); col[i + 1] = Math.min(255, gg * f); col[i + 2] = Math.min(255, gb * f);
         }
         this.lit.set(idx, col);
       }
@@ -1396,15 +1408,51 @@
       const sky = ctx.createLinearGradient(0, 0, 0, h * 0.6);
       sky.addColorStop(0, `rgb(${L.top})`); sky.addColorStop(1, `rgb(${L.hor})`);
       ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
-      if (L.elev > -3) { // the sun's glow, hidden by the terrain drawn over it
+      if (L.elev > -3 && L.cloud < 0.9) { // the sun's glow, hidden by the terrain drawn over it
         const far = 30000, s = project(cam.x + L.sun[0] * far, cam.y + L.sun[1] * far, cam.z + Math.max(L.sun[2], 0) * far);
         if (s) {
           const warm = clamp(1 - L.elev / 25, 0, 1), rad = 70 + 50 * warm;
           const core = `${255},${Math.round(246 - 40 * warm)},${Math.round(225 - 95 * warm)}`;
           const g = ctx.createRadialGradient(s[0], s[1], 0, s[0], s[1], rad);
-          g.addColorStop(0, `rgba(${core},0.92)`); g.addColorStop(0.12, `rgba(${core},0.92)`); g.addColorStop(1, `rgba(${core},0)`);
+          const a = (0.92 * (1 - L.cloud)).toFixed(3);
+          g.addColorStop(0, `rgba(${core},${a})`); g.addColorStop(0.12, `rgba(${core},${a})`); g.addColorStop(1, `rgba(${core},0)`);
           ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s[0], s[1], rad, 0, 2 * Math.PI); ctx.fill();
         }
+      }
+    }
+    _weather(ctx, w, h) {
+      // Falling rain or snow, blown by the wind across the view, and lightning in a thunderstorm.
+      // Stateless: every drop's place follows from its seed and the clock, so nothing is simulated
+      const L = this.light;
+      if (L.rain < 0.03 && L.snow < 0.03 && !L.storm) return;
+      const t = performance.now() / 1000;
+      const to = (L.windFrom + 180) * Math.PI / 180; // where the wind blows to: x east, y north
+      const across = Math.sin(to) * Math.sin(this.yaw) - Math.cos(to) * Math.cos(this.yaw); // + blows to the right
+      const push = across * Math.min(1, L.wind / 45), S = this.precipSeeds, W = w * 1.3, Hh = h * 1.2;
+      if (L.rain >= 0.03) {
+        ctx.strokeStyle = `rgba(208,218,232,${((60 + 70 * L.rain) / 255).toFixed(3)})`; ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        for (let i = 0, n = Math.floor(PRECIP_MAX * L.rain); i < n; i++) {
+          const u = S[3 * i], v = S[3 * i + 1], z = S[3 * i + 2], fall = 950 * (0.75 + 0.5 * z), ln = 13 + 12 * z;
+          const x = (((u * W + t * fall * push * 0.6) % W) + W) % W - w * 0.15, y = (v * Hh + t * fall) % Hh - h * 0.1;
+          ctx.moveTo(x, y); ctx.lineTo(x - push * ln * 0.6, y - ln);
+        }
+        ctx.stroke();
+      }
+      if (L.snow >= 0.03) {
+        ctx.fillStyle = "rgba(246,248,252,0.84)";
+        ctx.beginPath();
+        for (let i = 0, n = Math.floor(PRECIP_MAX * L.snow); i < n; i++) {
+          const u = S[3 * i], v = S[3 * i + 1], z = S[3 * i + 2], fall = 55 * (0.6 + 0.8 * z);
+          const x = (((u * W + t * fall * push * 2.2 + Math.sin(t * 1.3 + u * 40) * 10) % W) + W) % W - w * 0.15;
+          const y = (v * Hh + t * fall) % Hh - h * 0.1, r = 0.8 + 0.65 * Math.floor(z * 3);
+          ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 2 * Math.PI);
+        }
+        ctx.fill();
+      }
+      if (L.storm) {
+        const ph = t % 7.3;
+        if (ph < 0.08 || (ph > 0.17 && ph < 0.23)) { ctx.fillStyle = "rgba(235,240,255,0.37)"; ctx.fillRect(0, 0, w, h); }
       }
     }
     _tint(ctx, w, h) { // golden hour, dusk and night colour everything drawn so far
@@ -1432,6 +1480,7 @@
       this._sky(ctx, w, h, cam, project);
       this._terrain(ctx, cam, project);
       this._tint(ctx, w, h);
+      this._weather(ctx, w, h);
       this._peaks(ctx, project);
       this._hiker(ctx, project, [p[0], p[1], Math.max(p[2], this.heightAt(p[0], p[1])) + 6]);
       this._hud(ctx, w, h, p[3]);
@@ -1446,6 +1495,7 @@
       const hr = Math.floor((hy - M.y0) / M.cell), hc = Math.floor((hx - M.x0) / M.cell);
       const r0 = Math.max(0, hr - rc), r1 = Math.min(M.rows - 2, hr + rc), c0 = Math.max(0, hc - rc), c1 = Math.min(M.cols - 2, hc + rc);
       const pw = c1 - c0 + 2;
+      const fogStart = this.light.fog[0], fogEnd = this.light.fog[1];
       const proj = new Array((r1 - r0 + 2) * pw);
       for (let r = r0; r <= r1 + 1; r++) {
         for (let c = c0; c <= c1 + 1; c++) {
@@ -1462,7 +1512,7 @@
           const miny = Math.min(a[1], b[1], cc[1], d[1]), maxy = Math.max(a[1], b[1], cc[1], d[1]);
           if (maxx < 0 || minx > w || maxy < 0 || miny > h) continue;
           const depth = (a[2] + b[2] + cc[2] + d[2]) / 4;
-          if (depth > FOG_END + 600) continue;
+          if (depth > fogEnd + 600) continue;
           cells.push([depth, r, c, a, b, cc, d]);
         }
       }
@@ -1474,7 +1524,7 @@
       for (const cell of cells) {
         const depth = cell[0], r = cell[1], c = cell[2], a = cell[3], b = cell[4], cc = cell[5], d = cell[6];
         const ci = (r * (C - 1) + c) * 3;
-        const f = depth <= FOG_START ? 0 : Math.min(1, (depth - FOG_START) / (FOG_END - FOG_START));
+        const f = depth <= fogStart ? 0 : Math.min(1, (depth - fogStart) / (fogEnd - fogStart));
         const col = "rgb(" + Math.round(M.color[ci] + (SKY_HORIZON[0] - M.color[ci]) * f) + "," +
           Math.round(M.color[ci + 1] + (SKY_HORIZON[1] - M.color[ci + 1]) * f) + "," +
           Math.round(M.color[ci + 2] + (SKY_HORIZON[2] - M.color[ci + 2]) * f) + ")";
@@ -1500,7 +1550,7 @@
         }
         const lsegs = this.layerCells.get(key);
         if (lsegs) this._layers(ctx, project, lsegs, depth);
-        if (this.veg && depth < VEG_FAR) this._plants(ctx, project, cam.focal, r, c, depth, f);
+        if (this.veg && depth < VEG_FAR && depth < fogEnd) this._plants(ctx, project, cam.focal, r, c, depth, f);
         // Trail and photo markers on this cell are drawn now, so nearer terrain hides them
         const segs = this.trailCells.get(key);
         if (segs) {
@@ -1531,7 +1581,8 @@
       const S = this.layerSegs;
       for (const kind in byKind) {
         const [rgb, width, reach] = LAYER_PENS[kind];
-        const fade = depth <= FOG_START ? 1 : Math.max(0, 1 - (depth - FOG_START) / Math.max(1, reach - FOG_START));
+        const fogStart = this.light.fog[0], far = Math.min(reach, this.light.fog[1]);
+        const fade = depth <= fogStart ? 1 : Math.max(0, 1 - (depth - fogStart) / Math.max(1, far - fogStart));
         if (fade < 0.08) continue;
         ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(0.88 * fade).toFixed(3)})`;
         ctx.lineWidth = width;
@@ -1572,7 +1623,7 @@
       const placed = [];
       for (const pk of this.peaks) {
         const s = project(pk[1], pk[2], pk[3]);
-        if (!s || s[2] > FOG_END || s[0] < 0 || s[0] > this.w || s[1] < 0 || s[1] > this.h) continue;
+        if (!s || s[2] > this.light.fog[1] || s[0] < 0 || s[0] > this.w || s[1] < 0 || s[1] > this.h) continue;
         const label = pk[0] + "  " + fmt.ele(pk[4]);
         const tw = ctx.measureText(label).width;
         const box = [s[0] - tw / 2, s[1] - 26, tw, 14];

@@ -4,7 +4,8 @@ user asks for it; every request is logged to ~/.aegishiker/logs/network.jsonl.
 Recent days (about the last three months) come from the forecast service's past data, older ones
 from the ERA5 historical archive.
 """
-from datetime import date, datetime, timedelta
+import json
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import requests
@@ -50,8 +51,30 @@ def _hours_window(hours: List[str], start: Optional[datetime], end: Optional[dat
     return out
 
 
+HOURLY_FIELDS = ("weather_code", "cloud_cover", "precipitation", "wind_speed_10m", "wind_direction_10m", "temperature_2m")
+
+
+def hourly_rows(data: Dict, idx: List[int]) -> List[List[float]]:
+    """The hike's hours (and one either side) as [UTC seconds, *HOURLY_FIELDS] rows (None where
+    unknown): the 3D replays draw the clouds, rain, snow and wind of each hour from them."""
+    hourly = data.get("hourly") or {}
+    hours = hourly.get("time") or []
+    offset = float(data.get("utc_offset_seconds") or 0)
+    rows = []
+    for i in range(max(0, min(idx) - 1), min(len(hours), max(idx) + 2)):
+        ts = datetime.fromisoformat(hours[i]).replace(tzinfo=timezone.utc).timestamp() - offset
+        row: List = [int(ts)]
+        for key in HOURLY_FIELDS:
+            series = hourly.get(key) or []
+            v = series[i] if i < len(series) else None
+            row.append(None if v is None else round(float(v), 1))
+        rows.append(row)
+    return rows
+
+
 def summarize_hourly(data: Dict, start: Optional[datetime], end: Optional[datetime]) -> Dict[str, str]:
-    """Hike-time weather from an Open-Meteo response: conditions, temperature range, rain, wind."""
+    """Hike-time weather from an Open-Meteo response: conditions, temperature range, rain, wind, and
+    the hour-by-hour series for the replays."""
     hourly = data.get("hourly") or {}
     hours = hourly.get("time") or []
     idx = _hours_window(hours, start, end) or list(range(len(hours)))
@@ -77,6 +100,8 @@ def summarize_hourly(data: Dict, start: Optional[datetime], end: Optional[dateti
         out["precip_mm"] = f"{sum(rain):.1f}"
     if wind:
         out["wind_kmh"] = f"{max(wind):.0f}"
+    if any(hourly.get(k) for k in HOURLY_FIELDS):
+        out["weather_hourly"] = json.dumps(hourly_rows(data, idx), separators=(",", ":"))
     return out
 
 
@@ -93,7 +118,7 @@ def fetch_hike_weather(
         "longitude": f"{lon:.4f}",
         "start_date": day.isoformat(),
         "end_date": day.isoformat(),
-        "hourly": "temperature_2m,precipitation,weather_code,wind_speed_10m",
+        "hourly": "temperature_2m,precipitation,weather_code,wind_speed_10m,cloud_cover,wind_direction_10m",
         "timezone": "auto",
     }
     http = session or requests.Session()
