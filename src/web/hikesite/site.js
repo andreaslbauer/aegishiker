@@ -1978,6 +1978,10 @@
       img.dataset.full = "";
       loadImage(p.src).then(f => { if (f && list[pos] === p) { img.src = f.src; img.dataset.full = "1"; } });
       side.textContent = "";
+      if (list.length > 1) side.append(el("div", { class: "steps" },
+        el("button", { class: "btn ghost", "aria-label": "Previous photo", onclick: () => go(-1), text: "‹ Previous photo" }),
+        el("span", { class: "pos", text: (pos + 1) + " / " + list.length }),
+        el("button", { class: "btn ghost", "aria-label": "Next photo", onclick: () => go(1), text: "Next photo ›" })));
       const title = p.caption || (p.trail ? "On the " + p.trail : "Photo " + (p.i + 1));
       side.append(el("div", { class: "when", text: p.time_iso ? fmt.datetime(p.time_iso) : "Time unknown" }), el("h3", { text: title }));
       if (p.ai && p.ai !== title) side.append(el("div", { class: "small", style: { color: "#c3d3c8" }, text: p.ai }));
@@ -2002,7 +2006,8 @@
       mini.box.style.height = "230px";
       side.append(el("div", { class: "btns" },
         el("a", { class: "btn ghost", href: "#map", onclick: e => { e.preventDefault(); pendingFocus = p.i; navigate("map"); }, text: "🗺 Show on map" }),
-        el("a", { class: "btn ghost", href: "#play", onclick: e => { e.preventDefault(); pendingPlayAlong = p.along_m; navigate("play"); }, text: "▶ Play from here" })));
+        el("a", { class: "btn ghost", href: "#play", onclick: e => { e.preventDefault(); pendingPlayAlong = p.along_m; navigate("play"); }, text: "▶ Play from here" }),
+        list.length > 1 ? el("button", { class: "btn ghost", onclick: () => openSlideshow(list, pos), text: "⧉ Slide show from here" }) : null));
     };
     const go = d => { pos = (pos + d + list.length) % list.length; show(); };
     const box = el("div", { class: "lightbox", role: "dialog", "aria-label": "Photo" },
@@ -2039,7 +2044,124 @@
     lightbox = null;
     if (back) history.back();
   }
-  window.addEventListener("popstate", () => closePhoto(true));
+  window.addEventListener("popstate", () => { closePhoto(true); closeSlideshow(true); });
+
+  // ── slide show ────────────────────────────────────────────────────────────
+  // Full screen, one photo after another: cross-fades with a slow zoom, a caption, and controls
+  // that fade away while it plays. Space plays / pauses, ← → step, F full screen, Esc closes.
+  const SLIDE_SPEEDS = [3, 5, 8];
+  let slideshow = null;
+  function openSlideshow(list, start) {
+    list = list && list.length ? list : H.photos;
+    if (!list.length) return;
+    closePhoto(true);
+    closeSlideshow(true);
+    let pos = clamp(start || 0, 0, list.length - 1), playing = true, timer = null, hideTimer = null, token = 0;
+    let secs = SLIDE_SPEEDS.includes(+store.get("hike_slide_secs")) ? +store.get("hike_slide_secs") : 5;
+    const calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const layers = [el("div", { class: "slide" }), el("div", { class: "slide" })];
+    let front = 0;
+    const when = el("div", { class: "when" }), title = el("div", { class: "title" }), count = el("div", { class: "count" });
+    const bar = el("div", { class: "bar" });
+    const playBtn = el("button", { class: "ctl", "aria-label": "Pause", onclick: () => toggle() });
+    const speedBtn = el("button", { class: "ctl speed", "aria-label": "Seconds per photo", onclick: () => {
+      secs = SLIDE_SPEEDS[(SLIDE_SPEEDS.indexOf(secs) + 1) % SLIDE_SPEEDS.length];
+      store.set("hike_slide_secs", String(secs));
+      sync(); if (playing) schedule();
+    } });
+    const fsBtn = el("button", { class: "ctl", "aria-label": "Full screen", text: "⛶", onclick: () => fullscreen() });
+    const box = el("div", { class: "slideshow" + (calm ? " calm" : ""), role: "dialog", "aria-label": "Slide show" },
+      layers[0], layers[1],
+      el("div", { class: "caption" }, when, title, count),
+      el("div", { class: "progress" }, bar),
+      list.length > 1 ? el("button", { class: "nav prev", "aria-label": "Previous photo", text: "‹", onclick: () => go(-1) }) : null,
+      list.length > 1 ? el("button", { class: "nav next", "aria-label": "Next photo", text: "›", onclick: () => go(1) }) : null,
+      el("div", { class: "controls" }, playBtn, speedBtn, fsBtn,
+        el("button", { class: "ctl", "aria-label": "Close", text: "✕", onclick: () => closeSlideshow() })));
+    const sync = () => {
+      playBtn.textContent = playing ? "❚❚" : "▶";
+      playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+      speedBtn.textContent = secs + " s";
+      box.classList.toggle("paused", !playing);
+    };
+    const schedule = () => {
+      clearTimeout(timer);
+      // The bar fills over this photo's time; it restarts from empty for each photo
+      bar.style.transition = "none"; bar.style.width = "0%";
+      void bar.offsetWidth;
+      if (!playing || list.length < 2) return;
+      bar.style.transition = `width ${secs}s linear`; bar.style.width = "100%";
+      timer = setTimeout(() => go(1), secs * 1000);
+    };
+    const show = () => {
+      const p = list[pos], mine = ++token;
+      when.textContent = p.time_iso ? fmt.datetime(p.time_iso) : "";
+      title.textContent = p.caption || p.ai || (p.trail ? "On the " + p.trail : "");
+      count.textContent = (pos + 1) + " / " + list.length + (p.trail ? " · " + p.trail : "");
+      clearTimeout(timer);
+      const put = img => {
+        if (mine !== token || !img) return;
+        const next = layers[1 - front];
+        next.style.backgroundImage = `url("${img.src}")`;
+        next.classList.remove("on"); void next.offsetWidth; // restart the slow zoom
+        next.classList.add("on");
+        layers[front].classList.remove("on");
+        front = 1 - front;
+        schedule();
+      };
+      // The thumbnail stands in while the full photo loads; the timer starts once something shows
+      loadImage(p.src).then(full => { if (full) put(full); else loadImage(p.thumb).then(put); });
+      // Load the next photo while this one shows
+      if (list.length > 1) loadImage(list[(pos + 1) % list.length].src);
+    };
+    const go = d => { pos = (pos + d + list.length) % list.length; show(); wake(); };
+    const toggle = () => { playing = !playing; sync(); schedule(); wake(); }; // resuming gives this photo its full time again
+    const fullscreen = () => {
+      if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
+      else if (box.requestFullscreen) box.requestFullscreen().catch(() => {});
+    };
+    // Controls show on any movement and fade away again while it plays
+    const wake = () => {
+      box.classList.add("awake");
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => box.classList.remove("awake"), 2500);
+    };
+    box.addEventListener("pointermove", wake);
+    let sx = null;
+    box.addEventListener("pointerdown", e => { sx = e.target.closest("button") ? null : e.clientX; wake(); });
+    box.addEventListener("pointerup", e => {
+      if (sx == null) return;
+      if (Math.abs(e.clientX - sx) > 50) go(e.clientX < sx ? 1 : -1);
+      sx = null;
+    });
+    box.addEventListener("pointercancel", () => { sx = null; });
+    const onKey = e => {
+      if (e.key === "Escape" && !document.fullscreenElement) closeSlideshow();
+      else if (e.key === " " || e.key === "k") { e.preventDefault(); toggle(); }
+      else if (e.key === "ArrowLeft") go(-1);
+      else if (e.key === "ArrowRight") go(1);
+      else if (e.key === "f" || e.key === "F") fullscreen();
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.append(box);
+    document.body.style.overflow = "hidden";
+    if (history.pushState) history.pushState({ slideshow: true }, "");
+    slideshow = { box, onKey, pushed: !!history.pushState, stop: () => { clearTimeout(timer); clearTimeout(hideTimer); token++; } };
+    sync();
+    show();
+    wake();
+  }
+  function closeSlideshow(keepHistory) {
+    if (!slideshow) return;
+    const back = slideshow.pushed && !keepHistory;
+    slideshow.stop();
+    document.removeEventListener("keydown", slideshow.onKey);
+    if (document.fullscreenElement === slideshow.box && document.exitFullscreen) document.exitFullscreen();
+    slideshow.box.remove();
+    document.body.style.overflow = "";
+    slideshow = null;
+    if (back) history.back();
+  }
 
   // ── views ─────────────────────────────────────────────────────────────────
   let pendingFocus = null, pendingPlayAlong = null;
@@ -2085,7 +2207,8 @@
       el("div", { class: "actions" },
         el("a", { class: "btn", href: "#play", text: "▶ Play the hike" }),
         el("a", { class: "btn light", href: "#map", text: "Explore the map" }),
-        H.photos.length ? el("a", { class: "btn light", href: "#photos", text: H.photos.length + " photos" }) : null)));
+        H.photos.length ? el("a", { class: "btn light", href: "#photos", text: H.photos.length + " photos" }) : null,
+        H.photos.length > 1 ? el("button", { class: "btn light", onclick: () => openSlideshow(H.photos, 0), text: "⧉ Slide show" }) : null)));
     main.append(hero);
 
     const stat = (k, v, s) => el("div", { class: "stat" }, el("div", { class: "k", text: k }), el("div", { class: "v", text: v }), s ? el("div", { class: "s", text: s }) : null);
@@ -2237,9 +2360,10 @@
     const filters = el("div", { class: "filters" });
     const grid = el("div", { class: "gallery" });
     let filter = null;
+    const shown = () => H.photos.filter(p => !filter || (filter.t === "trail" ? p.trail === filter.v : p.people.includes(filter.v)));
     const render = () => {
       grid.textContent = "";
-      const list = H.photos.filter(p => !filter || (filter.t === "trail" ? p.trail === filter.v : p.people.includes(filter.v)));
+      const list = shown();
       list.forEach(p => grid.append(tile(p, list)));
       [...filters.children].forEach(b => b.classList.toggle("on", b._f === filter || (b._f && filter && b._f.v === filter.v)));
     };
@@ -2247,7 +2371,9 @@
     filters.append(fbtn("All " + H.photos.length, null));
     if (trails.length > 1) trails.forEach(t => filters.append(fbtn(t, { t: "trail", v: t })));
     people.forEach(n => filters.append(fbtn("👤 " + n, { t: "person", v: n })));
-    main.append(filters, grid);
+    const head = el("div", { class: "gallery-head" }, filters,
+      H.photos.length > 1 ? el("button", { class: "btn", onclick: () => openSlideshow(shown(), 0), text: "▶ Slide show" }) : null);
+    main.append(head, grid);
     render();
     if (focusId) { const p = H.photos.find(q => q.id === focusId); if (p) openPhoto(p.i); }
     return { destroy() {} };
