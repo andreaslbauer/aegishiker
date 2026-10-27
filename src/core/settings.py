@@ -53,6 +53,19 @@ DEFAULTS: Dict[str, Any] = {
     "window_state": "",                 # base64 QMainWindow.saveState() (docks, toolbars)
     "active_tab": 0,
     "ui_state": {},                     # splitter positions and per-panel selections
+    "include_minor_paths": True,        # route builder: offer minor paths too
+    "replay_show_photos": True,         # 3D replays stop at photos
+    # Hike websites and their FTP publishing (never the FTP password)
+    "hike_site_skip_people": False,
+    "hike_site_dirs": {},               # session id -> local website folder
+    "hike_site_urls": {},               # session id -> website URL
+    "hike_site_remote_dirs": {},        # session id -> server folder
+    "ftp_host": "",
+    "ftp_port": 21,
+    "ftp_user": "",
+    "ftp_tls": True,
+    "ftp_remote_base": "/",             # new websites go into a folder under this
+    "ftp_site_base_url": "",            # …and are on the web under this URL
 }
 
 CHOICES: Dict[str, tuple] = {

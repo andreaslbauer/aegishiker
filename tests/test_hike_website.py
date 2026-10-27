@@ -341,3 +341,25 @@ def test_ftp_settings_are_remembered_but_not_the_password(seeded_db: Database, t
     assert again.url_edit.text() == f"https://example.com/hikes/{dlg.slug}/"
     assert again.remote_edit.text() == f"/www/hikes/{dlg.slug}"
     again.deleteLater()
+
+
+def test_ftp_settings_survive_a_restart(temp_app_dir: Path) -> None:
+    """The app's own settings file (not a test file) keeps the website/FTP keys across launches."""
+    from src.core.settings import Settings
+
+    s = Settings()
+    s.set("ftp_host", "ftp.example.com")
+    s.set("ftp_port", 2121)
+    s.set("ftp_user", "hiker")
+    s.set("ftp_tls", False)
+    s.set("ftp_remote_base", "/www/hikes")
+    s.set("ftp_site_base_url", "https://example.com/hikes")
+    s.set("hike_site_urls", {"sess1": "https://example.com/hikes/a/"})
+    s.set("replay_show_photos", False)
+    s.save()
+    again = Settings()
+    assert (again.get("ftp_host"), again.get("ftp_port"), again.get("ftp_user")) == ("ftp.example.com", 2121, "hiker")
+    assert again.get("ftp_tls") is False and again.get("ftp_remote_base") == "/www/hikes"
+    assert again.get("ftp_site_base_url") == "https://example.com/hikes"
+    assert again.get("hike_site_urls") == {"sess1": "https://example.com/hikes/a/"}
+    assert again.get("replay_show_photos") is False
