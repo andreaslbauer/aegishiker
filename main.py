@@ -24,6 +24,7 @@ import shiboken6
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication
 
+from src.core import paths
 from src.core.about import APP_NAME, get_version
 from src.core.database import Database
 from src.core.settings import Settings
@@ -41,10 +42,17 @@ logger = logging.getLogger("aegishiker")
 
 
 def setup_logging(debug: bool = False) -> None:
+    # The windowed Windows build (MSIX) has no stderr: log to ~/.aegishiker/logs instead
+    log_file = None
+    if sys.stderr is None:
+        paths.ensure_app_dirs()
+        log_file = paths.LOGS_DIR / "aegishiker.log"
     logging.basicConfig(
         level=logging.DEBUG if debug else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        filename=log_file,
+        encoding="utf-8",
     )
 
 
@@ -231,7 +239,11 @@ def main() -> int:
 
     setup_logging(args.debug)
     # A native crash (Qt / image codecs) prints the Python stack of every thread to stderr
-    faulthandler.enable(all_threads=True)
+    # (to a log file in the windowed Windows build, where faulthandler.enable() would raise)
+    if sys.stderr is not None:
+        faulthandler.enable(all_threads=True)
+    else:
+        faulthandler.enable(open(paths.LOGS_DIR / "faulthandler.log", "a", encoding="utf-8"), all_threads=True)
 
     app = QApplication([sys.argv[0]] + qt_args)
     app.setOrganizationName("Aegis")
