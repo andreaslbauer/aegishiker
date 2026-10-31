@@ -299,6 +299,25 @@ def build_stylesheet(theme: str = "dark", font_scale: float = 1.0) -> str:
         background-color: {c['accent']};
         border-color: {c['accent']};
     }}
+    QRadioButton {{
+        spacing: 8px;
+    }}
+    QRadioButton::indicator {{
+        width: 14px;
+        height: 14px;
+        border: 1px solid {c['border_strong']};
+        border-radius: 8px;
+        background-color: {c['input_bg']};
+    }}
+    QRadioButton::indicator:hover {{
+        border-color: {c['accent']};
+    }}
+    QRadioButton::indicator:checked {{
+        border: 4px solid {c['accent']};
+        width: 8px;
+        height: 8px;
+        background-color: {c['input_bg']};
+    }}
 
     /* ── Inputs ── */
     QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {{

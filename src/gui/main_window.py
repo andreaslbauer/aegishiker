@@ -1,7 +1,7 @@
 """Main application window for AegisHiker."""
 from typing import Dict, Optional
 from PySide6.QtCore import QByteArray, QEvent, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QFont, QIcon, QShowEvent
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QFont, QIcon, QKeySequence, QShowEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -23,6 +23,7 @@ from src.core.about import APP_NAME, get_version
 from src.gui.app_state import AppState
 from src.gui.chat_dock import ChatDock
 from src.gui.dialogs.about_dialog import AboutDialog
+from src.gui.dialogs.configure_dialog import ConfigureDialog
 from src.gui.dialogs.help_dialog import HelpDialog
 from src.gui.dialogs.region_download_dialog import RegionDownloadDialog
 from src.gui.panels.brainstorm_panel import BrainstormPanel
@@ -235,6 +236,13 @@ class MainWindow(QMainWindow):
         pdf_act = QAction("Export Trailhead & Safety PDF...", self)
         pdf_act.triggered.connect(self._export_active_pdf)
         file_menu.addAction(pdf_act)
+
+        file_menu.addSeparator()
+        configure_act = QAction("&Configure...", self)
+        configure_act.setShortcut(QKeySequence("Ctrl+,"))
+        configure_act.setMenuRole(QAction.MenuRole.PreferencesRole)
+        configure_act.triggered.connect(lambda: self._run_dialog(ConfigureDialog(self.app_state, self)))
+        file_menu.addAction(configure_act)
 
         file_menu.addSeparator()
         quit_act = QAction("E&xit", self)

@@ -309,15 +309,16 @@ class ComposerPanel(QWidget):
         if route is None or len(route.coords_3d) < 2:
             self.app_state.status_message.emit("Build or pick a hike to play it in 3D.")
             return
-        photos = [] if self._draft is not None else self.app_state.db.list_photo_pins(route_id=route.id)
         unit = str(self.app_state.settings.get("unit_system", "metric"))
         show = bool(self.app_state.settings.get("replay_show_photos", True))
         with busy(self, "Building 3D terrain for the replay…", title="3D Replay"):
             from src.gui.replay3d import Replay3DDialog
 
+            photos = [] if self._draft is not None else self.app_state.replay_photos(
+                self.app_state.db.list_photo_pins(route_id=route.id))
             pack = self.app_state.db.get_destination_pack(route.destination_id)
             dlg = Replay3DDialog(route, pack, photos, "metric" if unit == "metric" else "us", self,
-                                 show_photos=show)
+                                 show_photos=show, speed=float(self.app_state.settings.get("replay_speed", 1.0)))
         dlg.exec()
         if dlg.photos_check.isEnabled() and dlg.photos_check.isChecked() != show:  # remember the choice
             self.app_state.settings.set("replay_show_photos", dlg.photos_check.isChecked())

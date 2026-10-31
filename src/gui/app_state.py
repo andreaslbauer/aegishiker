@@ -11,14 +11,18 @@ from src.core.settings import Settings
 from src.core.trail_server import TrailServer
 from src.core.voyager_bridge import VoyagerBridge
 from src.gui.busy import busy
+from src.hiking.hike_info import shows_people
 from src.hiking.models import (
     ComposedRoute,
     Destination,
+    HikePhotoPin,
     HikeSession,
     POI,
     TrailPhotoPin,
     TrailSegment,
 )
+from src.hiking.photo_matcher import dedupe_pins
+from src.hiking.replay_plan import collapse_similar
 
 
 class AppState(QObject):
@@ -171,6 +175,17 @@ class AppState(QObject):
         if self.active_route_id:
             return self.db.list_photo_pins(route_id=self.active_route_id)
         return []
+
+    def replay_photos(self, pins: List[HikePhotoPin]) -> List[HikePhotoPin]:
+        """The photos a 3D replay stops at, as Configure → 3D Walkthrough asks: with or without
+        people in them, and one photo per spot of many similar ones (from AegisPhotoVoyager)."""
+        pins = dedupe_pins(list(pins))
+        if not self.settings.get("replay_include_people", True):
+            pins = [p for p in pins if not shows_people(p)]
+        if self.settings.get("replay_one_per_cluster", False) and len(pins) > 1:
+            ids = [p.voyager_photo_id for p in pins if p.voyager_photo_id is not None]
+            pins = collapse_similar(pins, self.voyager_bridge.visual_signatures(ids))
+        return pins
 
     def close(self) -> None:
         try:

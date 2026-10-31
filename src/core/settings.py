@@ -55,6 +55,9 @@ DEFAULTS: Dict[str, Any] = {
     "ui_state": {},                     # splitter positions and per-panel selections
     "include_minor_paths": True,        # route builder: offer minor paths too
     "replay_show_photos": True,         # 3D replays stop at photos
+    "replay_include_people": True,      # …including photos with people in them
+    "replay_one_per_cluster": False,    # one photo per spot of many similar photos (Voyager data)
+    "replay_speed": 1.0,                # playback speed a replay starts at
     # Hike websites and their FTP publishing (never the FTP password)
     "hike_site_skip_people": False,
     "hike_site_dirs": {},               # session id -> local website folder
@@ -74,6 +77,7 @@ CHOICES: Dict[str, tuple] = {
     "paper_size": ("letter", "a4"),
     "theme": ("dark", "light"),
     "fitness_level": ("leisurely", "moderate", "athletic", "mountaineer"),
+    "replay_speed": (0.5, 1.0, 2.0, 4.0),
 }
 
 _lock = threading.Lock()

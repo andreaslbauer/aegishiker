@@ -7,15 +7,19 @@ and identified people (faces/persons).
 import json
 import re
 import logging
+import math
 import os
+from array import array
 from pathlib import Path
 import sqlite3
+import zlib
 from typing import Any, Dict, List, Optional
 
 from src.hiking.geo import compute_bbox, expand_bbox_meters
 from src.hiking.models import HikePhotoPin
 from src.hiking.hike_info import is_placeholder_person  # noqa: F401  (re-exported)
 from src.hiking.photo_matcher import match_photos_to_trail
+from src.hiking.replay_plan import VisualSignature
 
 from . import settings
 
@@ -105,6 +109,36 @@ def find_voyager_db(configured_path: Optional[str] = None) -> Optional[str]:
             continue
 
     return None
+
+
+def _embedding(blob: Any) -> Optional[List[float]]:
+    """A Voyager CLIP embedding (float32, zlib-compressed by its Visual Similarity worker) as a
+    unit-length vector."""
+    if not blob:
+        return None
+    try:
+        raw = bytes(blob)
+        try:
+            raw = zlib.decompress(raw)
+        except zlib.error:
+            pass  # stored uncompressed
+        if len(raw) % 4:
+            return None
+        vec = array("f")
+        vec.frombytes(raw)
+        norm = math.sqrt(sum(v * v for v in vec))
+        return [v / norm for v in vec] if norm > 0 else None
+    except Exception:
+        return None
+
+
+def _phash(text: Any) -> Optional[int]:
+    """A perceptual hash in hex; all zeros means Voyager could not hash the photo."""
+    try:
+        value = int(str(text or "").strip(), 16)
+    except ValueError:
+        return None
+    return value or None
 
 
 class VoyagerBridge:
@@ -331,6 +365,40 @@ class VoyagerBridge:
         except Exception as e:
             logger.error(f"VoyagerBridge.people_for_photo_ids failed: {e}")
             return {}
+
+    def visual_signatures(self, photo_ids: List[int]) -> Dict[int, VisualSignature]:
+        """How Voyager's photos look, to spot near-identical shots: CLIP embeddings (Visual
+        Similarity), perceptual hashes and quality scores. Photos it knows none of are left out."""
+        ids = sorted({int(i) for i in photo_ids})
+        if not ids or not self.is_available():
+            return {}
+        out: Dict[int, VisualSignature] = {}
+        try:
+            with self._conn() as conn:
+                has_emb = self._table_exists(conn, "photo_embeddings")
+                has_quality = self._table_exists(conn, "photo_quality")
+                has_phash = "phash" in {r["name"] for r in conn.execute("PRAGMA table_info(photos)").fetchall()}
+                for start in range(0, len(ids), 450):
+                    chunk = ids[start : start + 450]
+                    marks = ",".join("?" * len(chunk))
+                    sql = f"""
+                        SELECT p.id,
+                               {"p.phash" if has_phash else "NULL"} AS phash,
+                               {"e.embedding_blob" if has_emb else "NULL"} AS emb,
+                               {"q.overall" if has_quality else "NULL"} AS quality
+                        FROM photos p
+                        {"LEFT JOIN photo_embeddings e ON e.photo_id = p.id" if has_emb else ""}
+                        {"LEFT JOIN photo_quality q ON q.photo_id = p.id" if has_quality else ""}
+                        WHERE p.id IN ({marks})
+                    """
+                    for row in conn.execute(sql, chunk).fetchall():
+                        sig = VisualSignature(_embedding(row["emb"]), _phash(row["phash"]),
+                                              int(row["quality"]) if row["quality"] is not None else None)
+                        if sig.embedding is not None or sig.phash is not None:
+                            out[int(row["id"])] = sig
+        except Exception as e:
+            logger.error(f"VoyagerBridge.visual_signatures failed: {e}")
+        return out
 
     def find_photos_for_traced_trail(
         self,

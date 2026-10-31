@@ -54,6 +54,7 @@ class SettingsPanel(QWidget):
         if t_idx >= 0:
             self.theme_combo.setCurrentIndex(t_idx)
         add_form_row(display_form, "Theme", self.theme_combo)
+        self.app_state.settings_changed.connect(self._sync_theme)  # changed in Configure
 
         self.speed_spin = QDoubleSpinBox()
         self.speed_spin.setRange(1.5, 10.0)
@@ -111,6 +112,11 @@ class SettingsPanel(QWidget):
         save_row.addStretch(1)
         save_row.addWidget(save_btn)
         layout.addLayout(save_row)
+
+    def _sync_theme(self) -> None:
+        idx = self.theme_combo.findData(self.app_state.settings.get("theme", "dark"))
+        if idx >= 0:
+            self.theme_combo.setCurrentIndex(idx)
 
     def _browse_voyager(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

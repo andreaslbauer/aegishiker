@@ -1196,12 +1196,15 @@ class Replay3DView(QWidget):
         p.drawText(band.adjusted(24, 36, -24, -6), Qt.AlignmentFlag.AlignLeft, caption)
 
 
+REPLAY_SPEEDS = (("0.5×", 0.5), ("1×", 1.0), ("2×", 2.0), ("4×", 4.0))
+
+
 class Replay3DDialog(QDialog):
     """Window with the 3D replay and its playback controls."""
 
     def __init__(self, route: ComposedRoute, pack: Optional[DestinationPack], photos: List[HikePhotoPin],
                  units: str = "us", parent: Optional[QWidget] = None, month: Optional[int] = None,
-                 show_photos: bool = True, session: Optional[HikeSession] = None) -> None:
+                 show_photos: bool = True, session: Optional[HikeSession] = None, speed: float = 1.0) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"3D Hike Replay — {route.name}")
         self.resize(1280, 800)
@@ -1221,9 +1224,10 @@ class Replay3DDialog(QDialog):
         self.slider.setRange(0, 1000)
         self.slider.sliderMoved.connect(lambda v: self.view.seek(v / 1000.0))
         self.speed_combo = QComboBox()
-        for label, val in (("0.5×", 0.5), ("1×", 1.0), ("2×", 2.0), ("4×", 4.0)):
+        for label, val in REPLAY_SPEEDS:
             self.speed_combo.addItem(label, val)
-        self.speed_combo.setCurrentIndex(1)
+        self.speed_combo.setCurrentIndex(max(0, self.speed_combo.findData(float(speed))))
+        self.view.speed = float(self.speed_combo.currentData())
         self.photos_check = QCheckBox("Show photos")
         self.photos_check.setToolTip("Stop at each photo and show it, or hike straight through")
         self.photos_check.setChecked(show_photos)

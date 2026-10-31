@@ -239,6 +239,11 @@ def test_photos_can_be_hidden_and_shown_again(tmp_path: Path) -> None:
     dlg.view.shutdown()
     no_photos = Replay3DDialog(route, view_pack(), [], "us")
     assert not no_photos.photos_check.isEnabled()
+    assert no_photos.view.speed == 1.0 and no_photos.speed_combo.currentData() == 1.0
+    no_photos.view.shutdown()
+    fast = Replay3DDialog(route, view_pack(), [], "us", speed=4.0)
+    assert fast.view.speed == 4.0 and fast.speed_combo.currentText() == "4×"
+    fast.view.shutdown()
     no_photos.view.shutdown()
 
 
