@@ -5,5 +5,9 @@ cd "$DIR"
 if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 fi
-python3 main.py "$@"
+if [ -x ".venv/bin/python3" ]; then
+    exec .venv/bin/python3 main.py "$@"
+else
+    exec python3 main.py "$@"
+fi
 
