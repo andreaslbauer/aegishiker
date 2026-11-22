@@ -26,7 +26,8 @@ def test_trail_server_pwa_pack_and_telemetry_sync(seeded_db: Database) -> None:
             html = resp.read().decode("utf-8")
             assert "AegisHiker Field Companion" in html
             assert "indexedDB" in html
-            for hud_id in ("hudDist", "hudRem", "hudSpeed", "hudElev", "hudEta", "hudDark"):
+            assert "gesturestart" in html and "map-only-mode" in html
+            for hud_id in ("hudDist", "hudRem", "hudSpeed", "hudElev", "hudEta", "hudDark", "mapModeFabBtn"):
                 assert hud_id in html
 
         # Verify /bundle over HTTPS returns landmarks, viewpoints, legs, and clipped basemap

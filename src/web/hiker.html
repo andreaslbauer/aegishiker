@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<meta name="theme-color" content="#0F1B14" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0B1510" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="AegisHiker" />
@@ -14,6 +14,8 @@
     --bg: #0B1510;
     --panel: #13231A;
     --panel-alt: #1B3024;
+    --glass: rgba(11, 21, 16, 0.84);
+    --glass-card: rgba(19, 35, 26, 0.88);
     --text: #ECF5EE;
     --muted: #98B2A1;
     --accent: #2ECC71;
@@ -22,14 +24,30 @@
     --danger: #E74C3C;
     --border: #2A4535;
   }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body {
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+  html, body {
     margin: 0;
+    padding: 0;
+    width: 100%;
     background: var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-    padding-bottom: 64px;
     user-select: none;
+    -webkit-user-select: none;
+    /* Prevent browser-level pinch-zoom while allowing vertical scroll in Details mode */
+    touch-action: pan-x pan-y;
+    overscroll-behavior: none;
+    overflow-x: hidden;
+  }
+  body {
+    padding-bottom: 64px;
+  }
+  button, select, .chip {
+    touch-action: manipulation;
   }
   header {
     background: rgba(19, 35, 26, 0.96);
@@ -63,6 +81,7 @@
     font-weight: 700;
     font-size: 13px;
     text-align: center;
+    z-index: 45;
   }
   .alert-banner.warn-banner {
     background: #B45309;
@@ -104,6 +123,21 @@
   .hud-val { font-size: 16px; font-weight: 800; line-height: 1.15; }
   .hud-sub { font-size: 10px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hud-lbl { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; font-weight: 700; }
+  .progress-track {
+    width: 100%;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #2ECC71, #38BDF8);
+    border-radius: 999px;
+    transition: width 0.25s ease;
+  }
   .map-wrap {
     position: relative;
     border-radius: 10px;
@@ -115,9 +149,10 @@
     width: 100%;
     background: #08110C;
     display: block;
+    touch-action: none;
   }
-  #mapCanvas { height: 340px; touch-action: none; cursor: grab; }
-  #elevCanvas { height: 125px; margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; touch-action: none; }
+  #mapCanvas { height: 350px; touch-action: none; cursor: grab; }
+  #elevCanvas { height: 120px; margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; touch-action: none; }
   .map-tools {
     position: absolute;
     top: 8px;
@@ -125,11 +160,11 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    z-index: 10;
+    z-index: 20;
   }
   .map-tools button {
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
     padding: 0;
     border-radius: 8px;
     background: rgba(19, 35, 26, 0.9);
@@ -140,6 +175,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
   .map-tools button.active {
     border-color: var(--cyan);
@@ -154,7 +191,7 @@
     border-radius: 9px;
     font-size: 12px;
   }
-  .inspect-title { font-weight: 700; font-size: 13px; color: var(--accent); }
+  .inspect-title { font-weight: 700; font-size: 13px; color: var(--accent); display: flex; justify-content: space-between; align-items: center; }
   .inspect-meta { color: var(--muted); margin-top: 2px; }
   .btn-row { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
   button, select {
@@ -181,7 +218,7 @@
     cursor: pointer;
   }
   .chip.active { background: var(--accent); color: #09180F; border-color: var(--accent); font-weight: 700; }
-  .trail-list { max-height: 215px; overflow-y: auto; margin-top: 8px; }
+  .trail-list { max-height: 215px; overflow-y: auto; margin-top: 8px; -webkit-overflow-scrolling: touch; }
   .trail-item {
     display: flex;
     justify-content: space-between;
@@ -203,12 +240,139 @@
     background: rgba(46, 204, 113, 0.16);
     color: var(--accent);
   }
+
+  /* ── Full-Screen Map Overlay Mode (`body.map-only-mode`) ──────────────── */
+  body.map-only-mode {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    overflow: hidden;
+    padding: 0;
+    touch-action: none;
+  }
+  body.map-only-mode header,
+  body.map-only-mode #packCard,
+  body.map-only-mode #itineraryCard,
+  body.map-only-mode #conditionCard,
+  body.map-only-mode #mapCardHead,
+  body.map-only-mode #hudCardHead {
+    display: none !important;
+  }
+  body.map-only-mode .container {
+    padding: 0;
+    max-width: none;
+    width: 100vw;
+    height: 100dvh;
+    position: relative;
+  }
+  body.map-only-mode #mapCard {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    z-index: 1;
+    background: #08110C;
+  }
+  body.map-only-mode .map-wrap {
+    width: 100vw;
+    height: 100dvh;
+    border: none;
+    border-radius: 0;
+  }
+  body.map-only-mode #mapCanvas {
+    width: 100vw;
+    height: 100dvh;
+  }
+  /* Top translucent HUD overlaid on the map */
+  body.map-only-mode #hudCard {
+    position: fixed;
+    top: env(safe-area-inset-top, 8px);
+    left: 8px;
+    right: 8px;
+    margin: 0;
+    padding: 8px 10px;
+    background: var(--glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(46, 204, 113, 0.28);
+    border-radius: 12px;
+    z-index: 25;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  }
+  body.map-only-mode .hud-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  body.map-only-mode .hud-box {
+    background: rgba(27, 48, 36, 0.72);
+    padding: 5px 4px;
+    border-radius: 7px;
+  }
+  body.map-only-mode .hud-val { font-size: 14px; }
+  body.map-only-mode .hud-sub { font-size: 9px; }
+  body.map-only-mode .hud-lbl { font-size: 9px; margin-top: 1px; }
+  body.map-only-mode #hudCard .btn-row {
+    margin-top: 6px;
+    gap: 5px;
+  }
+  body.map-only-mode #hudCard .btn-row button {
+    padding: 6px 9px;
+    font-size: 11px;
+    flex: 1;
+  }
+  /* Floating map tools shifted below the top HUD overlay */
+  body.map-only-mode .map-tools {
+    top: auto;
+    bottom: calc(env(safe-area-inset-bottom, 10px) + 104px);
+    right: 10px;
+  }
+  /* Compact translucent elevation profile strip overlaid at bottom of map */
+  body.map-only-mode #elevCanvas {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: env(safe-area-inset-bottom, 8px);
+    width: calc(100vw - 16px);
+    height: 82px;
+    margin: 0;
+    background: var(--glass);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(46, 204, 113, 0.25);
+    border-radius: 10px;
+    z-index: 22;
+  }
+  body.map-only-mode #inspectCard {
+    position: fixed;
+    left: 10px;
+    right: 54px;
+    bottom: calc(env(safe-area-inset-bottom, 8px) + 90px);
+    margin: 0;
+    background: var(--glass-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 26;
+  }
+  body.map-only-mode #offTrailBanner,
+  body.map-only-mode #darknessBanner {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: calc(env(safe-area-inset-top, 8px) + 148px);
+    border-radius: 8px;
+    z-index: 35;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>AegisHiker Field Companion</h1>
   <div class="header-right">
+    <button id="mapModeHeaderBtn" class="primary" title="Full-screen map with hike HUD overlay" style="padding:4px 9px; font-size:11px;">⛶ Map Mode</button>
     <button id="unitBtn" title="Switch Imperial (mi/ft) and Metric (km/m)" style="padding:4px 8px; font-size:11px;">mi / ft</button>
     <span id="connStatus" class="status-pill">Checking...</span>
   </div>
@@ -219,7 +383,7 @@
 <div id="darknessBanner" class="alert-banner warn-banner"></div>
 
 <div class="container">
-  <div class="card">
+  <div class="card" id="packCard">
     <div class="card-head">
       <h2>Hike &amp; Offline Region Pack</h2>
       <span id="hikeMetaBadge" class="badge">Offline PWA</span>
@@ -234,10 +398,13 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-head">
+  <div class="card" id="hudCard">
+    <div class="card-head" id="hudCardHead">
       <h2>Live Backcountry HUD</h2>
       <span id="gpsAccuracyLbl" style="font-size:11px; color:var(--muted);">GPS Standby</span>
+    </div>
+    <div class="progress-track" title="Hike distance progress">
+      <div class="progress-fill" id="hikeProgressFill"></div>
     </div>
     <div class="hud-grid">
       <div class="hud-box">
@@ -274,19 +441,21 @@
     <div style="display:none;"><span id="hudDev">0 m</span></div>
     <div class="btn-row">
       <button id="startGpsBtn" class="primary">Start Live GPS</button>
-      <button id="simStepBtn">Simulate GPS Step</button>
-      <button id="syncBtn" class="warn">Sync Track to Desktop</button>
+      <button id="simStepBtn">Sim GPS Step</button>
+      <button id="syncBtn" class="warn">Sync Track</button>
+      <button id="exitMapModeBtn" style="display:none;" title="Return to full details view">☰ Details</button>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-head">
+  <div class="card" id="mapCard">
+    <div class="card-head" id="mapCardHead">
       <h2>Interactive Topo Map &amp; Elevation Profile</h2>
-      <span style="font-size:11px; color:var(--muted);">Pinch/drag to zoom &amp; pan · Tap landmarks</span>
+      <span style="font-size:11px; color:var(--muted);">Pinch/drag inside map · Tap landmarks</span>
     </div>
     <div class="map-wrap">
-      <canvas id="mapCanvas" width="680" height="340"></canvas>
+      <canvas id="mapCanvas" width="680" height="350"></canvas>
       <div class="map-tools">
+        <button id="mapModeFabBtn" title="Toggle Full-Screen Map &amp; HUD Overlay Mode">⛶</button>
         <button id="zoomInBtn" title="Zoom in">+</button>
         <button id="zoomOutBtn" title="Zoom out">−</button>
         <button id="fitBtn" title="Fit entire hike">⊡</button>
@@ -294,13 +463,16 @@
       </div>
     </div>
     <div id="inspectCard" class="inspect-card">
-      <div class="inspect-title" id="inspectTitle"></div>
+      <div class="inspect-title">
+        <span id="inspectTitle"></span>
+        <span id="inspectCloseBtn" style="cursor:pointer; color:var(--muted); padding:0 4px;">✕</span>
+      </div>
       <div class="inspect-meta" id="inspectMeta"></div>
     </div>
-    <canvas id="elevCanvas" width="680" height="125"></canvas>
+    <canvas id="elevCanvas" width="680" height="120"></canvas>
   </div>
 
-  <div class="card">
+  <div class="card" id="itineraryCard">
     <div class="card-head">
       <h2>Trails Taken &amp; Landmarks on This Hike</h2>
       <div style="display:flex; gap:5px;">
@@ -311,7 +483,7 @@
     <div class="trail-list" id="itineraryList"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="conditionCard">
     <h2>Trailhead Condition Filter (100% Offline)</h2>
     <div style="font-size:12px; color:var(--muted);">Tap to exclude adverse trail conditions on-device:</div>
     <div class="chips" id="conditionChips">
@@ -329,6 +501,32 @@
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
+
+  // ── Lock down browser-level pinch-zoom & double-tap page zoom on iOS Safari ──
+  // iOS 10+ ignores user-scalable=no in meta viewport unless gesturestart/change/end
+  // and multi-touch touchmove events call preventDefault().
+  document.addEventListener("gesturestart", (e) => { e.preventDefault(); }, { passive: false });
+  document.addEventListener("gesturechange", (e) => { e.preventDefault(); }, { passive: false });
+  document.addEventListener("gestureend", (e) => { e.preventDefault(); }, { passive: false });
+  document.addEventListener("touchmove", (e) => {
+    if (e.touches.length > 1 || (e.scale && e.scale !== 1)) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+  window.addEventListener("wheel", (e) => {
+    if (e.ctrlKey) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  let lastPageTouchEnd = 0;
+  document.addEventListener("touchend", (e) => {
+    const now = Date.now();
+    if (now - lastPageTouchEnd <= 320 && e.target && e.target.id !== "mapCanvas") {
+      e.preventDefault();
+    }
+    lastPageTouchEnd = now;
+  }, { passive: false });
 
   const basePath = window.location.pathname.replace(/\/hiker\.html$/, "").replace(/\/$/, "");
   const LEG_COLORS = ["#2ECC71", "#38BDF8", "#A78BFA", "#FBBF24", "#F472B6", "#34D399"];
@@ -352,6 +550,7 @@
 
   const state = {
     units: localStorage.getItem("aegishiker_units") || "metric", // "metric" or "us"
+    mapOnlyMode: localStorage.getItem("aegishiker_map_only") === "1",
     destinations: [],
     routes: [],
     activeDest: null,
@@ -374,6 +573,36 @@
       initialized: false
     }
   };
+
+  // ── Full-Screen Map & HUD Overlay Mode Toggle ───────────────────────────
+  function applyMapOnlyMode(on) {
+    state.mapOnlyMode = !!on;
+    localStorage.setItem("aegishiker_map_only", state.mapOnlyMode ? "1" : "0");
+    document.body.classList.toggle("map-only-mode", state.mapOnlyMode);
+    document.getElementById("exitMapModeBtn").style.display = state.mapOnlyMode ? "inline-block" : "none";
+    const fab = document.getElementById("mapModeFabBtn");
+    fab.classList.toggle("active", state.mapOnlyMode);
+    fab.textContent = state.mapOnlyMode ? "✕" : "⛶";
+    setTimeout(() => {
+      renderMap();
+      renderElevation();
+    }, 30);
+  }
+
+  document.getElementById("mapModeHeaderBtn").addEventListener("click", () => applyMapOnlyMode(!state.mapOnlyMode));
+  document.getElementById("mapModeFabBtn").addEventListener("click", () => applyMapOnlyMode(!state.mapOnlyMode));
+  document.getElementById("exitMapModeBtn").addEventListener("click", () => applyMapOnlyMode(false));
+  document.getElementById("inspectCloseBtn").addEventListener("click", () => {
+    document.getElementById("inspectCard").style.display = "none";
+    state.selectedItem = null;
+    state.scrubAlongM = null;
+    renderMap();
+    renderElevation();
+  });
+  window.addEventListener("resize", () => {
+    renderMap();
+    renderElevation();
+  });
 
   function updateUnitButtonLabel() {
     const btn = document.getElementById("unitBtn");
@@ -648,7 +877,7 @@
     return gain;
   }
 
-  // ── Viewport Management (Pan & Pinch-Zoom) ──────────────────────────────
+  // ── Viewport Management (Pan & Pinch-Zoom Inside Map Canvas) ────────────
   function fitViewToCoords(coordsLonLat) {
     const canvas = document.getElementById("mapCanvas");
     const pts = coordsLonLat && coordsLonLat.length ? coordsLonLat : getRouteCoords4d();
@@ -672,8 +901,9 @@
     const spanX = Math.max(400, (maxLon - minLon) * kx);
     const spanY = Math.max(400, (maxLat - minLat) * ky);
     const w = Math.max(280, canvas.clientWidth || 680);
-    const h = Math.max(220, canvas.clientHeight || 340);
-    state.view.metersPerPx = Math.max(1.2, Math.max(spanX / (w * 0.78), spanY / (h * 0.78)));
+    const h = Math.max(220, canvas.clientHeight || 350);
+    const usableH = state.mapOnlyMode ? h * 0.56 : h * 0.78;
+    state.view.metersPerPx = Math.max(1.2, Math.max(spanX / (w * 0.78), spanY / usableH));
     state.view.initialized = true;
     renderMap();
   }
@@ -697,11 +927,25 @@
     return [lat, lon];
   }
 
+  function zoomMapAroundPixel(px, py, w, h, scaleFactor) {
+    // Keep the geographic coordinate under (px, py) anchored while zooming
+    const [anchorLat, anchorLon] = screenToGeo(px, py, w, h);
+    state.view.metersPerPx = Math.max(0.6, Math.min(250.0, state.view.metersPerPx * scaleFactor));
+    const kx = 111320.0 * Math.cos(state.view.centerLat * Math.PI / 180);
+    const ky = 110540.0;
+    state.view.centerLon = anchorLon - ((px - w * 0.5) * state.view.metersPerPx) / kx;
+    state.view.centerLat = anchorLat + ((py - h * 0.5) * state.view.metersPerPx) / ky;
+    renderMap();
+  }
+
   // ── Initial State & Offline Bundle Loader ───────────────────────────────
   async function loadInitialState() {
     const connEl = document.getElementById("connStatus");
     const params = new URLSearchParams(window.location.search);
     const requestedRouteId = params.get("route") || localStorage.getItem("aegishiker_active_route_id") || "";
+    if (params.get("mode") === "map" || state.mapOnlyMode) {
+      applyMapOnlyMode(true);
+    }
 
     try {
       const res = await fetch(basePath + "/state");
@@ -975,6 +1219,7 @@
     const refLon = lastPt ? lastPt.lon : (pts4d.length ? pts4d[0][0] : -71.65);
     const dark = computeDarknessInfo(refLat, refLon, nowMs);
 
+    document.getElementById("hikeProgressFill").style.width = `${pct}%`;
     document.getElementById("hudDist").textContent = fmtDist(alongM);
     document.getElementById("hudDistPct").textContent = `${pct}% of ${fmtDist(totalDist)}`;
     document.getElementById("hudRem").textContent = fmtDist(remM);
@@ -1121,7 +1366,7 @@
     const canvas = document.getElementById("mapCanvas");
     const dpr = window.devicePixelRatio || 1;
     const cssW = canvas.clientWidth || 680;
-    const cssH = canvas.clientHeight || 340;
+    const cssH = canvas.clientHeight || 350;
     if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
       canvas.width = Math.round(cssW * dpr);
       canvas.height = Math.round(cssH * dpr);
@@ -1315,7 +1560,7 @@
           if (idx === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
         });
         ctx.strokeStyle = "#F39C12";
-        ctx.lineWidth = 3.0;
+        ctx.lineWidth = 3.2;
         ctx.stroke();
       }
       const last = state.telemetry[state.telemetry.length - 1];
@@ -1327,7 +1572,7 @@
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(hx, hy, 7, 0, Math.PI * 2);
+      ctx.arc(hx, hy, 7.5, 0, Math.PI * 2);
       ctx.fillStyle = "#F39C12";
       ctx.fill();
       ctx.lineWidth = 2.5;
@@ -1335,21 +1580,22 @@
       ctx.stroke();
     }
 
-    // 8. Scale Bar (bottom-left)
+    // 8. Scale Bar
     const barM = state.view.metersPerPx * 70;
     const niceM = barM > 2000 ? 2000 : (barM > 1000 ? 1000 : (barM > 500 ? 500 : (barM > 200 ? 200 : 100)));
     const barPx = niceM / state.view.metersPerPx;
+    const sbY = state.mapOnlyMode ? (cssH - 102) : (cssH - 26);
     ctx.fillStyle = "rgba(8, 17, 12, 0.78)";
-    ctx.fillRect(10, cssH - 26, barPx + 16, 18);
+    ctx.fillRect(10, sbY, barPx + 16, 18);
     ctx.strokeStyle = "#ECF5EE";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(16, cssH - 14);
-    ctx.lineTo(16 + barPx, cssH - 14);
+    ctx.moveTo(16, sbY + 12);
+    ctx.lineTo(16 + barPx, sbY + 12);
     ctx.stroke();
     ctx.fillStyle = "#ECF5EE";
     ctx.font = "600 10px -apple-system, sans-serif";
-    ctx.fillText(fmtDist(niceM), 18, cssH - 17);
+    ctx.fillText(fmtDist(niceM), 18, sbY + 9);
 
     ctx.restore();
   }
@@ -1359,7 +1605,7 @@
     const canvas = document.getElementById("elevCanvas");
     const dpr = window.devicePixelRatio || 1;
     const cssW = canvas.clientWidth || 680;
-    const cssH = canvas.clientHeight || 125;
+    const cssH = canvas.clientHeight || 120;
     if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
       canvas.width = Math.round(cssW * dpr);
       canvas.height = Math.round(cssH * dpr);
@@ -1383,7 +1629,7 @@
       if (p.ele_m < minE) minE = p.ele_m;
       if (p.ele_m > maxE) maxE = p.ele_m;
     });
-    const padL = 42, padR = 14, padT = 16, padB = 20;
+    const padL = 42, padR = 14, padT = 14, padB = 18;
     const plotW = cssW - padL - padR;
     const plotH = cssH - padT - padB;
     const xOf = (d) => padL + (Math.max(0, Math.min(maxD, d)) / maxD) * plotW;
@@ -1413,9 +1659,9 @@
     ctx.font = "600 10px -apple-system, sans-serif";
     ctx.fillText(fmtEle(maxE), 4, padT + 6);
     ctx.fillText(fmtEle(minE), 4, padT + plotH);
-    ctx.fillText("0", padL, cssH - 5);
+    ctx.fillText("0", padL, cssH - 4);
     const endLbl = fmtDist(maxD);
-    ctx.fillText(endLbl, cssW - padR - ctx.measureText(endLbl).width, cssH - 5);
+    ctx.fillText(endLbl, cssW - padR - ctx.measureText(endLbl).width, cssH - 4);
 
     // On-route peak/hut landmark ticks
     const lms = (state.activeBundle && state.activeBundle.landmarks) || [];
@@ -1464,11 +1710,22 @@
     let moved = false;
     let lastX = 0, lastY = 0;
     let pinchDist = null;
+    let lastMapTapMs = 0;
 
     function handleTap(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
+
+      // Double-tap inside map canvas zooms in centered on tap point
+      const now = Date.now();
+      if (now - lastMapTapMs < 280) {
+        lastMapTapMs = 0;
+        zoomMapAroundPixel(x, y, rect.width, rect.height, 0.6);
+        return;
+      }
+      lastMapTapMs = now;
+
       const lms = (state.activeBundle && state.activeBundle.landmarks) || [];
       let bestLm = null, bestD = 22;
       lms.forEach(lm => {
@@ -1532,12 +1789,14 @@
 
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      const rect = canvas.getBoundingClientRect();
       const factor = e.deltaY < 0 ? 0.8 : 1.25;
-      state.view.metersPerPx = Math.max(0.8, Math.min(250.0, state.view.metersPerPx * factor));
-      renderMap();
+      zoomMapAroundPixel(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height, factor);
     }, { passive: false });
 
     canvas.addEventListener("touchstart", (e) => {
+      e.preventDefault();
       if (e.touches.length === 1) {
         dragging = true;
         moved = false;
@@ -1552,10 +1811,12 @@
           e.touches[0].clientY - e.touches[1].clientY
         );
       }
-    }, { passive: true });
+    }, { passive: false });
 
     canvas.addEventListener("touchmove", (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      const rect = canvas.getBoundingClientRect();
       if (e.touches.length === 1 && dragging) {
         const dx = e.touches[0].clientX - lastX;
         const dy = e.touches[0].clientY - lastY;
@@ -1574,15 +1835,17 @@
           e.touches[0].clientY - e.touches[1].clientY
         );
         if (newDist > 10) {
+          const midX = 0.5 * (e.touches[0].clientX + e.touches[1].clientX) - rect.left;
+          const midY = 0.5 * (e.touches[0].clientY + e.touches[1].clientY) - rect.top;
           const scale = pinchDist / newDist;
-          state.view.metersPerPx = Math.max(0.8, Math.min(250.0, state.view.metersPerPx * scale));
           pinchDist = newDist;
-          renderMap();
+          zoomMapAroundPixel(midX, midY, rect.width, rect.height, scale);
         }
       }
     }, { passive: false });
 
     canvas.addEventListener("touchend", (e) => {
+      e.preventDefault();
       if (dragging && !moved && e.changedTouches.length === 1) {
         handleTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
       }
@@ -1590,7 +1853,7 @@
         dragging = false;
         pinchDist = null;
       }
-    });
+    }, { passive: false });
 
     // Elevation profile scrub
     const elevCanvas = document.getElementById("elevCanvas");
@@ -1615,13 +1878,18 @@
       renderElevation();
     }
     elevCanvas.addEventListener("click", (e) => scrubElev(e.clientX));
+    elevCanvas.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1) scrubElev(e.touches[0].clientX);
+    }, { passive: false });
     elevCanvas.addEventListener("touchmove", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       if (e.touches.length === 1) scrubElev(e.touches[0].clientX);
     }, { passive: false });
 
     document.getElementById("zoomInBtn").addEventListener("click", () => {
-      state.view.metersPerPx = Math.max(0.8, state.view.metersPerPx * 0.65);
+      state.view.metersPerPx = Math.max(0.6, state.view.metersPerPx * 0.65);
       renderMap();
     });
     document.getElementById("zoomOutBtn").addEventListener("click", () => {
