@@ -432,9 +432,20 @@ class ExplorePanel(QWidget):
         self.map_canvas.set_scene_data(trails=raw_trails, pois=pois, route=route)
 
     def refresh_hikes(self) -> None:
-        """The hikes composed in this region (newest first), narrowed by the search text."""
+        """The hikes composed in this region (or crossing into it from an adjacent pack), narrowed by search."""
         dest_id = self.app_state.active_destination_id
+        dest = self.app_state.get_active_destination()
         routes = self.app_state.db.list_routes(dest_id) if dest_id else []
+        if dest and dest_id and hasattr(self.app_state.db, "adjacent_pack_ids"):
+            seen_ids = {r.id for r in routes}
+            for aid in self.app_state.db.adjacent_pack_ids(dest_id):
+                for r in self.app_state.db.list_routes(aid):
+                    if r.id not in seen_ids and any(
+                        dest.min_lat <= pt[1] <= dest.max_lat and dest.min_lon <= pt[0] <= dest.max_lon
+                        for pt in r.coords_3d
+                    ):
+                        seen_ids.add(r.id)
+                        routes.append(r)
         query = self.search_edit.text().strip().casefold()
         self._hikes = [r for r in routes if query in r.name.casefold()] if query else routes
         unit = str(self.app_state.settings.get("unit_system", "metric"))
@@ -478,10 +489,22 @@ class ExplorePanel(QWidget):
         route = self._selected_hike()
         if route is None:
             return
+        dest_id = self.app_state.active_destination_id
+        route_bbox = None
+        if route.coords_3d:
+            lats = [p[1] for p in route.coords_3d]
+            lons = [p[0] for p in route.coords_3d]
+            route_bbox = (min(lats), max(lats), min(lons), max(lons))
         self.map_canvas.waypoints = []
+        self.map_canvas.sync_basemap(self.app_state.db, dest_id, bbox=route_bbox)
+        comp = (
+            self.app_state.db.get_composite_pack(dest_id, bbox=route_bbox, with_map=False)
+            if dest_id and route_bbox and hasattr(self.app_state.db, "get_composite_pack")
+            else None
+        )
         self.map_canvas.set_scene_data(
-            trails=self.app_state.get_active_trails(),
-            pois=self.app_state.get_active_pois(),
+            trails=comp.trails if comp else self.app_state.get_active_trails(),
+            pois=comp.pois if comp else self.app_state.get_active_pois(),
             route=route,
         )
         if route.coordinates:
@@ -519,10 +542,18 @@ class ExplorePanel(QWidget):
         seg = self._selected_segment()
         if not seg:
             return
+        dest_id = self.app_state.active_destination_id
+        seg_bbox = (seg.min_lat, seg.max_lat, seg.min_lon, seg.max_lon) if seg.coords_3d else None
         preview = route_from_trail_segment(seg)
+        self.map_canvas.sync_basemap(self.app_state.db, dest_id, bbox=seg_bbox)
+        comp = (
+            self.app_state.db.get_composite_pack(dest_id, bbox=seg_bbox, with_map=False)
+            if dest_id and seg_bbox and hasattr(self.app_state.db, "get_composite_pack")
+            else None
+        )
         self.map_canvas.set_scene_data(
-            trails=self.app_state.get_active_trails(),
-            pois=self.app_state.get_active_pois(),
+            trails=comp.trails if comp else self.app_state.get_active_trails(),
+            pois=comp.pois if comp else self.app_state.get_active_pois(),
             route=preview,
         )
         self.map_canvas.zoom_to_coordinates(seg.coordinates)

@@ -5,7 +5,7 @@ segment (or meet it at its end), turn around for an out-and-back, and finish whe
 or with 'End Here'. The growing hike is shown live on the Composer's map, stats and elevation chart.
 """
 import math
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QCursor, QResizeEvent
@@ -175,6 +175,7 @@ class SegmentBuilder(QWidget):
         old_ended = self.chain.ended if self.chain else False
         old_history = list(self.chain._history) if self.chain else []
         self.pack_id = pack_id
+        self._loaded_adj_ids: Tuple[str, ...] = ()
         self.start_combo.clear()
         self.chain = None
         if pack:
@@ -202,6 +203,41 @@ class SegmentBuilder(QWidget):
                     self.chain._history = old_history
             self._fill_start_combo()
         self._refresh()
+
+    def _ensure_adjacent_packs_for_bbox(self, bbox: Tuple[float, float, float, float]) -> bool:
+        """If `bbox` (the hike or trail being composed) approaches or crosses `self.pack_id`'s
+        boundary, pull trails, POIs, and map paths from the adjacent area pack(s) into `self.chain`."""
+        if not self.pack_id or not self.chain or not hasattr(self.app_state.db, "adjacent_pack_ids"):
+            return False
+        needed = tuple(self.app_state.db.adjacent_pack_ids(self.pack_id, bbox=bbox, margin_deg=0.035))
+        if not (set(needed) - set(getattr(self, "_loaded_adj_ids", ()))):
+            return False
+        union_adj = tuple(sorted(set(getattr(self, "_loaded_adj_ids", ())) | set(needed)))
+        comp = self.app_state.db.get_composite_pack(self.pack_id, bbox=bbox, with_map=True, margin_deg=0.035)
+        if comp is None:
+            return False
+        self._loaded_adj_ids = union_adj
+        old_legs = list(self.chain.legs)
+        old_ended = self.chain.ended
+        old_history = list(self.chain._history)
+        places = [(f.name, f.coords[0][0], f.coords[0][1])
+                  for f in comp.features if f.geom == "point" and f.name and f.kind in PLACE_KINDS]
+        places += [(p.name, p.lon, p.lat) for p in comp.pois]
+        trails = sorted(comp.trails, key=lambda t: t.name.lower())
+        map_paths = map_paths_from_features(comp.features, comp.dem, comp.id)
+        self.chain = SegmentChain(trails, places, map_paths=map_paths,
+                                  include_map_paths=self.minor_chk.isChecked())
+        if old_legs:
+            from dataclasses import replace as _dc_replace
+            by_id = {t.id: t for t in trails}
+            self.chain.legs = [
+                _dc_replace(lg, trail=by_id[lg.trail.id]) if lg.trail.id in by_id else lg
+                for lg in old_legs
+            ]
+            self.chain.ended = old_ended
+            self.chain._history = old_history
+        self._fill_start_combo()
+        return True
 
     def _fill_start_combo(self) -> None:
         """The region's trails, then (when included) the map's minor named paths. Unnamed paths are
@@ -594,6 +630,12 @@ class SegmentBuilder(QWidget):
         draft: Optional[ComposedRoute] = None
 
         if chain and chain.legs:
+            all_pts = [pt for leg in chain.legs for pt in leg.coords()]
+            if all_pts:
+                lats = [p[1] for p in all_pts]
+                lons = [p[0] for p in all_pts]
+                if self._ensure_adjacent_packs_for_bbox((min(lats), max(lats), min(lons), max(lons))):
+                    chain = self.chain
             for i, leg in enumerate(chain.legs, 1):
                 st = leg.stats()
                 QListWidgetItem(

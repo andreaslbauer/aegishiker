@@ -87,6 +87,16 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
     assert {"wmnf_osm_twinway", "wmnf_osm_willey_range", "wmnf_osm_crawford_path"} <= (pemi_ids & pres_ids)
     assert {"wmnf_tuckerman_ravine", "wmnf_lion_head_boott_spur", "wmnf_osm_lost_pond"} <= (pres_ids & carter_ids)
 
+    # Dynamic adjacent-pack pulling merges neighboring packs when a hike/trail approaches or crosses a border
+    border_bbox = (44.14, 44.27, -71.65, -71.30)  # Franconia Ridge -> Twinway -> Crawford Path -> Mt. Washington
+    adj = seeded_db.adjacent_pack_ids("white_mountains_nh", bbox=border_bbox)
+    assert "white_mountains_pemigewasset" in adj and "white_mountains_presidentials" in adj
+    comp = seeded_db.get_composite_pack("white_mountains_nh", bbox=border_bbox, with_map=True)
+    assert comp is not None
+    comp_trail_ids = {t.id for t in comp.trails}
+    assert {"wmnf_falling_waters", "wmnf_osm_twinway", "wmnf_osm_crawford_path", "wmnf_tuckerman_ravine"} <= comp_trail_ids
+    assert comp.max_lon >= pres.max_lon and comp.dem is not None
+
 
 def test_fts5_search_and_condition_updates(seeded_db: Database) -> None:
     hits = seeded_db.search_trails("Franconia", "white_mountains_nh")

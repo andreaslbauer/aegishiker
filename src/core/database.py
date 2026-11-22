@@ -46,6 +46,7 @@ class Database:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._map_cache: Dict[str, Any] = {}  # pack_id -> (raw map JSON, parsed objects)
+        self._composite_cache: Dict[tuple, DestinationPack] = {}
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         with self._lock:
@@ -532,6 +533,214 @@ class Database:
                 features=features,
                 map_attribution=str(extra.get("map_attribution") or ""),
             )
+
+    def adjacent_pack_ids(
+        self,
+        pack_id: Optional[str],
+        bbox: Optional[Tuple[float, float, float, float]] = None,
+        margin_deg: float = 0.028,
+    ) -> List[str]:
+        """Return IDs of other destination packs whose bounding boxes overlap `pack_id` (and `bbox`,
+        when given, if `bbox` comes within `margin_deg` of `pack_id`'s border or extends outside it).
+        `bbox` is `(min_lat, max_lat, min_lon, max_lon)`."""
+        if not pack_id:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, min_lat, max_lat, min_lon, max_lon FROM destination_pack ORDER BY id ASC"
+            ).fetchall()
+        by_id = {r["id"]: (r["min_lat"], r["max_lat"], r["min_lon"], r["max_lon"]) for r in rows}
+        primary_box = by_id.get(pack_id)
+        if not primary_box:
+            return []
+        p_min_lat, p_max_lat, p_min_lon, p_max_lon = primary_box
+
+        if bbox is not None:
+            b_min_lat, b_max_lat, b_min_lon, b_max_lon = bbox
+            # If bbox is comfortably inside the primary pack's interior, no adjacent packs are needed
+            if (
+                b_min_lat >= p_min_lat + margin_deg
+                and b_max_lat <= p_max_lat - margin_deg
+                and b_min_lon >= p_min_lon + margin_deg
+                and b_max_lon <= p_max_lon - margin_deg
+            ):
+                return []
+            q_min_lat, q_max_lat = b_min_lat - margin_deg, b_max_lat + margin_deg
+            q_min_lon, q_max_lon = b_min_lon - margin_deg, b_max_lon + margin_deg
+        else:
+            q_min_lat, q_max_lat = p_min_lat - margin_deg, p_max_lat + margin_deg
+            q_min_lon, q_max_lon = p_min_lon - margin_deg, p_max_lon + margin_deg
+
+        out: List[str] = []
+        for oid, (o_min_lat, o_max_lat, o_min_lon, o_max_lon) in by_id.items():
+            if oid == pack_id:
+                continue
+            # Must be adjacent/overlapping with the primary pack AND intersect the query bbox
+            if (
+                o_max_lat >= p_min_lat - margin_deg
+                and o_min_lat <= p_max_lat + margin_deg
+                and o_max_lon >= p_min_lon - margin_deg
+                and o_min_lon <= p_max_lon + margin_deg
+                and o_max_lat >= q_min_lat
+                and o_min_lat <= q_max_lat
+                and o_max_lon >= q_min_lon
+                and o_min_lon <= q_max_lon
+            ):
+                out.append(oid)
+        return out
+
+    def get_composite_pack(
+        self,
+        pack_id: Optional[str],
+        bbox: Optional[Tuple[float, float, float, float]] = None,
+        include_all_adjacent: bool = False,
+        with_map: bool = True,
+        margin_deg: float = 0.028,
+    ) -> Optional[DestinationPack]:
+        """Return `pack_id`'s `DestinationPack` dynamically merged with any adjacent packs needed
+        to cover `bbox` (or all adjacent packs when `include_all_adjacent=True`)."""
+        if not pack_id:
+            return None
+        primary = self.get_destination_pack(pack_id, with_map=with_map)
+        if primary is None:
+            return None
+        adj_ids = self.adjacent_pack_ids(
+            pack_id,
+            bbox=None if include_all_adjacent else bbox,
+            margin_deg=margin_deg,
+        )
+        if not adj_ids:
+            return primary
+
+        cache_key = (
+            pack_id,
+            tuple(adj_ids),
+            with_map,
+            primary.pack_version,
+        )
+        cached = self._composite_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        adj_packs = [
+            p for aid in adj_ids
+            if (p := self.get_destination_pack(aid, with_map=with_map)) is not None
+        ]
+        if not adj_packs:
+            return primary
+
+        all_packs = [primary, *adj_packs]
+
+        # 1. Merge trails (keep longest/most complete geometry for shared trail IDs)
+        trail_by_id: Dict[str, TrailSegment] = {}
+        for p in all_packs:
+            for t in p.trails:
+                cur = trail_by_id.get(t.id)
+                if cur is None or t.distance_m > cur.distance_m + 5.0:
+                    trail_by_id[t.id] = t
+        merged_trails = sorted(trail_by_id.values(), key=lambda t: t.name.lower())
+
+        # 2. Merge POIs (deduplicate by id)
+        poi_by_id: Dict[str, POI] = {}
+        for p in all_packs:
+            for poi in p.pois:
+                poi_by_id.setdefault(poi.id, poi)
+        merged_pois = list(poi_by_id.values())
+
+        u_min_lat = min(p.min_lat for p in all_packs)
+        u_max_lat = max(p.max_lat for p in all_packs)
+        u_min_lon = min(p.min_lon for p in all_packs)
+        u_max_lon = max(p.max_lon for p in all_packs)
+
+        merged_contours: List[ContourLine] = list(primary.contours)
+        merged_features: List[MapFeature] = list(primary.features)
+        merged_dem: Optional[DEMGrid] = primary.dem
+
+        if with_map:
+            from src.hiking.elevation import sample_dem
+
+            # Contours & features: keep primary pack's full detail, and pull from adjacent packs
+            # wherever geometry extends outside already-covered regions
+            covered_boxes = [(primary.min_lat + 0.002, primary.max_lat - 0.002, primary.min_lon + 0.002, primary.max_lon - 0.002)]
+            feat_seen = {
+                (f.kind, f.geom, f.name, round(f.coords[0][0], 4), round(f.coords[0][1], 4))
+                for f in merged_features if f.coords
+            }
+            for ap in adj_packs:
+                for c in ap.contours:
+                    if any(
+                        not any(b0 <= pt[1] <= b1 and b2 <= pt[0] <= b3 for b0, b1, b2, b3 in covered_boxes)
+                        for pt in c.coords[::3]
+                    ):
+                        merged_contours.append(c)
+                for f in ap.features:
+                    if not f.coords:
+                        continue
+                    sig = (f.kind, f.geom, f.name, round(f.coords[0][0], 4), round(f.coords[0][1], 4))
+                    if sig in feat_seen:
+                        continue
+                    if any(
+                        not any(b0 <= pt[1] <= b1 and b2 <= pt[0] <= b3 for b0, b1, b2, b3 in covered_boxes)
+                        for pt in (f.coords if len(f.coords) <= 4 else f.coords[::3])
+                    ):
+                        feat_seen.add(sig)
+                        merged_features.append(f)
+                covered_boxes.append((ap.min_lat + 0.002, ap.max_lat - 0.002, ap.min_lon + 0.002, ap.max_lon - 0.002))
+
+            # Stitch a combined DEMGrid across the union bbox
+            dems = [p.dem for p in all_packs if p.dem and p.dem.rows >= 2 and p.dem.cols >= 2]
+            if dems:
+                d0 = dems[0]
+                dlat = max(1e-4, (d0.max_lat - d0.min_lat) / max(1, d0.rows - 1))
+                dlon = max(1e-4, (d0.max_lon - d0.min_lon) / max(1, d0.cols - 1))
+                raw_r = max(16, int(round((u_max_lat - u_min_lat) / dlat)) + 1)
+                raw_c = max(16, int(round((u_max_lon - u_min_lon) / dlon)) + 1)
+                scale = max(1.0, max(raw_r, raw_c) / 480.0)
+                rows = max(16, int(round(raw_r / scale)))
+                cols = max(16, int(round(raw_c / scale)))
+                base_ele = min(p.base_ele_m for p in all_packs)
+                grid: List[List[float]] = []
+                for r in range(rows):
+                    lat = u_min_lat + (r / (rows - 1)) * (u_max_lat - u_min_lat)
+                    row_vals: List[float] = []
+                    for c in range(cols):
+                        lon = u_min_lon + (c / (cols - 1)) * (u_max_lon - u_min_lon)
+                        val = base_ele
+                        for dm in dems:
+                            if dm.min_lat <= lat <= dm.max_lat and dm.min_lon <= lon <= dm.max_lon:
+                                val = sample_dem(dm, lat, lon)
+                                break
+                        row_vals.append(float(round(val)))
+                    grid.append(row_vals)
+                merged_dem = DEMGrid(
+                    min_lat=u_min_lat,
+                    max_lat=u_max_lat,
+                    min_lon=u_min_lon,
+                    max_lon=u_max_lon,
+                    rows=rows,
+                    cols=cols,
+                    elevations_m=grid,
+                )
+
+        composite = primary.model_copy(
+            update={
+                "min_lat": u_min_lat,
+                "max_lat": u_max_lat,
+                "min_lon": u_min_lon,
+                "max_lon": u_max_lon,
+                "base_ele_m": min(p.base_ele_m for p in all_packs),
+                "max_ele_m": max(p.max_ele_m for p in all_packs),
+                "trails": merged_trails,
+                "pois": merged_pois,
+                "contours": merged_contours,
+                "dem": merged_dem,
+                "features": merged_features,
+            }
+        )
+        if len(self._composite_cache) >= 8:
+            self._composite_cache.pop(next(iter(self._composite_cache)))
+        self._composite_cache[cache_key] = composite
+        return composite
 
     def _row_to_trail(self, r: sqlite3.Row) -> TrailSegment:
         return TrailSegment(

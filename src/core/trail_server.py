@@ -169,7 +169,15 @@ class TrailServer:
         pack = None
         if self.db:
             pack_id = (getattr(route, "pack_id", None) if route else None) or self.active_destination_id or "white_mountains_nh"
-            pack = self.db.get_destination_pack(pack_id, with_map=True)
+            route_bbox = None
+            if route is not None and getattr(route, "coords_3d", None):
+                lats = [p[1] for p in route.coords_3d]
+                lons = [p[0] for p in route.coords_3d]
+                route_bbox = (min(lats), max(lats), min(lons), max(lons))
+            if route_bbox and hasattr(self.db, "get_composite_pack"):
+                pack = self.db.get_composite_pack(pack_id, bbox=route_bbox, with_map=True)
+            else:
+                pack = self.db.get_destination_pack(pack_id, with_map=True)
             if route is None and pack and pack.trails:
                 route = route_from_trail_segment(pack.trails[0])
         if route is None:

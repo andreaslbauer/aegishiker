@@ -285,14 +285,30 @@ class ComposerPanel(QWidget):
 
     def refresh_from_active_route(self) -> None:
         route = self._draft or self.app_state.get_active_route()
-        trails = self.app_state.get_active_trails()
-        pois = self.app_state.get_active_pois()
+        dest_id = self.app_state.active_destination_id
+        route_bbox = None
+        if route is not None and route.coords_3d:
+            lats = [p[1] for p in route.coords_3d] + [w[0] for w in self.waypoints]
+            lons = [p[0] for p in route.coords_3d] + [w[1] for w in self.waypoints]
+            route_bbox = (min(lats), max(lats), min(lons), max(lons))
+        elif self.waypoints:
+            lats = [w[0] for w in self.waypoints]
+            lons = [w[1] for w in self.waypoints]
+            route_bbox = (min(lats), max(lats), min(lons), max(lons))
+
+        comp = (
+            self.app_state.db.get_composite_pack(dest_id, bbox=route_bbox, with_map=False)
+            if dest_id and route_bbox and hasattr(self.app_state.db, "get_composite_pack")
+            else None
+        )
+        trails = comp.trails if comp else self.app_state.get_active_trails()
+        pois = comp.pois if comp else self.app_state.get_active_pois()
         pins = self.app_state.get_active_route_photos()
         unit = str(self.app_state.settings.get("unit_system", "metric"))
 
         self.map_canvas.waypoints = list(self.waypoints)
         self.map_canvas.units = "metric" if unit == "metric" else "us"
-        self.map_canvas.sync_basemap(self.app_state.db, self.app_state.active_destination_id)
+        self.map_canvas.sync_basemap(self.app_state.db, dest_id, bbox=route_bbox)
         self.map_canvas.set_scene_data(trails=trails, pois=pois, route=route, photo_pins=pins)
 
         if route is not None and self._draft is None and route.id != getattr(self, "_fitted_route_id", None):
@@ -388,7 +404,14 @@ class ComposerPanel(QWidget):
 
             photos = [] if self._draft is not None else self.app_state.replay_photos(
                 self.app_state.db.list_photo_pins(route_id=route.id))
-            pack = self.app_state.db.get_destination_pack(route.destination_id)
+            lats = [p[1] for p in route.coords_3d]
+            lons = [p[0] for p in route.coords_3d]
+            r_bbox = (min(lats), max(lats), min(lons), max(lons))
+            pack = (
+                self.app_state.db.get_composite_pack(route.destination_id, bbox=r_bbox, with_map=True)
+                if hasattr(self.app_state.db, "get_composite_pack")
+                else self.app_state.db.get_destination_pack(route.destination_id)
+            )
             dlg = Replay3DDialog(route, pack, photos, "metric" if unit == "metric" else "us", self,
                                  show_photos=show, speed=float(self.app_state.settings.get("replay_speed", 1.0)))
         dlg.exec()

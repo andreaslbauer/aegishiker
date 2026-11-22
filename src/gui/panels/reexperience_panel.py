@@ -394,13 +394,22 @@ class ReexperiencePanel(QWidget):
         self.photo_pins.sort(key=lambda p: (p.date_taken or 0, p.distance_along_route_m))  # timeline order
         self._update_hike_header(session, route)
 
-        trails = self.app_state.db.list_trails(route.destination_id if route else self.app_state.active_destination_id)
-        pois = self.app_state.db.list_pois(route.destination_id if route else self.app_state.active_destination_id)
+        pack_id = route.destination_id if route else self.app_state.active_destination_id
+        route_bbox = None
+        if route and route.coords_3d:
+            lats = [p[1] for p in route.coords_3d] + [p.lat for p in self.photo_pins]
+            lons = [p[0] for p in route.coords_3d] + [p.lon for p in self.photo_pins]
+            route_bbox = (min(lats), max(lats), min(lons), max(lons))
+        comp = (
+            self.app_state.db.get_composite_pack(pack_id, bbox=route_bbox, with_map=False)
+            if pack_id and route_bbox and hasattr(self.app_state.db, "get_composite_pack")
+            else None
+        )
+        trails = comp.trails if comp else self.app_state.db.list_trails(pack_id)
+        pois = comp.pois if comp else self.app_state.db.list_pois(pack_id)
 
         self.map_canvas.units = "metric" if unit == "metric" else "us"
-        self.map_canvas.sync_basemap(
-            self.app_state.db, route.destination_id if route else self.app_state.active_destination_id
-        )
+        self.map_canvas.sync_basemap(self.app_state.db, pack_id, bbox=route_bbox)
         # Only the hiked route is drawn in trail colours; the basemap still shows every path
         self.map_canvas.set_scene_data(
             trails=[] if route else trails, pois=pois, route=route, photo_pins=self.photo_pins
@@ -512,7 +521,14 @@ class ReexperiencePanel(QWidget):
         with busy(self, "Building 3D terrain for the replay…", title="3D Replay"):
             from src.gui.replay3d import Replay3DDialog
 
-            pack = self.app_state.db.get_destination_pack(route.destination_id)
+            lats = [p[1] for p in route.coords_3d]
+            lons = [p[0] for p in route.coords_3d]
+            r_bbox = (min(lats), max(lats), min(lons), max(lons))
+            pack = (
+                self.app_state.db.get_composite_pack(route.destination_id, bbox=r_bbox, with_map=True)
+                if hasattr(self.app_state.db, "get_composite_pack")
+                else self.app_state.db.get_destination_pack(route.destination_id)
+            )
             unit = str(self.app_state.settings.get("unit_system", "metric"))
             session = self.app_state.get_active_session()
             started = (session.started_at or "") if session else ""

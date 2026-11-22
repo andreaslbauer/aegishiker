@@ -230,10 +230,32 @@ class MapCanvas(BaseChartWidget):
             setattr(self, name, value)
         self.update()
 
-    def sync_basemap(self, db, pack_id: Optional[str]) -> None:
-        """Load the pack's map details only when the destination changes (packs can be MBs)."""
-        if pack_id != self.basemap_pack_id:
-            self.set_basemap(db.get_destination_pack(pack_id) if pack_id else None)
+    def sync_basemap(
+        self,
+        db,
+        pack_id: Optional[str],
+        bbox: Optional[Tuple[float, float, float, float]] = None,
+    ) -> None:
+        """Load the pack's map details (and pull adjacent area packs if `bbox` reaches or crosses
+        the pack's boundary)."""
+        adj_ids: List[str] = []
+        if pack_id and bbox is not None and hasattr(db, "adjacent_pack_ids"):
+            adj_ids = db.adjacent_pack_ids(pack_id, bbox=bbox)
+        comp_key = (pack_id, tuple(adj_ids))
+        if pack_id != self.basemap_pack_id or comp_key != getattr(self, "_basemap_comp_key", None):
+            old_zoom, old_pan = self.zoom, QPointF(self.pan_offset)
+            keep_view = (pack_id == self.basemap_pack_id and self.basemap_pack_id is not None)
+            if pack_id and adj_ids and hasattr(db, "get_composite_pack"):
+                pack = db.get_composite_pack(pack_id, bbox=bbox, with_map=True)
+            else:
+                pack = db.get_destination_pack(pack_id) if pack_id else None
+            self.set_basemap(pack)
+            self.basemap_pack_id = pack_id
+            self._basemap_comp_key = comp_key
+            if keep_view:
+                self.zoom = old_zoom
+                self.pan_offset = old_pan
+                self.update()
 
     def _w(self, lon: float, lat: float) -> QPointF:
         return QPointF(lon * self._kx, -lat)
