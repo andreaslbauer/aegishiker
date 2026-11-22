@@ -42,6 +42,12 @@ parts:
   aegishiker:
     plugin: python
     source: .
+    build-environment:
+      # Prevent the gnome extension's SDK PYTHONPATH (/snap/gnome-46-2404-sdk/.../dist-packages,
+      # which carries pip 24.0) from shadowing the upgraded pip in the part's virtualenv,
+      # and ensure /usr/bin/python3 is used rather than the SDK python3.
+      - PYTHONPATH: ""
+      - PATH: "$CRAFT_PART_INSTALL/bin:/usr/bin:$PATH"
     python-requirements:
       - requirements.txt
     stage-packages:

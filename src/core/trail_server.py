@@ -132,7 +132,10 @@ class TrailServer:
         if not self.db:
             return {}
         target_id = dest_id or self.active_destination_id or "white_mountains_nh"
-        pack = self.db.get_destination_pack(target_id)
+        try:
+            pack = self.db.get_destination_pack(target_id, with_map=False)
+        except TypeError:
+            pack = self.db.get_destination_pack(target_id)
         if not pack:
             packs = self.db.list_destination_packs()
             pack = packs[0] if packs else None
@@ -163,7 +166,21 @@ class TrailServer:
     def _default_state_payload(self) -> Dict[str, Any]:
         if not self.db:
             return {"destinations": [], "routes": []}
-        packs = self.db.list_destination_packs()
+        if hasattr(self.db, "_conn") and hasattr(self.db, "_lock"):
+            with self.db._lock:
+                rows = self.db._conn.execute(
+                    "SELECT id, name, state_or_region FROM destination_pack ORDER BY name ASC"
+                ).fetchall()
+            destinations = [
+                {"id": r["id"], "name": r["name"], "region": r["state_or_region"]}
+                for r in rows
+            ]
+        else:
+            packs = self.db.list_destination_packs()
+            destinations = [
+                {"id": p.id, "name": p.name, "region": p.state_or_region}
+                for p in packs
+            ]
         routes = self.db.list_routes()
         active_route = (
             self.db.get_route(self.active_route_id)
@@ -171,10 +188,7 @@ class TrailServer:
             else (routes[0] if routes else None)
         )
         return {
-            "destinations": [
-                {"id": p.id, "name": p.name, "region": p.state_or_region}
-                for p in packs
-            ],
+            "destinations": destinations,
             "routes": [
                 {
                     "id": r.id,
@@ -252,13 +266,16 @@ class TrailServer:
                     body: bytes,
                     content_type: str = "application/json; charset=utf-8",
                 ) -> None:
-                    self.send_response(status)
-                    self.send_header("Content-Type", content_type)
-                    self.send_header("Content-Length", str(len(body)))
-                    self.send_header("Content-Security-Policy", CSP)
-                    self.send_header("Cache-Control", "no-store")
-                    self.end_headers()
-                    self.wfile.write(body)
+                    try:
+                        self.send_response(status)
+                        self.send_header("Content-Type", content_type)
+                        self.send_header("Content-Length", str(len(body)))
+                        self.send_header("Content-Security-Policy", CSP)
+                        self.send_header("Cache-Control", "no-store")
+                        self.end_headers()
+                        self.wfile.write(body)
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
 
                 def _send_json(self, status: int, data: Any) -> None:
                     self._send_bytes(status, json.dumps(data, ensure_ascii=False).encode("utf-8"))

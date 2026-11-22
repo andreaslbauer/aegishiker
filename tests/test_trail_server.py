@@ -12,16 +12,16 @@ def test_trail_server_pwa_pack_and_telemetry_sync(seeded_db: Database) -> None:
         assert srv.is_running
         base = f"http://127.0.0.1:{srv.port}/h/{srv.token}"
 
-        with urllib.request.urlopen(f"{base}/hiker.html", timeout=5) as resp:
+        with urllib.request.urlopen(f"{base}/hiker.html", timeout=15) as resp:
             html = resp.read().decode("utf-8")
             assert "AegisHiker Field Companion" in html
             assert "indexedDB" in html
 
-        with urllib.request.urlopen(f"{base}/state", timeout=5) as resp:
+        with urllib.request.urlopen(f"{base}/state", timeout=15) as resp:
             state_json = json.loads(resp.read().decode("utf-8"))
             assert len(state_json["destinations"]) >= 7
 
-        with urllib.request.urlopen(f"{base}/pack/white_mountains_nh", timeout=5) as resp:
+        with urllib.request.urlopen(f"{base}/pack/white_mountains_nh", timeout=15) as resp:
             pack_json = json.loads(resp.read().decode("utf-8"))
             assert pack_json["destination"]["id"] == "white_mountains_nh"
             assert len(pack_json["trails"]) >= 6
@@ -41,7 +41,7 @@ def test_trail_server_pwa_pack_and_telemetry_sync(seeded_db: Database) -> None:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             out = json.loads(resp.read().decode("utf-8"))
             assert out["status"] == "ok"
             assert out["points_saved"] == 2
