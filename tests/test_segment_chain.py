@@ -253,3 +253,152 @@ def test_minor_and_unnamed_paths_can_be_switched_off_and_started_on() -> None:
     chain.include_map_paths = True
     chain.start(chain.minor_paths()[0], reverse=True)  # down the herd path to Brook Trail
     assert chain.legs[0].trail.name == "Herd Path" and any(c.leg.trail.id == "a" for c in chain.candidates())
+
+
+def test_direct_candidate_never_zigzags_across_parallel_map_paths() -> None:
+    """Regression: when an identified trail connects directly to the current segment, clicking it
+    must walk the identified trail directly without zig-zagging onto parallel/shadow map paths."""
+    from src.hiking.models import MapFeature
+    from src.hiking.segment_chain import map_paths_from_features
+
+    trails, places = _network()
+    # Add a parallel unnamed map path running alongside Brook Trail and grazing Ridge Trail
+    feats = [
+        MapFeature(
+            kind="path",
+            geom="line",
+            name="",
+            coords=[[-70.997, 44.0001], [-70.991, 44.0001], [-70.9909, 44.004]],
+        )
+    ]
+    paths = map_paths_from_features(feats, None, "p")
+    chain = SegmentChain(trails, places, map_paths=paths)
+    chain.start(trails[0])  # Brook Trail
+
+    ridge = trails[1]
+    spot = ridge.coords_3d[6]
+    cand = chain.candidate_to(ridge, spot[1], spot[0])
+    assert cand is not None
+    assert cand.via_names == [], f"Expected direct connection without via detours, got {cand.via_names}"
+    chain.apply(cand)
+    assert [leg.trail.id for leg in chain.legs] == ["a", "b"]
+
+
+def test_paved_and_unpaved_roads_connect_trail_segments() -> None:
+    """When two trail segments are separated by a paved or unpaved road, the composer uses the
+    road from the basemap to bridge them into a complete hike."""
+    from src.hiking.models import MapFeature
+    from src.hiking.segment_chain import is_road_path, map_paths_from_features
+
+    west_trail = _line("w", "West Ridge Trail", [(-71.02 + i * 0.0015, 44.0, 400.0) for i in range(6)])
+    east_trail = _line("e", "East Peak Trail", [(-71.005 + i * 0.0015, 44.0, 420.0) for i in range(6)])
+    w_end = west_trail.coords_3d[-1]
+    e_start = east_trail.coords_3d[0]
+    road_feats = [
+        MapFeature(
+            kind="road_minor",
+            geom="line",
+            name="Old Logging Road",
+            coords=[[w_end[0], w_end[1]], [e_start[0], e_start[1]]],
+        )
+    ]
+    map_paths = map_paths_from_features(road_feats, None, "p")
+    assert len(map_paths) == 1 and is_road_path(map_paths[0])
+
+    chain = SegmentChain([west_trail, east_trail], [], map_paths=map_paths)
+    chain.start(west_trail)
+    cands = chain.candidates()
+    assert any(c.trail_name == "Old Logging Road" for c in cands), "Road connector is offered at the trailhead"
+
+    # Clicking East Peak Trail directly routes across Old Logging Road
+    target_pt = east_trail.coords_3d[-1]
+    routed = chain.candidate_to(east_trail, target_pt[1], target_pt[0])
+    assert routed is not None and routed.gap_m == 0.0
+    assert routed.via_names == ["Old Logging Road"]
+    chain.apply(routed)
+    assert [leg.trail.name for leg in chain.legs] == [
+        "West Ridge Trail",
+        "Old Logging Road",
+        "East Peak Trail",
+    ]
+
+
+def test_bushwhacking_added_only_when_no_trail_exists() -> None:
+    """When the user picks an off-trail point where no trail or road exists, bushwhack_to creates
+    an explicit off-trail bushwhack candidate."""
+    from src.hiking.segment_chain import is_bushwhack
+
+    trails, places = _network()
+    chain = SegmentChain(trails, places)
+    chain.start(trails[0])  # Brook Trail ends at (-70.985, 44.0)
+
+    # Off-trail point 400 m southeast where no trail exists
+    off_lat, off_lon = 43.997, -70.982
+    assert chain.trails_at(off_lat, off_lon, tol_m=30.0) == []
+    bw = chain.bushwhack_to(off_lat, off_lon)
+    assert bw is not None and is_bushwhack(bw.leg.trail)
+    assert "Bushwhack" in bw.trail_name
+    chain.apply(bw)
+    assert len(chain.legs) == 2 and is_bushwhack(chain.legs[-1].trail)
+    route = chain.to_route("", "test_pack")
+    assert route.trail_ids == ["a"], "Synthetic bushwhack IDs stay out of pack trail_ids"
+    assert route.distance_m > trails[0].distance_m
+
+
+def test_clicking_trail_point_ahead_fills_in_all_segments_along_shortest_path(tmp_path) -> None:
+    """Clicking a point on a trail ahead (not immediately on the next trail) selects and applies
+    all intermediate trail segments leading there along the shortest path."""
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.core.database import Database
+    from src.core.settings import Settings
+    from src.gui.app_state import AppState
+    from src.gui.panels.segment_builder import SegmentBuilder
+    from src.hiking.models import DestinationPack
+
+    QApplication.instance() or QApplication([])
+    # Build a 4-trail network:
+    # Start Trail (a) -> Short Connector (b1) -> Ridge Link (c1) -> Summit Trail (d)
+    # Plus a much longer alternate detour (b_long) from (a) to (d)
+    a = _line("a", "Start Trail", [(-71.000 + i * 0.001, 44.000, 300.0) for i in range(6)])
+    b1 = _line("b1", "Short Connector", [(-70.995, 44.000 + i * 0.001, 320.0) for i in range(5)])
+    c1 = _line("c1", "Ridge Link", [(-70.995 + i * 0.001, 44.004, 360.0) for i in range(5)])
+    d = _line("d", "Summit Trail", [(-70.991, 44.004 + i * 0.001, 400.0) for i in range(6)])
+    b_long = _line(
+        "b_long",
+        "Long Detour Trail",
+        [(-71.000, 44.000 + i * 0.001, 310.0) for i in range(10)]
+        + [(-71.000 + i * 0.001, 44.009, 390.0) for i in range(10)],
+    )
+    pack = DestinationPack(
+        id="test_multi_hop",
+        name="Test Multi Hop",
+        center_lat=44.004,
+        center_lon=-70.995,
+        min_lat=43.99,
+        max_lat=44.02,
+        min_lon=-71.02,
+        max_lon=-70.98,
+        trails=[a, b1, c1, d, b_long],
+    )
+    db = Database(db_path=tmp_path / "test.db")
+    state = AppState(db=db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    builder = SegmentBuilder(app_state=state)
+    builder.set_pack(pack)
+
+    assert builder.start_on_trail("a")
+    assert [leg.trail.id for leg in builder.chain.legs] == ["a"]
+
+    # Click a point on Summit Trail (d) at vertex 3 — 2 intermediate trails ahead (b1 -> c1 -> d)
+    target_pt = d.coords_3d[3]
+    assert builder.pick_at(target_pt[1], target_pt[0], tol_m=15.0)
+
+    # All segments along the shortest path (a -> b1 -> c1 -> d) are immediately filled in
+    assert [leg.trail.id for leg in builder.chain.legs] == ["a", "b1", "c1", "d"]
+    assert builder.chain.legs[-1].end == 3
+    builder.deleteLater()
+
+

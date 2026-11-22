@@ -27,8 +27,16 @@ from PySide6.QtWidgets import (
 from src.gui.app_state import AppState
 from src.gui.busy import busy
 from src.hiking.geo import haversine_m
-from src.hiking.models import ComposedRoute, DestinationPack
-from src.hiking.segment_chain import Candidate, SegmentChain, StopPoint, is_map_path, map_paths_from_features
+from src.hiking.models import ComposedRoute, DEMGrid, DestinationPack
+from src.hiking.segment_chain import (
+    Candidate,
+    SegmentChain,
+    StopPoint,
+    is_bushwhack,
+    is_map_path,
+    is_road_path,
+    map_paths_from_features,
+)
 from src.hiking.units import format_distance, format_elevation
 
 PLACE_KINDS = {"peak", "hut", "shelter", "trailhead", "parking", "waterfall", "viewpoint", "campsite", "saddle", "spring"}
@@ -175,6 +183,7 @@ class SegmentBuilder(QWidget):
         old_ended = self.chain.ended if self.chain else False
         old_history = list(self.chain._history) if self.chain else []
         self.pack_id = pack_id
+        self._dem: Optional[DEMGrid] = pack.dem if pack else None
         self._loaded_adj_ids: Tuple[str, ...] = ()
         self.start_combo.clear()
         self.chain = None
@@ -183,7 +192,7 @@ class SegmentBuilder(QWidget):
                       for f in pack.features if f.geom == "point" and f.name and f.kind in PLACE_KINDS]
             places += [(p.name, p.lon, p.lat) for p in pack.pois]
             trails = sorted(pack.trails, key=lambda t: t.name.lower())
-            # The map's other footpaths and tracks: pickable on the map and used to fill gaps
+            # The map's other footpaths, tracks, and roads: pickable on the map and used to fill gaps
             map_paths = map_paths_from_features(pack.features, pack.dem, pack.id)
             self.chain = SegmentChain(trails, places, map_paths=map_paths,
                                       include_map_paths=self.minor_chk.isChecked())
@@ -217,6 +226,7 @@ class SegmentBuilder(QWidget):
         if comp is None:
             return False
         self._loaded_adj_ids = union_adj
+        self._dem = comp.dem
         old_legs = list(self.chain.legs)
         old_ended = self.chain.ended
         old_history = list(self.chain._history)
@@ -388,6 +398,36 @@ class SegmentBuilder(QWidget):
 
     # ── map picking ──────────────────────────────────────────────────────
 
+    def _disambiguate_candidate_hits(self, hits: List[int], lat: float, lon: float) -> Optional[int]:
+        """Pick the best candidate hit at `(lat, lon)`, only prompting with `_choose` when multiple
+        candidates genuinely share the clicked path away from the junction."""
+        if not hits:
+            return None
+        if len(hits) == 1:
+            return hits[0]
+        assert self.chain is not None
+        top_cand = self._candidates[hits[0]]
+        top_tier = 1 if is_map_path(top_cand.leg.trail) else 0
+        top_pts = top_cand.coords()
+        top_body = top_pts[min(2, len(top_pts) - 1):] if len(top_pts) > 2 else top_pts
+        top_bd = self.chain._dist_to_line_m(lat, lon, top_body)
+        close_hits: List[int] = [hits[0]]
+        for h in hits[1:]:
+            c = self._candidates[h]
+            tier = 1 if is_map_path(c.leg.trail) else 0
+            if tier > top_tier:
+                continue
+            pts = c.coords()
+            body = pts[min(2, len(pts) - 1):] if len(pts) > 2 else pts
+            bd = self.chain._dist_to_line_m(lat, lon, body)
+            if abs(bd - top_bd) <= 8.0:
+                close_hits.append(h)
+        if len(close_hits) == 1:
+            return close_hits[0]
+        return self._choose(
+            [(self._candidate_text(self._candidates[h], self._unit()).split("\n")[0], h) for h in close_hits]
+        )
+
     def pick_at(self, lat: float, lon: float, tol_m: float) -> bool:
         """Handle a map click. Returns True when the click belongs to the builder (no tracing)."""
         if not self.pick_chk.isChecked() or not self.chain:
@@ -396,35 +436,58 @@ class SegmentBuilder(QWidget):
             if self.chain.complete:
                 self.app_state.status_message.emit("The hike is complete: save it, or Remove Last Segment to keep building.")
                 return True
-            stop = self._stop_at(lat, lon, tol_m * 1.5)
+            stop = self._stop_at(lat, lon, max(18.0, tol_m * 1.5))
             if stop is not None:
                 self.add_to_stop(*stop)
                 return True
-            hits = self.chain.candidates_at(self._candidates, lat, lon, tol_m)
+            hits = self.chain.candidates_at(self._candidates, lat, lon, max(16.0, tol_m * 1.25))
+            if hits:
+                top_cand = self._candidates[hits[0]]
+                routed = self.chain.candidate_to(top_cand.leg.trail, lat, lon)
+                if routed is not None and routed.via_names:
+                    # A shorter multi-trail path reaches this spot via other connecting trails
+                    hits = []
             if not hits:
-                self._offer_clicked_trail(lat, lon, tol_m)
+                self._offer_clicked_trail(lat, lon, max(20.0, tol_m * 1.4))
                 return True
-            idx = hits[0] if len(hits) == 1 else self._choose(
-                [(self._candidate_text(self._candidates[h], self._unit()).split("\n")[0], h) for h in hits]
-            )
+            current_row = self.cand_list.currentRow()
+            if current_row in hits:
+                # Clicking an already-selected candidate adds it (up to the nearest stop point or click)
+                cand_stops = [sp for i, sp in self._stops if i == current_row]
+                if len(cand_stops) == 1:
+                    self.add_to_stop(current_row, cand_stops[0])
+                elif cand_stops:
+                    nearest_sp = min(cand_stops, key=lambda sp: haversine_m(lat, lon, sp.lat, sp.lon))
+                    if haversine_m(lat, lon, nearest_sp.lat, nearest_sp.lon) <= max(45.0, tol_m * 3.0):
+                        self.add_to_stop(current_row, nearest_sp)
+                    else:
+                        short = self.chain.shorten_to(self._candidates[current_row], lat, lon)
+                        self.chain.apply(short)
+                        self._refresh()
+                        self.app_state.status_message.emit(f"Added {short.trail_name}.")
+                else:
+                    self.add_selected()
+                return True
+            idx = self._disambiguate_candidate_hits(hits, lat, lon)
             if idx is not None:
                 # Clicked an option: select it and show where it can be walked to
                 self.cand_list.setCurrentRow(idx)
                 n = sum(1 for i, _sp in self._stops if i == idx)
                 self.app_state.status_message.emit(
                     f"{self._candidates[idx].trail_name}: click one of its {n} points (●) where you turned "
-                    "or stopped, or Add Segment for all of it."
+                    "or stopped (or click the trail again / Add Segment)."
                 )
             return True
-        trails = self.chain.trails_at(lat, lon, tol_m)
+        trails = self.chain.trails_at(lat, lon, max(18.0, tol_m * 1.3))
         if not trails:
             self.app_state.status_message.emit("Click on a trail to start the hike there.")
             return True
-        pick = 0 if len(trails) == 1 else self._choose(
-            [(f"Start on {t.name}", n) for n, (t, _rev, _d) in enumerate(trails)]
+        close_trails = [trails[0]] + [t for t in trails[1:] if t[2] <= trails[0][2] + 8.0 and t[0].name != trails[0][0].name]
+        pick = 0 if len(close_trails) == 1 else self._choose(
+            [(f"Start on {t.name}", n) for n, (t, _rev, _d) in enumerate(close_trails)]
         )
         if pick is not None:
-            trail, reverse, _d = trails[pick]
+            trail, reverse, _d = close_trails[pick]
             idx = self.start_combo.findData(trail.id)
             if idx >= 0:
                 self.start_combo.setCurrentIndex(idx)
@@ -437,32 +500,56 @@ class SegmentBuilder(QWidget):
         return True
 
     def _offer_clicked_trail(self, lat: float, lon: float, tol_m: float) -> None:
-        """A trail clicked on the map that isn't an option yet becomes one: routed over the
-        connecting trails, or (close but not mapped as connected) a short jump onto it. It is added
-        to the list, selected and previewed; the user confirms with Add Segment / double-click."""
+        """When the user clicks a point that is NOT immediately on the next trail, find the
+        shortest path of connecting trails leading there and immediately fill in all those segments.
+        Only when no trail or road is near the click, offers an off-trail 'Bushwhack' segment."""
         assert self.chain is not None
+        all_pts = [pt for leg in self.chain.legs for pt in leg.coords()]
+        if all_pts:
+            lats = [p[1] for p in all_pts] + [lat]
+            lons = [p[0] for p in all_pts] + [lon]
+            self._ensure_adjacent_packs_for_bbox((min(lats), max(lats), min(lons), max(lons)))
         trails = self.chain.trails_at(lat, lon, tol_m)
         if not trails:
-            self.app_state.status_message.emit("Click a trail, or one of the dashed yellow options, to add it.")
+            bw = self.chain.bushwhack_to(lat, lon, getattr(self, "_dem", None), self.pack_id or "")
+            if bw is None:
+                self.app_state.status_message.emit("Click a trail, or one of the dashed yellow options, to add it.")
+                return
+            self._picked = [c for c in self._picked if not is_bushwhack(c.leg.trail)] + [bw]
+            self._show_candidates(select=bw)
+            self.app_state.status_message.emit(
+                f"No trail here — offered off-trail {bw.trail_name} ({format_distance(bw.distance_m, self._unit())}). "
+                "Click its ● endpoint or Add Segment to bushwhack there."
+            )
             return
-        pick = 0 if len(trails) == 1 else self._choose(
-            [(f"Go to {t.name}", n) for n, (t, _rev, _d) in enumerate(trails)]
+        close_trails = [trails[0]] + [t for t in trails[1:] if t[2] <= trails[0][2] + 8.0 and t[0].name != trails[0][0].name]
+        pick = 0 if len(close_trails) == 1 else self._choose(
+            [(f"Go to {t.name}", n) for n, (t, _rev, _d) in enumerate(close_trails)]
         )
         if pick is None:
             return
-        trail = trails[pick][0]
-        with busy(self, "Finding a way to that trail…", show_dialog=False):
+        trail = close_trails[pick][0]
+        with busy(self, "Finding shortest path to that trail…", show_dialog=False):
             cand = self.chain.candidate_to(trail, lat, lon)
         if cand is None:
             self.app_state.status_message.emit(
                 f"{trail.name} can't be reached from here on the mapped trails, and is too far to jump to."
             )
             return
-        self._picked = [c for c in self._picked if c.trail_name != cand.trail_name] + [cand]
-        self._show_candidates(select=cand)
-        how = (f"{format_distance(cand.gap_m, self._unit())} away, not connected on the map" if cand.gap_m
-               else (f"via {' → '.join(cand.via_names)}" if cand.via_names else "from here"))
-        self.app_state.status_message.emit(f"Added {trail.name} ({how}) to the options — Add Segment to use it.")
+        # Immediately fill in all connecting trail segments leading to the clicked point
+        unit = self._unit()
+        via_names = list(cand.via_names)
+        dist_str = format_distance(cand.distance_m, unit)
+        gap_m = cand.gap_m
+        self.chain.apply(cand)
+        self._refresh()
+        if gap_m:
+            how = f"{format_distance(gap_m, unit)} off-trail jump, {dist_str}"
+        elif via_names:
+            how = f"via {' → '.join(via_names)}, {dist_str}"
+        else:
+            how = dist_str
+        self.app_state.status_message.emit(f"Added shortest path to {trail.name} ({how}).")
 
     def _choose(self, options: List[tuple]) -> Optional[int]:
         """Several trails share the clicked spot: let the user say which one is meant."""
@@ -495,8 +582,18 @@ class SegmentBuilder(QWidget):
                 msg = (f"Click to select {self._candidates[hits[0]].trail_name} and see where it goes"
                        + (f" (+{len(hits) - 1} more here)" if len(hits) > 1 else ""))
             else:
-                self._on_candidate_highlighted(self.cand_list.currentRow())
-                msg = ""
+                trails = self.chain.trails_at(lat, lon, max(20.0, tol_m * 1.4))
+                cand = self.chain.candidate_to(trails[0][0], lat, lon) if trails else None
+                if cand is not None:
+                    self.preview_changed.emit([(p[1], p[0]) for p in cand.coords()])
+                    via = f" via {' → '.join(cand.via_names)}" if cand.via_names else ""
+                    msg = (
+                        f"Click to add shortest path to {cand.trail_name}{via} "
+                        f"({format_distance(cand.distance_m, self._unit())})"
+                    )
+                else:
+                    self._on_candidate_highlighted(self.cand_list.currentRow())
+                    msg = ""
         else:
             trails = self.chain.trails_at(lat, lon, tol_m)
             self.preview_changed.emit([(p[1], p[0]) for p in trails[0][0].coords_3d] if trails else None)
@@ -732,15 +829,19 @@ class SegmentBuilder(QWidget):
         self._fit_rows(self.cand_list)
 
     def _candidate_text(self, c: Candidate, unit: str) -> str:
+        t = (c.extra_legs[-1] if c.extra_legs else c.leg).trail
         if c.picked:
             stats = (f"{format_distance(c.distance_m, unit)} · +{format_elevation(c.gain_m, unit)}"
                      f" / -{format_elevation(c.loss_m, unit)}")
             toward = f" toward {c.toward_place}" if c.toward_place else ""
+            if is_bushwhack(t):
+                return f"🧭 {c.trail_name}\n    {stats}"
             if c.gap_m:
-                return (f"↷ {c.trail_name}{toward} — {format_distance(c.gap_m, unit)} away, "
-                        f"not connected on the map (walk across)\n    {stats}")
+                return (f"🧭 {c.trail_name}{toward} — {format_distance(c.gap_m, unit)} off-trail bushwhack\n"
+                        f"    {stats}")
             via = f"\n    via {' → '.join(c.via_names)}" if c.via_names else ""
-            return f"📍 {c.trail_name}{toward} (picked on the map){via}\n    {stats}"
+            prefix = "🛣" if is_road_path(t) else "📍"
+            return f"{prefix} {c.trail_name}{toward} (picked on the map){via}\n    {stats}"
         at = c.at_place or f"{format_distance(c.along_m, unit)} along"
         toward = f" toward {c.toward_place}" if c.toward_place else ""
         stats = (f"{format_distance(c.distance_m, unit)} · +{format_elevation(c.gain_m, unit)}"
@@ -749,7 +850,8 @@ class SegmentBuilder(QWidget):
             return f"↩ Turn around: back on {c.trail_name}{toward}\n    {stats}"
         if c.continues:
             return f"↑ Continue on {c.trail_name}{toward}\n    {stats}"
-        return f"→ {c.trail_name}{toward}\n    at {at} · {stats}"
+        prefix = "🛣" if is_road_path(t) else "→"
+        return f"{prefix} {c.trail_name}{toward}\n    at {at} · {stats}"
 
     def _sync_ui(self) -> None:
         has = self.has_draft()

@@ -34,17 +34,19 @@ _CELL_DEG = 0.0005  # ~40-55 m grid cells for the vertex index
 
 Place = Tuple[str, float, float]  # (name, lon, lat)
 
-MAP_PATH_TAG = "map_path"  # tag on TrailSegments made from basemap paths (not region trails)
+MAP_PATH_TAG = "map_path"  # tag on TrailSegments made from basemap paths/roads (not region trails)
+ROAD_TAG = "road"  # tag on TrailSegments made from paved or unpaved roads
+BUSHWHACK_TAG = "bushwhack"  # tag on off-trail bushwhack segments picked by the user
 MAP_PATH_STEP_M = 20.0  # densify map paths so crossings with trails fall within JUNCTION_M
 
 
 def map_paths_from_features(
     features: Sequence[MapFeature], dem: Optional[DEMGrid], pack_id: str = ""
 ) -> List[TrailSegment]:
-    """The basemap's footpaths and tracks as walkable segments (elevations from the DEM)."""
+    """The basemap's footpaths, tracks, and paved/unpaved roads as walkable segments (elevations from DEM)."""
     out: List[TrailSegment] = []
     for i, f in enumerate(features):
-        if f.geom != "line" or f.kind not in ("path", "track") or len(f.coords) < 2:
+        if f.geom != "line" or f.kind not in ("path", "track", "road_minor", "road_major") or len(f.coords) < 2:
             continue
         pts: List[List[float]] = []
         for a, b in zip(f.coords, f.coords[1:]):
@@ -56,19 +58,42 @@ def map_paths_from_features(
         pts.append(list(f.coords[-1][:2]))
         coords = [[lon, lat, round(sample_dem(dem, lat, lon), 1)] for lon, lat in pts]
         length = sum(haversine_m(a[1], a[0], b[1], b[0]) for a, b in zip(f.coords, f.coords[1:]))
-        unnamed = "Unnamed path" if f.kind == "path" else "Unnamed track"
+        is_road = f.kind in ("road_minor", "road_major")
+        if f.kind == "path":
+            unnamed = "Unnamed path"
+        elif f.kind == "track":
+            unnamed = "Unnamed track"
+        elif f.kind == "road_minor":
+            unnamed = "Unpaved / forest road"
+        else:
+            unnamed = "Road connector"
         if f.info:  # what the map says about it, e.g. "SAC T1 hiking", so it can be told apart
             unnamed += f" ({f.info.split(' · ')[0].split(';')[0][:40]})"
+        tags = [MAP_PATH_TAG]
+        if is_road:
+            tags.extend([ROAD_TAG, f.kind])
+        if not f.name:
+            tags.append("unnamed")
+        surface = "paved" if f.kind == "road_major" else ("gravel" if f.kind == "road_minor" else "rocky")
         out.append(TrailSegment(
-            id=f"mappath_{i}", pack_id=pack_id, name=f.name or unnamed, coords_3d=coords, distance_m=round(length, 1),
-            tags=[MAP_PATH_TAG] + ([] if f.name else ["unnamed"]),
-            description="Path from the map (not one of the region's listed trails)",
+            id=f"mappath_{i}", pack_id=pack_id, name=f.name or unnamed, coords_3d=coords,
+            distance_m=round(length, 1), surface=surface,  # type: ignore[arg-type]
+            tags=tags,
+            description="Road connector from the map" if is_road else "Path from the map (not one of the region's listed trails)",
         ))
     return out
 
 
 def is_map_path(trail: TrailSegment) -> bool:
     return MAP_PATH_TAG in trail.tags
+
+
+def is_road_path(trail: TrailSegment) -> bool:
+    return ROAD_TAG in trail.tags
+
+
+def is_bushwhack(trail: TrailSegment) -> bool:
+    return BUSHWHACK_TAG in trail.tags
 
 
 @dataclass
@@ -169,21 +194,31 @@ class SegmentChain:
         # Named map paths lying on a listed trail are that trail's own OSM pieces: never offered
         self._shadows = {ti for ti in range(self._n_named, len(self.trails)) if self._is_shadow(ti)}
 
-    SHADOW_M = 12.0  # a map path this close to a listed trail all along is that trail's own path
+    SHADOW_M = 22.0  # a map path this close to a listed trail along its length is that trail's own path
 
     def _is_shadow(self, ti: int) -> bool:
         """Is map path ti a piece of a listed trail (named or not: some listed trails are built from
-        unnamed OSM ways)? Sampled at three points, all on the same listed trail."""
+        unnamed OSM ways)? Sampled at five points along the path."""
         t = self.trails[ti]
         if len(t.coords_3d) < 2:
             return False
         pts = t.coords_3d
-        samples = [pts[int(f * (len(pts) - 1))] for f in (0.15, 0.5, 0.85)]
+        t_name_norm = t.name.strip().lower()
+        samples = [pts[int(f * (len(pts) - 1))] for f in (0.1, 0.3, 0.5, 0.7, 0.9)]
         for tj in range(self._n_named):
             lo_lat, lo_lon, hi_lat, hi_lon = self._bounds[tj]
-            if all(lo_lat - 0.0002 <= p[1] <= hi_lat + 0.0002 and lo_lon - 0.0003 <= p[0] <= hi_lon + 0.0003 for p in samples):
-                line = self.trails[tj].coords_3d
-                if all(self._dist_to_line_m(p[1], p[0], line) <= self.SHADOW_M for p in samples):
+            listed = self.trails[tj]
+            # If the map path has the exact same name as a listed trail and overlaps its bbox, it's a shadow
+            if (
+                "unnamed" not in t.tags
+                and t_name_norm == listed.name.strip().lower()
+                and any(lo_lat - 0.002 <= p[1] <= hi_lat + 0.002 and lo_lon - 0.002 <= p[0] <= hi_lon + 0.002 for p in samples)
+            ):
+                return True
+            if all(lo_lat - 0.0004 <= p[1] <= hi_lat + 0.0004 and lo_lon - 0.0005 <= p[0] <= hi_lon + 0.0005 for p in samples):
+                line = listed.coords_3d
+                near_count = sum(1 for p in samples if self._dist_to_line_m(p[1], p[0], line) <= self.SHADOW_M)
+                if near_count >= 4:
                     return True
         return False
 
@@ -191,12 +226,16 @@ class SegmentChain:
         """Can trail ti be offered as a next segment / named at a junction?"""
         if ti < self._n_named:
             return True
-        return self.include_map_paths and ti not in self._shadows
+        if ti in self._shadows:
+            return False
+        return self.include_map_paths
 
     def minor_paths(self) -> List[TrailSegment]:
-        """The map's named paths that aren't one of the region's listed trails, by name."""
+        """The map's named paths (and named minor trailhead roads) that aren't one of the region's
+        listed trails, by name."""
         return sorted((self.trails[ti] for ti in range(self._n_named, len(self.trails))
-                       if ti not in self._shadows and "unnamed" not in self.trails[ti].tags),
+                       if ti not in self._shadows and "unnamed" not in self.trails[ti].tags
+                       and "road_major" not in self.trails[ti].tags),
                       key=lambda t: t.name.lower())
 
     # ── building ──────────────────────────────────────────────────────────
@@ -366,6 +405,22 @@ class SegmentChain:
             if not duplicate:
                 out.append(cand)
 
+        # If no trails were found and the current segment ends right at a road, offer the road connector
+        # even if minor paths are unchecked, so road-bridged hikes can always continue.
+        if not out:
+            end_pt = leg_pts[-1]
+            for ti, vi, d in self._near_vertices(end_pt[0], end_pt[1]):
+                if ti >= self._n_named and ti not in self._shadows and is_road_path(self.trails[ti]):
+                    trail = self.trails[ti]
+                    for target in (len(trail.coords_3d) - 1, 0):
+                        if target == vi:
+                            continue
+                        leg = Leg(trail, vi, target)
+                        if not self._runs_along(leg, leg_pts):
+                            cand = self._make(leg, len(leg_pts) - 1, cum)
+                            if cand:
+                                out.append(cand)
+
         # The current segment stopped part-way (the user clicked where they went): keep going on it
         ahead = len(last.trail.coords_3d) - 1 if last.step > 0 else 0
         if ahead != last.end:
@@ -382,7 +437,14 @@ class SegmentChain:
                 cand.turnaround = True
                 out.append(cand)
 
-        out.sort(key=lambda c: (-c.along_m, c.turnaround, c.trail_name))  # junctions at the end first
+        def _cand_rank(c: Candidate) -> tuple:
+            # Identified listed trails first, then named minor paths, then unnamed paths, then roads,
+            # ordered from the end of the current segment backward.
+            t = c.leg.trail
+            tier = 0 if not is_map_path(t) else (3 if is_road_path(t) else (2 if "unnamed" in t.tags else 1))
+            return (-round(c.along_m, -1), c.turnaround, tier, c.trail_name)
+
+        out.sort(key=_cand_rank)
         return out
 
     def _runs_along(self, leg: Leg, leg_pts: List[List[float]]) -> bool:
@@ -434,12 +496,18 @@ class SegmentChain:
     def trails_at(self, lat: float, lon: float, tol_m: float) -> List[Tuple[TrailSegment, bool, float]]:
         """Trails within `tol_m` of the point, nearest first, as (trail, reverse, distance).
         `reverse` starts the trail at the end nearer the click. Trails sharing a stretch of path
-        are all returned so the caller can ask which one is meant. Map paths are returned only
-        where no region trail is near (a listed trail usually is a map path too)."""
+        are all returned so the caller can ask which one is meant. Map paths (and roads) are returned
+        only where no listed region trail is near (identified trails always win)."""
         hits = self._trails_at(lat, lon, tol_m, 0, self._n_named)
         if hits or not self.include_map_paths:
             return hits
-        return self._trails_at(lat, lon, tol_m, self._n_named, len(self.trails))
+        map_hits = [
+            h for h in self._trails_at(lat, lon, tol_m, self._n_named, len(self.trails))
+            if self.trails.index(h[0]) not in self._shadows
+        ]
+        # Prefer footpaths/tracks over roads if both are under the cursor
+        non_road = [h for h in map_hits if not is_road_path(h[0])]
+        return non_road if non_road else map_hits
 
     def _trails_at(self, lat: float, lon: float, tol_m: float, lo: int, hi: int) -> List[Tuple[TrailSegment, bool, float]]:
         hits = []
@@ -454,24 +522,35 @@ class SegmentChain:
         return sorted(hits, key=lambda h: h[2])
 
     def candidates_at(self, cands: Sequence[Candidate], lat: float, lon: float, tol_m: float) -> List[int]:
-        """Indices of candidates whose segment passes within `tol_m` of the point, nearest first."""
+        """Indices of candidates whose segment passes within `tol_m` of the point, best match first.
+        When clicking near a junction where several candidates start, prefers the candidate whose
+        body (away from the junction) passes closest to the click, and prefers identified trails
+        over unnamed map paths."""
         hits = []
         for i, c in enumerate(cands):
-            d = self._dist_to_line_m(lat, lon, c.coords())
+            pts = c.coords()
+            d = self._dist_to_line_m(lat, lon, pts)
             if d <= tol_m:
-                hits.append((d, i))
-        return [i for _d, i in sorted(hits)]
+                # Distance to the candidate's body beyond its first vertex (disambiguates junction clicks)
+                body_pts = pts[min(2, len(pts) - 1):] if len(pts) > 2 else pts
+                body_d = self._dist_to_line_m(lat, lon, body_pts)
+                tier = 1 if is_map_path(c.leg.trail) else 0
+                hits.append((tier, round(d, 1), round(body_d, 1), i))
+        return [i for _tier, _d, _bd, i in sorted(hits)]
 
     # ── reaching a trail clicked on the map ───────────────────────────────
 
     CLOSE_GAP_M = 300.0  # a clicked trail this close (but not connected) can be jumped to
     MAX_GAP_M = 1500.0  # beyond this an unconnected trail is not offered
     MAX_ROUTE_M = 25_000.0
-    MAP_PATH_COST = 1.5  # routing weight of a metre on a map path vs. on a region trail
+    MAP_PATH_COST = 1.6  # routing weight of a metre on a map path vs. 1.0 on an identified trail
+    ROAD_MINOR_COST = 2.2  # unpaved / minor roads used when trails don't connect directly
+    ROAD_MAJOR_COST = 3.2  # paved roads used only when needed to bridge trailheads
+    SWITCH_PENALTY_M = 35.0  # penalty for switching trails: prevents random zig-zags across parallel paths
 
     def _network(self):
-        """Walkable graph over every trail vertex: neighbours along a trail plus junction links
-        (the same rules as the option list: 25 m anywhere, 75 m at a trail's end). Built once."""
+        """Walkable graph over every non-shadow trail vertex: neighbours along a trail plus junction
+        links (25 m anywhere, 75 m at a trail's end). Built once."""
         if getattr(self, "_graph", None) is not None:
             return self._graph
         offsets, n = [], 0
@@ -480,22 +559,30 @@ class SegmentChain:
             n += len(t.coords_3d)
         adj: List[List[Tuple[int, float]]] = [[] for _ in range(n)]
         for ti, t in enumerate(self.trails):
+            if ti in self._shadows:
+                continue  # shadow duplicates of listed trails never participate in routing
             pts, base = t.coords_3d, offsets[ti]
-            # Routes prefer the region's trails; map paths (unnamed paths, tracks) fill the gaps
-            cost = 1.0 if ti < self._n_named else self.MAP_PATH_COST
+            # Identified region trails cost 1.0x; minor paths 1.6x; minor roads 2.2x; major roads 3.2x
+            if ti < self._n_named:
+                cost = 1.0
+            elif "road_major" in t.tags:
+                cost = self.ROAD_MAJOR_COST
+            elif "road_minor" in t.tags:
+                cost = self.ROAD_MINOR_COST
+            else:
+                cost = self.MAP_PATH_COST
             for vi in range(len(pts) - 1):
                 d = cost * haversine_m(pts[vi][1], pts[vi][0], pts[vi + 1][1], pts[vi + 1][0])
                 adj[base + vi].append((base + vi + 1, d))
                 adj[base + vi + 1].append((base + vi, d))
-        # Junction links, as in _near_vertices but with a flat-earth distance and direct grid scans
-        # (map paths make this tens of thousands of vertices): 25 m between any vertices from
-        # adjacent cells, 75 m when either vertex is a trail's end (searched 2 cells out)
         grid = self._grid
         ky = 110_540.0
         kx = 111_320.0 * math.cos(math.radians(self.trails[0].coords_3d[0][1])) if self.trails and self.trails[0].coords_3d else ky
         j2, e2 = JUNCTION_M ** 2, END_JUNCTION_M ** 2
         ends = {(ti, len(t.coords_3d) - 1) for ti, t in enumerate(self.trails)} | {(ti, 0) for ti in range(len(self.trails))}
         for ti, t in enumerate(self.trails):
+            if ti in self._shadows:
+                continue
             pts, base = t.coords_3d, offsets[ti]
             last = len(pts) - 1
             for vi, p in enumerate(pts):
@@ -505,15 +592,15 @@ class SegmentChain:
                 for dx in range(-reach, reach + 1):
                     for dy in range(-reach, reach + 1):
                         for tj, vj in grid.get((cx + dx, cy + dy), ()):
-                            if tj == ti:
+                            if tj == ti or tj in self._shadows:
                                 continue
                             q = self.trails[tj].coords_3d[vj]
                             ddx, ddy = (q[0] - p[0]) * kx, (q[1] - p[1]) * ky
                             d2 = ddx * ddx + ddy * ddy
                             if d2 <= j2 or (d2 <= e2 and (is_end or (tj, vj) in ends)):
-                                # Both directions: a middle vertex only scans adjacent cells, so
-                                # an end 2 cells away links back to it from its own scan
-                                d = math.sqrt(d2)
+                                # Add SWITCH_PENALTY_M so Dijkstra stays on one identified trail
+                                # instead of zig-zagging across parallel paths or junctions
+                                d = math.sqrt(d2) + self.SWITCH_PENALTY_M
                                 adj[base + vi].append((offsets[tj] + vj, d))
                                 adj[offsets[tj] + vj].append((base + vi, d))
         self._graph = (offsets, adj)
@@ -563,7 +650,8 @@ class SegmentChain:
             run_end = vi
         if run_t is not None and run_end != run_start:
             legs.append(Leg(self.trails[run_t], run_start, run_end))
-        # A hop across an overlapping trail splits one trail into two legs: join them again
+        # A hop across an overlapping trail splits one trail into two legs: join them again, and
+        # drop tiny micro-zig-zag legs (< MIN_LEG_M) between two longer legs where a junction grazed another trail.
         merged: List[Leg] = []
         for leg in legs:
             prev = merged[-1] if merged else None
@@ -576,27 +664,85 @@ class SegmentChain:
                 merged.append(leg)
             else:
                 merged.append(leg)
+        if len(merged) >= 3:
+            cleaned: List[Leg] = [merged[0]]
+            for idx in range(1, len(merged) - 1):
+                cur = merged[idx]
+                nxt = merged[idx + 1]
+                cur_end = cur.trail.coords_3d[cur.end]
+                prev_end = cleaned[-1].trail.coords_3d[cleaned[-1].end]
+                nxt_start = nxt.trail.coords_3d[nxt.start]
+                if (
+                    cur.stats()["distance_m"] < MIN_LEG_M
+                    and haversine_m(prev_end[1], prev_end[0], nxt_start[1], nxt_start[0]) <= END_JUNCTION_M
+                ):
+                    continue  # drop micro-spur at junction
+                cleaned.append(cur)
+            cleaned.append(merged[-1])
+            merged = cleaned
         return merged
 
     def candidate_to(self, trail: TrailSegment, lat: float, lon: float) -> Optional[Candidate]:
-        """An option reaching a trail the user clicked on the map although it isn't offered. The hike
-        leaves the current segment where it meets that trail (or the nearest way to it) and goes to
-        the clicked spot: routed over the network ("via" other trails), or, when it's close but not
-        mapped as connected, a short straight jump onto it. None if neither is sensible."""
+        """An option reaching a trail the user clicked on the map.
+        1. If `trail` directly touches the current segment, leaves the current segment at that
+           junction and walks `trail` directly to the clicked spot (never zig-zagging via other paths).
+        2. Else if `trail` is reachable over the trail/path/road network, routes via the shortest
+           network path.
+        3. Else if `trail` is within MAX_GAP_M, offers an off-trail bushwhack jump across the gap."""
         if not self.legs or self.complete:
             return None
         last = self.legs[-1]
         leg_pts = last.coords()
-        ti = next(i for i, t in enumerate(self.trails) if t.id == trail.id)
-        last_ti = next(i for i, t in enumerate(self.trails) if t.id == last.trail.id)
+        ti = next((i for i, t in enumerate(self.trails) if t.id == trail.id), None)
+        last_ti = next((i for i, t in enumerate(self.trails) if t.id == last.trail.id), None)
+        if ti is None or last_ti is None:
+            return None
         pts = trail.coords_3d
         click_v = min(range(len(pts)), key=lambda i: haversine_m(lat, lon, pts[i][1], pts[i][0]))
 
-        legs = None
-        if trail.id != last.trail.id:
-            # Every point of the current segment (but its very start) can be where the hike turns off
-            starts = [(last_ti, last.start + k * last.step) for k in range(1, len(leg_pts))]
-            legs = self._route_legs(starts, (ti, click_v))
+        # 0. Clicking further ahead on the current trail itself (when the last leg stopped partway)
+        if trail.id == last.trail.id:
+            if (click_v - last.end) * last.step > 0:
+                cont_leg = Leg(trail, last.end, click_v)
+                if cont_leg.stats()["distance_m"] >= MIN_LEG_M:
+                    return self._multi_candidate([cont_leg], gap_m=0.0, cut_at=len(leg_pts) - 1)
+            return None
+
+        # 1. Check direct connection between `last` and `trail`
+        direct_cand: Optional[Candidate] = None
+        direct_touches: List[Tuple[float, int, int]] = []
+        for k in range(1, len(leg_pts)):
+            lp = leg_pts[k]
+            is_leg_end = (k == len(leg_pts) - 1)
+            for v, tp in enumerate(pts):
+                is_t_end = (v == 0 or v == len(pts) - 1)
+                d = haversine_m(lp[1], lp[0], tp[1], tp[0])
+                if d <= JUNCTION_M or ((is_leg_end or is_t_end) and d <= END_JUNCTION_M):
+                    walk_leg = Leg(trail, v, click_v) if click_v != v else None
+                    walk_m = walk_leg.stats()["distance_m"] if walk_leg else 0.0
+                    direct_touches.append((d + walk_m, k, v))
+        if direct_touches:
+            _score, best_k, best_v = min(direct_touches, key=lambda x: x[0])
+            target = click_v
+            if target == best_v:
+                target = len(pts) - 1 if (len(pts) - 1 - best_v) >= best_v else 0
+            if target != best_v:
+                direct_leg = Leg(trail, best_v, target)
+                if direct_leg.stats()["distance_m"] >= MIN_LEG_M:
+                    direct_cand = self._multi_candidate([direct_leg], gap_m=0.0, cut_at=best_k)
+
+        # 2. Shortest path over the trail/path/road network
+        starts = [(last_ti, last.start + k * last.step) for k in range(1, len(leg_pts))]
+        legs = self._route_legs(starts, (ti, click_v))
+
+        # Prefer direct connection unless multi-trail network routing is genuinely shorter
+        if direct_cand is not None:
+            if not legs:
+                return direct_cand
+            routed_dist = sum(leg.stats()["distance_m"] for leg in legs)
+            if direct_cand.distance_m <= routed_dist * 1.15 + 50.0:
+                return direct_cand
+
         # Nearest straight-line way across, for the jump
         best = (math.inf, len(leg_pts) - 1, 0)
         for k in range(1, len(leg_pts)):
@@ -615,17 +761,24 @@ class SegmentChain:
         if legs:
             first = legs[0]
             if first.trail.id == last.trail.id:
-                # The route starts by walking on along the current trail: turn off at its last vertex
                 k = (first.end - last.start) * last.step
-                legs = legs[1:]
+                if 0 < k < len(leg_pts):
+                    # Turned off partway along the current segment
+                    legs = legs[1:]
+                    cut_k = k
+                else:
+                    # Continued further along the current trail past where the last segment stopped
+                    cut_k = len(leg_pts) - 1
             else:
                 # The route's first vertex is on another trail; it was reached from the leg vertex at
                 # the same junction: find that vertex on the current segment
                 start_pt = first.trail.coords_3d[first.start]
-                k = min(range(1, len(leg_pts)),
-                        key=lambda i: haversine_m(start_pt[1], start_pt[0], leg_pts[i][1], leg_pts[i][0]))
-            if legs and 0 < k:
-                return self._multi_candidate(legs, gap_m=0.0, cut_at=min(k, len(leg_pts) - 1))
+                cut_k = min(
+                    range(1, len(leg_pts)),
+                    key=lambda i: haversine_m(start_pt[1], start_pt[0], leg_pts[i][1], leg_pts[i][0]),
+                )
+            if legs and 0 < cut_k:
+                return self._multi_candidate(legs, gap_m=0.0, cut_at=min(cut_k, len(leg_pts) - 1))
         if gap > self.MAX_GAP_M:
             return None
         # Jump: walk the clicked trail from its nearest point in the direction of the click
@@ -636,6 +789,49 @@ class SegmentChain:
         if target == entry_v:
             return None
         return self._multi_candidate([Leg(trail, entry_v, target)], gap_m=gap, cut_at=gap_k)
+
+    def bushwhack_to(
+        self,
+        lat: float,
+        lon: float,
+        dem: Optional[DEMGrid] = None,
+        pack_id: str = "",
+    ) -> Optional[Candidate]:
+        """Create an explicit off-trail ('bushwhacking') candidate from the current hike endpoint
+        to `(lat, lon)` when the user clicks a spot on the map where no trail or road exists."""
+        if not self.legs or self.complete:
+            return None
+        last = self.legs[-1]
+        leg_pts = last.coords()
+        start_pt = leg_pts[-1]
+        dist_m = haversine_m(start_pt[1], start_pt[0], lat, lon)
+        if dist_m < 15.0 or dist_m > 12_000.0:
+            return None
+        steps = max(2, min(60, int(dist_m // 30.0) + 1))
+        start_ele = float(start_pt[2]) if len(start_pt) > 2 else sample_dem(dem, start_pt[1], start_pt[0], 0.0)
+        end_ele = sample_dem(dem, lat, lon, start_ele) if dem else start_ele
+        coords: List[List[float]] = []
+        for s in range(steps + 1):
+            t = s / steps
+            clon = round(start_pt[0] + t * (lon - start_pt[0]), 6)
+            clat = round(start_pt[1] + t * (lat - start_pt[1]), 6)
+            cele = round(sample_dem(dem, clat, clon, start_ele + t * (end_ele - start_ele)) if dem else (start_ele + t * (end_ele - start_ele)), 1)
+            coords.append([clon, clat, cele])
+        place = self.place_near(lon, lat, 350.0)
+        label = f"Bushwhack (off-trail to {place})" if place else "Bushwhack (off-trail)"
+        bw_trail = TrailSegment(
+            id=f"bushwhack_{round(lat, 5)}_{round(lon, 5)}",
+            pack_id=pack_id or last.trail.pack_id,
+            name=label,
+            difficulty="strenuous",  # type: ignore[arg-type]
+            surface="alpine",  # type: ignore[arg-type]
+            coords_3d=coords,
+            distance_m=round(dist_m, 1),
+            tags=[BUSHWHACK_TAG],
+            description="Off-trail bushwhack segment chosen on the map",
+        )
+        bw_leg = Leg(bw_trail, 0, len(coords) - 1)
+        return self._multi_candidate([bw_leg], gap_m=0.0, cut_at=len(leg_pts) - 1)
 
     def shorten_to(self, cand: Candidate, lat: float, lon: float) -> Candidate:
         """The option ending at the point the user clicked on it, instead of at its trail's end."""
@@ -768,7 +964,7 @@ class SegmentChain:
     def to_route(self, name: str, pack_id: str) -> ComposedRoute:
         trail_ids: List[str] = []
         for leg in self.legs:
-            if leg.trail.id not in trail_ids and not is_map_path(leg.trail):
+            if leg.trail.id not in trail_ids and not is_map_path(leg.trail) and not is_bushwhack(leg.trail):
                 trail_ids.append(leg.trail.id)
         route = ComposedRoute(
             name=name or self.proposed_name() or "Composed Hike",
