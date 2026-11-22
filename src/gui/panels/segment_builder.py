@@ -166,10 +166,14 @@ class SegmentBuilder(QWidget):
     # ── region ───────────────────────────────────────────────────────────
 
     def set_pack(self, pack: Optional[DestinationPack]) -> None:
-        """Load the region's trails (keeps the current hike if the region is unchanged)."""
+        """Load the region's trails (keeps the current hike if the region is unchanged or overlaps
+        the current hike endpoint)."""
         pack_id = pack.id if pack else None
         if pack_id == self.pack_id and self.chain is not None:
             return
+        old_legs = list(self.chain.legs) if self.chain and self.chain.legs else []
+        old_ended = self.chain.ended if self.chain else False
+        old_history = list(self.chain._history) if self.chain else []
         self.pack_id = pack_id
         self.start_combo.clear()
         self.chain = None
@@ -182,6 +186,20 @@ class SegmentBuilder(QWidget):
             map_paths = map_paths_from_features(pack.features, pack.dem, pack.id)
             self.chain = SegmentChain(trails, places, map_paths=map_paths,
                                       include_map_paths=self.minor_chk.isChecked())
+            if old_legs:
+                end_lon, end_lat = old_legs[-1].coords()[-1][:2]
+                by_id = {t.id: t for t in trails}
+                if (
+                    (pack.min_lat <= end_lat <= pack.max_lat and pack.min_lon <= end_lon <= pack.max_lon)
+                    or old_legs[-1].trail.id in by_id
+                ):
+                    from dataclasses import replace as _dc_replace
+                    self.chain.legs = [
+                        _dc_replace(lg, trail=by_id[lg.trail.id]) if lg.trail.id in by_id else lg
+                        for lg in old_legs
+                    ]
+                    self.chain.ended = old_ended
+                    self.chain._history = old_history
             self._fill_start_combo()
         self._refresh()
 

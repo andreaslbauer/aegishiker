@@ -15,6 +15,7 @@ def test_compose_button_preselects_starting_trail(seeded_db: Database, tmp_path:
 
     app = QApplication.instance() or QApplication([])
     state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    state.set_active_destination("white_mountains_presidentials")
     win = MainWindow(app_state=state)
     win.show()
     explore, composer = win.explore_panel, win.composer_panel
@@ -68,6 +69,7 @@ def test_clicking_builder_trail_zooms_map(seeded_db: Database, tmp_path: Path) -
 
     app = QApplication.instance() or QApplication([])
     state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    state.set_active_destination("white_mountains_presidentials")
     win = MainWindow(app_state=state)
     win.show()
     composer = win.composer_panel
@@ -106,7 +108,7 @@ def test_trail_search_type_ahead(seeded_db: Database, tmp_path: Path) -> None:
 
     app = QApplication.instance() or QApplication([])
     state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
-    state.set_active_destination("white_mountains_nh")
+    state.set_active_destination("white_mountains_presidentials")
     explore = ExplorePanel(app_state=state)
     completer = explore.trail_completer
 
@@ -176,8 +178,14 @@ def test_regions_are_chosen_by_state(seeded_db: Database, tmp_path: Path, monkey
     regions = lambda: [explore.dest_combo.itemData(i) for i in range(explore.dest_combo.count())]  # noqa: E731
 
     assert explore.state_combo.currentData() == "New Hampshire", "opens on the current region's state"
-    assert set(regions()) == {"white_mountains_nh", "mount_monadnock"}
-    assert explore.state_combo.currentText().startswith("New Hampshire (2")
+    assert set(regions()) == {
+        "white_mountains_nh",
+        "white_mountains_pemigewasset",
+        "white_mountains_presidentials",
+        "white_mountains_carter_moriah",
+        "mount_monadnock",
+    }
+    assert explore.state_combo.currentText().startswith("New Hampshire (5")
 
     # Choosing a state opens its first region (by name); a park across state lines is in each state
     explore.state_combo.setCurrentIndex(explore.state_combo.findData("Massachusetts"))
@@ -241,6 +249,7 @@ def test_composer_plays_the_shown_hike_in_3d(seeded_db: Database, tmp_path: Path
 
     app = QApplication.instance() or QApplication([])
     state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    state.set_active_destination("white_mountains_presidentials")
     composer = ComposerPanel(state)
     played = []
     monkeypatch.setattr(replay3d.Replay3DDialog, "exec", lambda dlg: played.append(dlg.windowTitle()) or 0)

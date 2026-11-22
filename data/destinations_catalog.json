@@ -4,22 +4,79 @@
   "destinations": [
     {
       "id": "white_mountains_nh",
-      "name": "New Hampshire White Mountains",
-      "state_or_region": "New Hampshire (White Mountain National Forest)",
+      "name": "White Mountains \u2014 Franconia, Kinsman & Moosilauke",
+      "state_or_region": "New Hampshire (White Mountain National Forest \u2014 Western Ranges)",
       "agency": "USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
       "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
-      "summary": "Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border, north to Mount Cabot and southwest to Mount Moosilauke.",
+      "summary": "Western White Mountains from Mount Moosilauke and the Kinsman Range across Franconia Notch and the alpine knife-edge of Franconia Ridge (Flume, Liberty, Little Haystack, Lincoln & Lafayette) to Mount Garfield, Owl's Head, and the Twin & Bond Ranges overlap.",
       "bbox": [
         -71.905,
+        43.985,
+        -71.51,
+        44.265
+      ],
+      "base_ele_m": 520.0,
+      "max_ele_m": 1600.0,
+      "trail_count": 181,
+      "poi_count": 12,
+      "bundled_file": "packs/white_mountains_nh.json"
+    },
+    {
+      "id": "white_mountains_pemigewasset",
+      "name": "White Mountains \u2014 Pemigewasset, Twin & Sandwich Ranges",
+      "state_or_region": "New Hampshire (White Mountain National Forest \u2014 Pemigewasset & Sandwich Ranges)",
+      "agency": "USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Heart of the Pemigewasset Wilderness, the Twin & Bond Ranges (Garfield, Galehead, North & South Twin, Mount Bond, Bondcliff, Zealand & Hale), and the full Sandwich Range from Waterville Valley and Mount Tecumseh across Mount Osceola, the Tripyramids, Mount Whiteface, Mount Passaconaway and Sandwich Dome to Mount Chocorua, Hancocks & Carrigain \u2014 overlapping Franconia Ridge on the west and Crawford Notch on the east.",
+      "bbox": [
+        -71.685,
+        43.875,
+        -71.235,
+        44.265
+      ],
+      "base_ele_m": 320.0,
+      "max_ele_m": 1600.0,
+      "trail_count": 302,
+      "poi_count": 16,
+      "bundled_file": "packs/white_mountains_pemigewasset.json"
+    },
+    {
+      "id": "white_mountains_presidentials",
+      "name": "White Mountains \u2014 Presidential Range, Crawford Notch & Cabot",
+      "state_or_region": "New Hampshire (White Mountain National Forest \u2014 Presidential & Pliny-Kilkenny Ranges)",
+      "agency": "USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Above-treeline tundra of the Southern and Northern Presidentials (Webster, Jackson, Pierce, Eisenhower, Monroe, Mount Washington, Jefferson, Adams & Madison), glacial Tuckerman and Huntington Ravines, Crawford Notch & the Willey Range, and north to Mount Waumbek and Mount Cabot, overlapping the Twin Range on the west and Pinkham Notch / Wildcats on the east.",
+      "bbox": [
+        -71.565,
+        44.13,
+        -71.185,
+        44.545
+      ],
+      "base_ele_m": 420.0,
+      "max_ele_m": 1917.0,
+      "trail_count": 316,
+      "poi_count": 8,
+      "bundled_file": "packs/white_mountains_presidentials.json"
+    },
+    {
+      "id": "white_mountains_carter_moriah",
+      "name": "White Mountains \u2014 Carter-Moriah, Wildcats & Evans Notch",
+      "state_or_region": "New Hampshire (White Mountain National Forest \u2014 Eastern Ranges & Evans Notch)",
+      "agency": "USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Eastern White Mountains from Pinkham Notch across the steep Wildcat Range, Carter Notch, Carter Dome, Mount Hight and Mount Moriah to the Baldface-Royce Range, Evans Notch and the Mahoosucs along the Maine border, overlapping Mount Washington and the Northern Presidentials on the west.",
+      "bbox": [
+        -71.315,
         43.985,
         -70.95,
         44.545
       ],
-      "base_ele_m": 520.0,
+      "base_ele_m": 220.0,
       "max_ele_m": 1917.0,
-      "trail_count": 786,
-      "poi_count": 12,
-      "bundled_file": "packs/white_mountains_nh.json"
+      "trail_count": 400,
+      "poi_count": 8,
+      "bundled_file": "packs/white_mountains_carter_moriah.json"
     },
     {
       "id": "yosemite_valley",

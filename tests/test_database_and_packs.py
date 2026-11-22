@@ -7,6 +7,9 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
     pack_ids = {p.id for p in packs}
     expected = {
         "white_mountains_nh",
+        "white_mountains_pemigewasset",
+        "white_mountains_presidentials",
+        "white_mountains_carter_moriah",
         "yosemite_valley",
         "acadia_np",
         "shenandoah_central",
@@ -62,12 +65,27 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
         assert not all(t.dogs_allowed for t in park.trails), pid
 
     nh = seeded_db.get_destination("white_mountains_nh")
-    assert nh is not None
-    assert nh.max_lat >= 44.51, "reaches north to Mount Cabot"
-    assert nh.min_lat <= 44.0 and nh.min_lon <= -71.88, "reaches southwest to Mount Moosilauke"
-    assert "White Mountains" in nh.name
-    assert len(nh.trails) >= 6
-    assert len(nh.pois) >= 5
+    pemi = seeded_db.get_destination("white_mountains_pemigewasset")
+    pres = seeded_db.get_destination("white_mountains_presidentials")
+    carter = seeded_db.get_destination("white_mountains_carter_moriah")
+    for wm_pack in (nh, pemi, pres, carter):
+        assert wm_pack is not None
+        assert "White Mountains" in wm_pack.name
+        assert len(wm_pack.trails) >= 150
+        assert len(wm_pack.pois) >= 8
+
+    assert nh.min_lat <= 44.0 and nh.min_lon <= -71.88, "Franconia/Moosilauke region reaches southwest to Mount Moosilauke"
+    assert pres.max_lat >= 44.51, "Presidential/Cabot region reaches north to Mount Cabot"
+    assert carter.max_lon >= -70.96, "Carter-Moriah/Evans Notch region reaches east to the Maine border"
+
+    # Overlapping regions share trails across mountain range transition zones
+    nh_ids = {t.id for t in nh.trails}
+    pemi_ids = {t.id for t in pemi.trails}
+    pres_ids = {t.id for t in pres.trails}
+    carter_ids = {t.id for t in carter.trails}
+    assert {"wmnf_franconia_ridge", "wmnf_osm_garfield_ridge", "wmnf_osm_twinway"} <= (nh_ids & pemi_ids)
+    assert {"wmnf_osm_twinway", "wmnf_osm_willey_range", "wmnf_osm_crawford_path"} <= (pemi_ids & pres_ids)
+    assert {"wmnf_tuckerman_ravine", "wmnf_lion_head_boott_spur", "wmnf_osm_lost_pond"} <= (pres_ids & carter_ids)
 
 
 def test_fts5_search_and_condition_updates(seeded_db: Database) -> None:

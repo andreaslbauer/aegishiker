@@ -83,7 +83,7 @@ class Database:
             );
 
             CREATE TABLE IF NOT EXISTS trail_segment (
-                id TEXT PRIMARY KEY,
+                id TEXT NOT NULL,
                 pack_id TEXT NOT NULL REFERENCES destination_pack(id) ON DELETE CASCADE,
                 name TEXT NOT NULL,
                 code TEXT DEFAULT '',
@@ -107,9 +107,11 @@ class Database:
                 max_lon REAL NOT NULL,
                 coords_3d JSON NOT NULL,
                 tags JSON DEFAULT '[]',
-                description TEXT DEFAULT ''
+                description TEXT DEFAULT '',
+                PRIMARY KEY (pack_id, id)
             );
 
+            CREATE INDEX IF NOT EXISTS idx_trail_id ON trail_segment(id);
             CREATE INDEX IF NOT EXISTS idx_trail_pack ON trail_segment(pack_id);
             CREATE INDEX IF NOT EXISTS idx_trail_bbox ON trail_segment(min_lat, max_lat, min_lon, max_lon);
 
@@ -123,14 +125,15 @@ class Database:
             );
 
             CREATE TABLE IF NOT EXISTS poi (
-                id TEXT PRIMARY KEY,
+                id TEXT NOT NULL,
                 pack_id TEXT NOT NULL REFERENCES destination_pack(id) ON DELETE CASCADE,
                 name TEXT NOT NULL,
                 kind TEXT NOT NULL,
                 lat REAL NOT NULL,
                 lon REAL NOT NULL,
                 ele_m REAL NOT NULL,
-                note TEXT DEFAULT ''
+                note TEXT DEFAULT '',
+                PRIMARY KEY (pack_id, id)
             );
 
             CREATE INDEX IF NOT EXISTS idx_poi_pack ON poi(pack_id);
@@ -256,6 +259,77 @@ class Database:
             );
             """
         )
+        # Migrate legacy single-column PRIMARY KEY on trail_segment / poi so overlapping
+        # destination packs can share canonical trail and POI IDs without key collisions.
+        ts_pk_cols = [
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(trail_segment)").fetchall()
+            if r["pk"] > 0
+        ]
+        if ts_pk_cols == ["id"]:
+            self._conn.executescript(
+                """
+                ALTER TABLE trail_segment RENAME TO _trail_segment_old;
+                CREATE TABLE trail_segment (
+                    id TEXT NOT NULL,
+                    pack_id TEXT NOT NULL REFERENCES destination_pack(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    code TEXT DEFAULT '',
+                    difficulty TEXT NOT NULL,
+                    surface TEXT NOT NULL,
+                    trail_type TEXT NOT NULL,
+                    distance_m REAL NOT NULL,
+                    elevation_gain_m REAL NOT NULL,
+                    elevation_loss_m REAL NOT NULL,
+                    min_ele_m REAL NOT NULL,
+                    max_ele_m REAL NOT NULL,
+                    max_grade_pct REAL NOT NULL,
+                    dogs_allowed INTEGER DEFAULT 1,
+                    water_available INTEGER DEFAULT 0,
+                    condition_status TEXT DEFAULT 'open',
+                    condition_note TEXT DEFAULT '',
+                    condition_updated TEXT DEFAULT '',
+                    min_lat REAL NOT NULL,
+                    max_lat REAL NOT NULL,
+                    min_lon REAL NOT NULL,
+                    max_lon REAL NOT NULL,
+                    coords_3d JSON NOT NULL,
+                    tags JSON DEFAULT '[]',
+                    description TEXT DEFAULT '',
+                    PRIMARY KEY (pack_id, id)
+                );
+                INSERT INTO trail_segment SELECT * FROM _trail_segment_old;
+                DROP TABLE _trail_segment_old;
+                CREATE INDEX IF NOT EXISTS idx_trail_id ON trail_segment(id);
+                CREATE INDEX IF NOT EXISTS idx_trail_pack ON trail_segment(pack_id);
+                CREATE INDEX IF NOT EXISTS idx_trail_bbox ON trail_segment(min_lat, max_lat, min_lon, max_lon);
+                """
+            )
+        poi_pk_cols = [
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(poi)").fetchall()
+            if r["pk"] > 0
+        ]
+        if poi_pk_cols == ["id"]:
+            self._conn.executescript(
+                """
+                ALTER TABLE poi RENAME TO _poi_old;
+                CREATE TABLE poi (
+                    id TEXT NOT NULL,
+                    pack_id TEXT NOT NULL REFERENCES destination_pack(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    lat REAL NOT NULL,
+                    lon REAL NOT NULL,
+                    ele_m REAL NOT NULL,
+                    note TEXT DEFAULT '',
+                    PRIMARY KEY (pack_id, id)
+                );
+                INSERT INTO poi SELECT * FROM _poi_old;
+                DROP TABLE _poi_old;
+                CREATE INDEX IF NOT EXISTS idx_poi_pack ON poi(pack_id);
+                """
+            )
         self._conn.commit()
 
     # ── Regional Destination Packs & Trails ────────────────────────────────────
@@ -495,9 +569,16 @@ class Database:
                     "SELECT * FROM trail_segment WHERE pack_id=? ORDER BY name ASC",
                     (pack_id,),
                 ).fetchall()
-            else:
-                rows = self._conn.execute("SELECT * FROM trail_segment ORDER BY name ASC").fetchall()
-            return [self._row_to_trail(r) for r in rows]
+                return [self._row_to_trail(r) for r in rows]
+            rows = self._conn.execute("SELECT * FROM trail_segment ORDER BY name ASC").fetchall()
+            seen: set[str] = set()
+            out: List[TrailSegment] = []
+            for r in rows:
+                tid = r["id"]
+                if tid not in seen:
+                    seen.add(tid)
+                    out.append(self._row_to_trail(r))
+            return out
 
     def search_trails_fts(
         self,
@@ -516,23 +597,30 @@ class Database:
                     rows = self._conn.execute(
                         """
                         SELECT t.* FROM trail_fts f
-                        JOIN trail_segment t ON t.id = f.trail_id
+                        JOIN trail_segment t ON t.id = f.trail_id AND t.pack_id = f.pack_id
                         WHERE trail_fts MATCH ? AND f.pack_id = ?
                         ORDER BY rank
                         """,
                         (clean, pack_id),
                     ).fetchall()
-                else:
-                    rows = self._conn.execute(
-                        """
-                        SELECT t.* FROM trail_fts f
-                        JOIN trail_segment t ON t.id = f.trail_id
-                        WHERE trail_fts MATCH ?
-                        ORDER BY rank
-                        """,
-                        (clean,),
-                    ).fetchall()
-                return [self._row_to_trail(r) for r in rows]
+                    return [self._row_to_trail(r) for r in rows]
+                rows = self._conn.execute(
+                    """
+                    SELECT t.* FROM trail_fts f
+                    JOIN trail_segment t ON t.id = f.trail_id AND t.pack_id = f.pack_id
+                    WHERE trail_fts MATCH ?
+                    ORDER BY rank
+                    """,
+                    (clean,),
+                ).fetchall()
+                seen: set[str] = set()
+                out: List[TrailSegment] = []
+                for r in rows:
+                    tid = r["id"]
+                    if tid not in seen:
+                        seen.add(tid)
+                        out.append(self._row_to_trail(r))
+                return out
             except sqlite3.OperationalError:
                 return [
                     t
@@ -561,7 +649,16 @@ class Database:
                 params.append(pack_id)
             sql += " ORDER BY name ASC"
             rows = self._conn.execute(sql, params).fetchall()
-            return [self._row_to_trail(r) for r in rows]
+            if pack_id:
+                return [self._row_to_trail(r) for r in rows]
+            seen: set[str] = set()
+            out: List[TrailSegment] = []
+            for r in rows:
+                tid = r["id"]
+                if tid not in seen:
+                    seen.add(tid)
+                    out.append(self._row_to_trail(r))
+            return out
 
     def update_trail_condition(
         self,
@@ -593,19 +690,26 @@ class Database:
                 ).fetchall()
             else:
                 rows = self._conn.execute("SELECT * FROM poi ORDER BY name ASC").fetchall()
-            return [
-                POI(
-                    id=r["id"],
-                    pack_id=r["pack_id"],
-                    name=r["name"],
-                    kind=r["kind"],
-                    lat=r["lat"],
-                    lon=r["lon"],
-                    ele_m=r["ele_m"],
-                    note=r["note"],
+            seen: set[str] = set()
+            out: List[POI] = []
+            for r in rows:
+                pid = r["id"]
+                if not pack_id and pid in seen:
+                    continue
+                seen.add(pid)
+                out.append(
+                    POI(
+                        id=r["id"],
+                        pack_id=r["pack_id"],
+                        name=r["name"],
+                        kind=r["kind"],
+                        lat=r["lat"],
+                        lon=r["lon"],
+                        ele_m=r["ele_m"],
+                        note=r["note"],
+                    )
                 )
-                for r in rows
-            ]
+            return out
 
     # ── Composed Routes & Revision Coalescing ──────────────────────────────────
 

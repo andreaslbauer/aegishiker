@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Deterministic builder for AegisHiker's 17 bundled regional destination packs.
+"""Deterministic builder for AegisHiker's 20 bundled regional destination packs.
 
 Generates:
   - data/destinations_catalog.json
   - data/packs/white_mountains_nh.json
+  - data/packs/white_mountains_pemigewasset.json
+  - data/packs/white_mountains_presidentials.json
+  - data/packs/white_mountains_carter_moriah.json
   - data/packs/yosemite_valley.json
   - data/packs/acadia_np.json
   - data/packs/shenandoah_central.json
@@ -351,47 +354,221 @@ def build_white_mountains_nh() -> DestinationPack:
     ]
 
     pois = [
-        POI(id="poi_wm_laf_th", pack_id=pid, name="Lafayette Place Trailhead", kind="trailhead", lat=44.1416, lon=-71.6812, ele_m=535.0, note="I-93 Franconia Notch parking & hiker shuttle stop"),
-        POI(id="poi_wm_cloudland", pack_id=pid, name="Cloudland Falls (80 ft)", kind="waterfall", lat=44.1409, lon=-71.6605, ele_m=985.0, note="Largest waterfall on Falling Waters Trail"),
-        POI(id="poi_wm_haystack", pack_id=pid, name="Little Haystack Mountain", kind="peak", lat=44.1404, lon=-71.6445, ele_m=1457.0, note="Southern gateway peak of Franconia Ridge (4,780 ft)"),
-        POI(id="poi_wm_lincoln", pack_id=pid, name="Mount Lincoln Summit", kind="peak", lat=44.1488, lon=-71.6418, ele_m=1551.0, note="Sharp alpine pyramid peak (5,089 ft)"),
-        POI(id="poi_wm_lafayette", pack_id=pid, name="Mount Lafayette Summit", kind="peak", lat=44.1607, lon=-71.6409, ele_m=1600.0, note="Highest peak in Franconia Range (5,249 ft)"),
-        POI(id="poi_wm_greenleaf", pack_id=pid, name="AMC Greenleaf Hut", kind="hut", lat=44.1602, lon=-71.6538, ele_m=1280.0, note="Potable water, restrooms, and weather postings"),
-        POI(id="poi_wm_pinkham", pack_id=pid, name="AMC Pinkham Notch Visitor Center", kind="trailhead", lat=44.2573, lon=-71.2528, ele_m=619.0, note="Base camp for Mt. Washington & Tuckerman Ravine"),
-        POI(id="poi_wm_washington", pack_id=pid, name="Mount Washington Summit (6,288 ft)", kind="peak", lat=44.2705, lon=-71.3032, ele_m=1917.0, note="Highest peak in the Northeast; Mount Washington Observatory"),
-        POI(id="poi_wm_moosilauke", pack_id=pid, name="Mount Moosilauke Summit", kind="peak", lat=44.0244, lon=-71.8314, ele_m=1464.0, note="Broad alpine summit (4,802 ft) at the southwest corner of the Whites; Appalachian Trail via Glencliff and Beaver Brook"),
+        POI(id="poi_wm_laf_th", pack_id=pid, name="Lafayette Place Trailhead", kind="trailhead", lat=44.1420, lon=-71.6817, ele_m=544.0, note="I-93 Franconia Notch parking & hiker shuttle stop"),
+        POI(id="poi_wm_cloudland", pack_id=pid, name="Cloudland Falls (80 ft)", kind="waterfall", lat=44.1388, lon=-71.6648, ele_m=817.2, note="Largest waterfall on Falling Waters Trail"),
+        POI(id="poi_wm_haystack", pack_id=pid, name="Little Haystack Mountain", kind="peak", lat=44.1404, lon=-71.6458, ele_m=1437.8, note="Southern gateway peak of Franconia Ridge (4,780 ft)"),
+        POI(id="poi_wm_lincoln", pack_id=pid, name="Mount Lincoln Summit", kind="peak", lat=44.1488, lon=-71.6446, ele_m=1531.7, note="Sharp alpine pyramid peak (5,089 ft)"),
+        POI(id="poi_wm_lafayette", pack_id=pid, name="Mount Lafayette Summit", kind="peak", lat=44.1607, lon=-71.6444, ele_m=1590.2, note="Highest peak in Franconia Range (5,249 ft)"),
+        POI(id="poi_wm_greenleaf", pack_id=pid, name="AMC Greenleaf Hut", kind="hut", lat=44.1604, lon=-71.6604, ele_m=1282.8, note="Potable water, restrooms, and weather postings"),
+        POI(id="poi_wm_moosilauke", pack_id=pid, name="Mount Moosilauke Summit", kind="peak", lat=44.0234, lon=-71.8314, ele_m=1455.3, note="Broad alpine summit (4,802 ft) at the southwest corner of the Whites; Appalachian Trail via Glencliff and Beaver Brook"),
         POI(id="poi_wm_ravine_lodge", pack_id=pid, name="Moosilauke Ravine Lodge", kind="hut", lat=44.0005, lon=-71.8155, ele_m=760.0, note="Dartmouth Outing Club lodge; Gorge Brook and Snapper trailheads"),
-        POI(id="poi_wm_cabot", pack_id=pid, name="Mount Cabot Summit", kind="peak", lat=44.5056, lon=-71.4167, ele_m=1271.0, note="Northernmost 4,000-footer (4,170 ft) in the Pliny Range; Cabot Cabin just below the summit"),
-        POI(id="poi_wm_lakes_clouds", pack_id=pid, name="AMC Lakes of the Clouds Hut", kind="hut", lat=44.2588, lon=-71.3188, ele_m=1540.0, note="Highest AMC hut on the shoulder of Mt. Monroe & Mt. Washington"),
+        POI(id="poi_wm_cannon", pack_id=pid, name="Cannon Mountain Summit", kind="peak", lat=44.1567, lon=-71.6986, ele_m=1244.0, note="4,080 ft summit above Franconia Notch; observation tower & cliffs"),
+        POI(id="poi_wm_kinsman", pack_id=pid, name="South Kinsman Mountain", kind="peak", lat=44.1230, lon=-71.7366, ele_m=1320.0, note="Highest point of the Kinsman Range (4,358 ft) on the Appalachian Trail"),
+        POI(id="poi_wm_garfield", pack_id=pid, name="Mount Garfield Summit", kind="peak", lat=44.1872, lon=-71.6107, ele_m=1345.0, note="Panoramic 4,500 ft foundation summit linking Franconia Ridge to the Twin Range"),
+        POI(id="poi_wm_galehead_hut", pack_id=pid, name="AMC Galehead Hut", kind="hut", lat=44.1782, lon=-71.5695, ele_m=1152.0, note="Remote Pemigewasset Wilderness hut between Garfield and South Twin"),
     ]
 
-    # South to the Flume Slide Trail (Franconia Notch), north to Randolph for the Howker Ridge
-    # Trail and the Northern Presidentials, east to the Maine border (Wildcats, Carters, Baldfaces,
-    # Evans Notch), north to the Pliny / Kilkenny Range for Mount Cabot, The Horn and Unknown Pond,
-    # southwest to Mount Moosilauke (Glencliff, Gorge Brook, Beaver Brook and Benton trails)
-    # (-70.95: just past the state line so Evans Notch trails that cross it, e.g. Bickford Brook, stay whole)
-    min_lat, max_lat, min_lon, max_lon = 43.985, 44.545, -71.905, -70.950
+    min_lat, max_lat, min_lon, max_lon = 43.985, 44.265, -71.905, -71.510
     dem, contours = _generate_dem_and_contours(
         min_lat,
         max_lat,
         min_lon,
         max_lon,
         520.0,
-        1917.0,
-        [(-71.3032, 44.2705, 1917.0), (-71.6409, 44.1607, 1600.0), (-71.6418, 44.1488, 1551.0), (-71.4167, 44.5056, 1271.0), (-71.8314, 44.0244, 1464.0)],
+        1600.0,
+        [(-71.6444, 44.1607, 1600.0), (-71.6446, 44.1488, 1551.0), (-71.8314, 44.0234, 1464.0), (-71.5548, 44.1876, 1491.0)],
     )
     return DestinationPack(
         id=pid,
-        name="New Hampshire White Mountains",
-        state_or_region="New Hampshire (White Mountain National Forest)",
+        name="White Mountains — Franconia, Kinsman & Moosilauke",
+        state_or_region="New Hampshire (White Mountain National Forest — Western Ranges)",
         agency="USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
-        summary="Alpine ridgelines, glacially carved ravines, waterfalls, and AMC high huts from Franconia Ridge across the Presidential Range to the Wildcats, Carters and Baldfaces at the Maine border, north to Mount Cabot and southwest to Mount Moosilauke.",
-        pack_version="1.6",  # 1.1: Flume Slide / Howker Ridge; 1.2: east to the Maine border; 1.3: + connector trails, Lost Pond; 1.4: every named trail in the region (Presidentials); 1.5: north to Mount Cabot; 1.6: southwest to Mount Moosilauke
+        summary="Western White Mountains from Mount Moosilauke and the Kinsman Range across Franconia Notch and the alpine knife-edge of Franconia Ridge (Flume, Liberty, Little Haystack, Lincoln & Lafayette) to Mount Garfield, Owl's Head, and the Twin & Bond Ranges overlap.",
+        pack_version="2.0",
         min_lat=min_lat,
         max_lat=max_lat,
         min_lon=min_lon,
         max_lon=max_lon,
         base_ele_m=520.0,
+        max_ele_m=1600.0,
+        emergency_contact="NH Fish & Game Dispatch: (603) 271-3361 / 911",
+        trails=trails[:5],
+        pois=pois,
+        contours=contours,
+        dem=dem,
+    )
+
+
+def build_white_mountains_pemigewasset() -> DestinationPack:
+    pid = "white_mountains_pemigewasset"
+    base_wm = build_white_mountains_nh()
+    trails = [t.model_copy(update={"pack_id": pid}) for t in base_wm.trails[:4]]
+    pois = [
+        POI(id="poi_wm_laf_th", pack_id=pid, name="Lafayette Place Trailhead", kind="trailhead", lat=44.1420, lon=-71.6817, ele_m=544.0, note="I-93 Franconia Notch parking & western Pemi Loop gateway"),
+        POI(id="poi_wm_lafayette", pack_id=pid, name="Mount Lafayette Summit", kind="peak", lat=44.1607, lon=-71.6444, ele_m=1590.2, note="Highest peak in Franconia Range (5,249 ft)"),
+        POI(id="poi_wm_garfield", pack_id=pid, name="Mount Garfield Summit", kind="peak", lat=44.1872, lon=-71.6107, ele_m=1345.0, note="4,500 ft central Pemi Loop summit with 360° views"),
+        POI(id="poi_wm_galehead_hut", pack_id=pid, name="AMC Galehead Hut", kind="hut", lat=44.1782, lon=-71.5695, ele_m=1152.0, note="Remote Pemigewasset Wilderness hut below South Twin"),
+        POI(id="poi_wm_south_twin", pack_id=pid, name="South Twin Mountain", kind="peak", lat=44.1876, lon=-71.5548, ele_m=1491.0, note="4,902 ft Twin Range anchor with sweeping views of the Pemi"),
+        POI(id="poi_wm_bondcliff", pack_id=pid, name="Bondcliff Summit", kind="peak", lat=44.1406, lon=-71.5409, ele_m=1300.0, note="Iconic 4,265 ft cliff ledges above the Pemigewasset Wilderness"),
+        POI(id="poi_wm_zealand_hut", pack_id=pid, name="AMC Zealand Falls Hut", kind="hut", lat=44.1960, lon=-71.4940, ele_m=802.0, note="Waterfall-side AMC hut at the eastern edge of the Twin Range"),
+        POI(id="poi_wm_carrigain", pack_id=pid, name="Mount Carrigain Summit", kind="peak", lat=44.0936, lon=-71.4468, ele_m=1422.0, note="4,680 ft fire-tower summit overlooking the entire Pemigewasset basin"),
+        POI(id="poi_wm_osceola", pack_id=pid, name="Mount Osceola Summit", kind="peak", lat=44.0016, lon=-71.5360, ele_m=1315.0, note="4,340 ft open granite ledges above Waterville Valley and the Kancamagus"),
+        POI(id="poi_wm_tecumseh", pack_id=pid, name="Mount Tecumseh Summit", kind="peak", lat=43.9667, lon=-71.5567, ele_m=1220.0, note="4,003 ft peak above Waterville Valley via Mount Tecumseh & Sosman trails"),
+        POI(id="poi_wm_tripyramid", pack_id=pid, name="Mount Tripyramid (North Peak)", kind="peak", lat=43.9731, lon=-71.4428, ele_m=1274.0, note="4,180 ft Sandwich Range peak reached via the North & South Tripyramid Slides or Pine Bend Brook"),
+        POI(id="poi_wm_whiteface", pack_id=pid, name="Mount Whiteface Summit", kind="peak", lat=43.9339, lon=-71.4058, ele_m=1225.0, note="4,020 ft Sandwich Range summit; dramatic south ledges atop Blueberry Ledge Trail"),
+        POI(id="poi_wm_passaconaway", pack_id=pid, name="Mount Passaconaway Summit", kind="peak", lat=43.9547, lon=-71.3808, ele_m=1232.0, note="4,043 ft peak linked to Mt. Whiteface by the Rollins Trail; Dicey's Mill, Walden & Square Ledge trails"),
+        POI(id="poi_wm_ferncroft", pack_id=pid, name="Ferncroft Trailhead (Wonalancet)", kind="trailhead", lat=43.9112, lon=-71.3961, ele_m=345.0, note="Wonalancet trailhead for Mt. Whiteface & Mt. Passaconaway Loop (Blueberry Ledge, Rollins & Dicey's Mill)"),
+        POI(id="poi_wm_sandwich_dome", pack_id=pid, name="Sandwich Mountain (Sandwich Dome)", kind="peak", lat=43.9006, lon=-71.4981, ele_m=1213.0, note="3,980 ft western Sandwich Range summit via Sandwich Mountain, Drakes Brook & Algonquin trails"),
+        POI(id="poi_wm_chocorua", pack_id=pid, name="Mount Chocorua Summit", kind="peak", lat=43.9544, lon=-71.2733, ele_m=1064.0, note="Iconic bare-granite 3,490 ft summit at the east end of the Sandwich Range; Champney Falls & Piper trails"),
+    ]
+    min_lat, max_lat, min_lon, max_lon = 43.875, 44.265, -71.685, -71.235
+    dem, contours = _generate_dem_and_contours(
+        min_lat, max_lat, min_lon, max_lon, 320.0, 1600.0,
+        [(-71.6444, 44.1607, 1600.0), (-71.5548, 44.1876, 1491.0), (-71.5312, 44.1529, 1432.0), (-71.4468, 44.0936, 1422.0), (-71.4058, 43.9339, 1225.0), (-71.3808, 43.9547, 1232.0)],
+    )
+    return DestinationPack(
+        id=pid,
+        name="White Mountains — Pemigewasset, Twin & Sandwich Ranges",
+        state_or_region="New Hampshire (White Mountain National Forest — Pemigewasset & Sandwich Ranges)",
+        agency="USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
+        summary="Heart of the Pemigewasset Wilderness, the Twin & Bond Ranges (Garfield, Galehead, North & South Twin, Mount Bond, Bondcliff, Zealand & Hale), and the full Sandwich Range from Waterville Valley and Mount Tecumseh across Mount Osceola, the Tripyramids, Mount Whiteface, Mount Passaconaway and Sandwich Dome to Mount Chocorua, Hancocks & Carrigain — overlapping Franconia Ridge on the west and Crawford Notch on the east.",
+        pack_version="2.1",
+        min_lat=min_lat,
+        max_lat=max_lat,
+        min_lon=min_lon,
+        max_lon=max_lon,
+        base_ele_m=320.0,
+        max_ele_m=1600.0,
+        emergency_contact="NH Fish & Game Dispatch: (603) 271-3361 / 911",
+        trails=trails,
+        pois=pois,
+        contours=contours,
+        dem=dem,
+    )
+
+
+def build_white_mountains_presidentials() -> DestinationPack:
+    pid = "white_mountains_presidentials"
+    j_pinkham_notch = (-71.2528, 44.2573, 619.0)
+    j_hermit_lake = (-71.2855, 44.2602, 1175.0)
+    j_mt_washington = (-71.3032, 44.2705, 1917.0)
+    j_lakes_clouds = (-71.3188, 44.2588, 1540.0)
+    trails = [
+        _make_trail(
+            pid,
+            "wmnf_tuckerman_ravine",
+            "Mt. Washington via Tuckerman Ravine Trail",
+            "WMNF-TRT",
+            "expert",
+            "scramble",
+            "out_and_back",
+            [
+                j_pinkham_notch,
+                (-71.2690, 44.2588, 890.0),
+                j_hermit_lake,
+                (-71.2940, 44.2630, 1460.0),
+                j_mt_washington,
+            ],
+            False,
+            True,
+            "snow",
+            "Lingering snow/ice patches in Tuckerman headwall; steep boulder talus on summit cone.",
+            ["presidentials", "mt_washington", "summit", "alpine", "scramble"],
+            "Classic steep ascent from Pinkham Notch Visitor Center through glacial Tuckerman Ravine bowl and up the boulder-strewn summit cone to the 6,288-ft rooftop of New England.",
+        ),
+        _make_trail(
+            pid,
+            "wmnf_lion_head_boott_spur",
+            "Mt. Washington Loop via Lion Head & Boott Spur",
+            "WMNF-LHBS",
+            "expert",
+            "alpine",
+            "loop",
+            [
+                j_pinkham_notch,
+                j_hermit_lake,
+                (-71.2890, 44.2665, 1530.0),
+                j_mt_washington,
+                j_lakes_clouds,
+                (-71.2950, 44.2520, 1676.0),
+                (-71.2720, 44.2545, 1120.0),
+                j_pinkham_notch,
+            ],
+            False,
+            True,
+            "caution",
+            "Long exposure above treeline across Lion Head, Mt. Washington, Lakes of the Clouds, and Boott Spur.",
+            ["loop", "presidentials", "mt_washington", "alpine", "hut"],
+            "Grand Presidential Range loop ascending Lion Head ridge to Mt. Washington summit, visiting AMC Lakes of the Clouds Hut on Crawford Path, and descending scenic Boott Spur.",
+        ),
+    ]
+    pois = [
+        POI(id="poi_wm_pinkham", pack_id=pid, name="AMC Pinkham Notch Visitor Center", kind="trailhead", lat=44.2565, lon=-71.2533, ele_m=616.7, note="Base camp for Mt. Washington, Tuckerman Ravine & Wildcat Ridge"),
+        POI(id="poi_wm_washington", pack_id=pid, name="Mount Washington Summit (6,288 ft)", kind="peak", lat=44.2705, lon=-71.3032, ele_m=1917.0, note="Highest peak in the Northeast; Mount Washington Observatory"),
+        POI(id="poi_wm_lakes_clouds", pack_id=pid, name="AMC Lakes of the Clouds Hut", kind="hut", lat=44.2588, lon=-71.3188, ele_m=1540.0, note="Highest AMC hut on the shoulder of Mt. Monroe & Mt. Washington"),
+        POI(id="poi_wm_adams", pack_id=pid, name="Mount Adams Summit", kind="peak", lat=44.3206, lon=-71.2916, ele_m=1748.0, note="Second-highest peak in New England (5,774 ft) above King Ravine"),
+        POI(id="poi_wm_jefferson", pack_id=pid, name="Mount Jefferson Summit", kind="peak", lat=44.3042, lon=-71.3167, ele_m=1725.0, note="Third-highest Presidential peak (5,712 ft) above Monticello Lawn"),
+        POI(id="poi_wm_madison_hut", pack_id=pid, name="AMC Madison Spring Hut", kind="hut", lat=44.3277, lon=-71.2837, ele_m=1463.0, note="Northern Presidential alpine hut in the col between Madison and Adams"),
+        POI(id="poi_wm_eisenhower", pack_id=pid, name="Mount Eisenhower Summit", kind="peak", lat=44.2407, lon=-71.3504, ele_m=1449.0, note="Broad bald Southern Presidential dome (4,780 ft) on Crawford Path"),
+        POI(id="poi_wm_cabot", pack_id=pid, name="Mount Cabot Summit", kind="peak", lat=44.5061, lon=-71.4145, ele_m=1262.1, note="Northernmost 4,000-footer (4,170 ft) in the Pliny Range; Cabot Cabin just below the summit"),
+    ]
+    min_lat, max_lat, min_lon, max_lon = 44.130, 44.545, -71.565, -71.185
+    dem, contours = _generate_dem_and_contours(
+        min_lat, max_lat, min_lon, max_lon, 420.0, 1917.0,
+        [(-71.3032, 44.2705, 1917.0), (-71.2916, 44.3206, 1748.0), (-71.3167, 44.3042, 1725.0), (-71.4145, 44.5061, 1262.1)],
+    )
+    return DestinationPack(
+        id=pid,
+        name="White Mountains — Presidential Range, Crawford Notch & Cabot",
+        state_or_region="New Hampshire (White Mountain National Forest — Presidential & Pliny-Kilkenny Ranges)",
+        agency="USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
+        summary="Above-treeline tundra of the Southern and Northern Presidentials (Webster, Jackson, Pierce, Eisenhower, Monroe, Mount Washington, Jefferson, Adams & Madison), glacial Tuckerman and Huntington Ravines, Crawford Notch & the Willey Range, and north to Mount Waumbek and Mount Cabot, overlapping the Twin Range on the west and Pinkham Notch / Wildcats on the east.",
+        pack_version="2.0",
+        min_lat=min_lat,
+        max_lat=max_lat,
+        min_lon=min_lon,
+        max_lon=max_lon,
+        base_ele_m=420.0,
+        max_ele_m=1917.0,
+        emergency_contact="NH Fish & Game Dispatch: (603) 271-3361 / 911",
+        trails=trails,
+        pois=pois,
+        contours=contours,
+        dem=dem,
+    )
+
+
+def build_white_mountains_carter_moriah() -> DestinationPack:
+    pid = "white_mountains_carter_moriah"
+    pres = build_white_mountains_presidentials()
+    trails = [t.model_copy(update={"pack_id": pid}) for t in pres.trails]
+    pois = [
+        POI(id="poi_wm_pinkham", pack_id=pid, name="AMC Pinkham Notch Visitor Center", kind="trailhead", lat=44.2565, lon=-71.2533, ele_m=616.7, note="Trailhead for Wildcat Ridge, Lost Pond, and Mt. Washington"),
+        POI(id="poi_wm_washington", pack_id=pid, name="Mount Washington Summit (6,288 ft)", kind="peak", lat=44.2705, lon=-71.3032, ele_m=1917.0, note="Highest peak in the Northeast; western overlap anchor"),
+        POI(id="poi_wm_wildcat", pack_id=pid, name="Wildcat Mountain (A Peak)", kind="peak", lat=44.2592, lon=-71.2016, ele_m=1340.0, note="4,422 ft summit with dramatic lookouts directly into Carter Notch & Mt. Washington"),
+        POI(id="poi_wm_carter_hut", pack_id=pid, name="AMC Carter Notch Hut", kind="hut", lat=44.2591, lon=-71.1956, ele_m=1002.0, note="Glacial boulder-cleft hut and mountain tarns between Wildcat A and Carter Dome"),
+        POI(id="poi_wm_carter_dome", pack_id=pid, name="Carter Dome Summit", kind="peak", lat=44.2674, lon=-71.1791, ele_m=1471.0, note="Highest peak in the Carter-Moriah Range (4,832 ft)"),
+        POI(id="poi_wm_hight", pack_id=pid, name="Mount Hight Summit", kind="peak", lat=44.2758, lon=-71.1702, ele_m=1415.0, note="Bare 4,675 ft crag with one of the finest 360° viewpoints in the eastern Whites"),
+        POI(id="poi_wm_moriah", pack_id=pid, name="Mount Moriah Summit", kind="peak", lat=44.3405, lon=-71.1317, ele_m=1234.0, note="4,049 ft rocky northern anchor of the Carter-Moriah Range above Gorham"),
+        POI(id="poi_wm_baldface", pack_id=pid, name="North Baldface Summit", kind="peak", lat=44.2225, lon=-71.0789, ele_m=1099.0, note="Open granite ledges above Evans Notch on the Baldface Circle Loop"),
+    ]
+    min_lat, max_lat, min_lon, max_lon = 43.985, 44.545, -71.315, -70.950
+    dem, contours = _generate_dem_and_contours(
+        min_lat, max_lat, min_lon, max_lon, 220.0, 1917.0,
+        [(-71.3032, 44.2705, 1917.0), (-71.1791, 44.2674, 1471.0), (-71.2016, 44.2592, 1340.0), (-71.1317, 44.3405, 1234.0)],
+    )
+    return DestinationPack(
+        id=pid,
+        name="White Mountains — Carter-Moriah, Wildcats & Evans Notch",
+        state_or_region="New Hampshire (White Mountain National Forest — Eastern Ranges & Evans Notch)",
+        agency="USFS White Mountain National Forest, USGS 3DEP & OpenStreetMap Contributors",
+        summary="Eastern White Mountains from Pinkham Notch across the steep Wildcat Range, Carter Notch, Carter Dome, Mount Hight and Mount Moriah to the Baldface-Royce Range, Evans Notch and the Mahoosucs along the Maine border, overlapping Mount Washington and the Northern Presidentials on the west.",
+        pack_version="2.0",
+        min_lat=min_lat,
+        max_lat=max_lat,
+        min_lon=min_lon,
+        max_lon=max_lon,
+        base_ele_m=220.0,
         max_ele_m=1917.0,
         emergency_contact="NH Fish & Game Dispatch: (603) 271-3361 / 911",
         trails=trails,
@@ -1182,6 +1359,9 @@ def build_adirondacks() -> DestinationPack:
 def build_all(only: List[str] | None = None) -> None:
     packs = [
         build_white_mountains_nh(),
+        build_white_mountains_pemigewasset(),
+        build_white_mountains_presidentials(),
+        build_white_mountains_carter_moriah(),
         build_yosemite_valley(),
         build_acadia_np(),
         build_shenandoah_central(),

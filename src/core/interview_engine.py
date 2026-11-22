@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 EXTRACTION_SYSTEM = """\
 You extract structured hike planning preferences from the user's message into a HikeBriefPatch JSON object.
 Valid pack_id values:
-- white_mountains_nh (New Hampshire White Mountains / Franconia Ridge / Mt. Washington)
+- white_mountains_nh (White Mountains — Franconia, Kinsman & Moosilauke, NH)
+- white_mountains_pemigewasset (White Mountains — Pemigewasset, Twin & Sandwich Ranges, NH)
+- white_mountains_presidentials (White Mountains — Presidential Range, Crawford Notch & Cabot, NH)
+- white_mountains_carter_moriah (White Mountains — Carter-Moriah, Wildcats & Evans Notch, NH)
 - yosemite_valley (Yosemite Valley & High Country, CA)
 - acadia_np (Acadia National Park, ME)
 - shenandoah_central (Shenandoah National Park, VA)
@@ -63,7 +66,10 @@ def _heuristic_extract(user_text: str, brief: HikeBrief, packs: List[Destination
 
     # 1. Pack matching
     pack_keywords = {
-        "white_mountains_nh": ("white mountain", "new hampshire", "franconia", "lafayette", "washington", "presidential", "nh"),
+        "white_mountains_presidentials": ("presidential", "mt. washington", "mount washington", "tuckerman", "crawford notch", "madison", "adams", "jefferson", "monroe", "eisenhower", "pierce", "cabot", "waumbek"),
+        "white_mountains_pemigewasset": ("pemigewasset", "pemi loop", "bondcliff", "twin range", "zealand", "galehead", "carrigain", "osceola", "hancock", "sandwich range", "kancamagus"),
+        "white_mountains_carter_moriah": ("carter dome", "carter-moriah", "carter notch", "moriah", "wildcat", "baldface", "evans notch", "mahoosuc"),
+        "white_mountains_nh": ("white mountain", "new hampshire", "franconia", "lafayette", "kinsman", "moosilauke", "cannon mountain", "lonesome lake", "nh"),
         "yosemite_valley": ("yosemite", "half dome", "vernal", "nevada fall", "mist trail", "glacier point"),
         "acadia_np": ("acadia", "beehive", "cadillac", "jordan pond", "maine"),
         "shenandoah_central": ("shenandoah", "old rag", "hawksbill", "blue ridge", "virginia"),
