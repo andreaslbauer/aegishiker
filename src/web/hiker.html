@@ -6,40 +6,45 @@
 <meta name="theme-color" content="#0F1B14" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="AegisHiker" />
 <link rel="manifest" href="manifest.json" />
 <title>AegisHiker Field Companion</title>
 <style>
   :root {
-    --bg: #0F1B14;
-    --panel: #16261D;
-    --panel-alt: #1E3327;
+    --bg: #0B1510;
+    --panel: #13231A;
+    --panel-alt: #1B3024;
     --text: #ECF5EE;
     --muted: #98B2A1;
     --accent: #2ECC71;
+    --cyan: #38BDF8;
     --warn: #F39C12;
     --danger: #E74C3C;
-    --border: #2C4637;
+    --border: #2A4535;
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
     margin: 0;
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    padding-bottom: 80px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    padding-bottom: 64px;
+    user-select: none;
   }
   header {
-    background: var(--panel);
+    background: rgba(19, 35, 26, 0.96);
     border-bottom: 1px solid var(--border);
-    padding: 12px 16px;
+    padding: 10px 14px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
     position: sticky;
     top: 0;
-    z-index: 20;
+    z-index: 30;
   }
-  header h1 { margin: 0; font-size: 17px; color: var(--accent); }
+  header h1 { margin: 0; font-size: 16px; color: var(--accent); letter-spacing: 0.2px; }
+  .header-right { display: flex; align-items: center; gap: 6px; }
   .status-pill {
     font-size: 11px;
     padding: 4px 9px;
@@ -47,72 +52,128 @@
     background: var(--panel-alt);
     border: 1px solid var(--border);
     color: var(--muted);
+    font-weight: 600;
   }
   .status-pill.online { color: var(--accent); border-color: var(--accent); }
   .alert-banner {
     display: none;
     background: var(--danger);
     color: #fff;
-    padding: 10px 14px;
-    font-weight: 600;
+    padding: 9px 14px;
+    font-weight: 700;
     font-size: 13px;
     text-align: center;
   }
-  .container { padding: 12px 14px; max-width: 720px; margin: 0 auto; }
+  .alert-banner.warn-banner {
+    background: #B45309;
+  }
+  .container { padding: 10px 12px; max-width: 760px; margin: 0 auto; }
   .card {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 11px;
+  }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
   }
   .card h2 {
-    margin: 0 0 8px 0;
-    font-size: 14px;
+    margin: 0;
+    font-size: 13px;
     color: var(--accent);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
   }
   .hud-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
   }
   .hud-box {
     background: var(--panel-alt);
-    border-radius: 8px;
+    border: 1px solid rgba(46, 204, 113, 0.14);
+    border-radius: 9px;
     padding: 8px 6px;
     text-align: center;
   }
-  .hud-val { font-size: 16px; font-weight: 700; }
-  .hud-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; margin-top: 2px; }
+  .hud-val { font-size: 16px; font-weight: 800; line-height: 1.15; }
+  .hud-sub { font-size: 10px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hud-lbl { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; font-weight: 700; }
+  .map-wrap {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: #08110C;
+  }
   canvas {
     width: 100%;
-    background: #0A130E;
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    background: #08110C;
     display: block;
   }
-  #mapCanvas { height: 270px; touch-action: none; }
-  #elevCanvas { height: 130px; margin-top: 8px; }
-  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  #mapCanvas { height: 340px; touch-action: none; cursor: grab; }
+  #elevCanvas { height: 125px; margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; touch-action: none; }
+  .map-tools {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 10;
+  }
+  .map-tools button {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 8px;
+    background: rgba(19, 35, 26, 0.9);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .map-tools button.active {
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+  .inspect-card {
+    display: none;
+    margin-top: 8px;
+    padding: 9px 11px;
+    background: var(--panel-alt);
+    border: 1px solid var(--accent);
+    border-radius: 9px;
+    font-size: 12px;
+  }
+  .inspect-title { font-weight: 700; font-size: 13px; color: var(--accent); }
+  .inspect-meta { color: var(--muted); margin-top: 2px; }
+  .btn-row { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
   button, select {
     background: var(--panel-alt);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 8px 12px;
-    font-size: 13px;
+    padding: 8px 11px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
   }
-  button.primary { background: var(--accent); color: #09180F; border-color: var(--accent); }
-  button.warn { background: var(--warn); color: #191003; border-color: var(--warn); }
+  button.primary { background: var(--accent); color: #07150D; border-color: var(--accent); font-weight: 700; }
+  button.warn { background: var(--warn); color: #191003; border-color: var(--warn); font-weight: 700; }
   button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .chip {
     padding: 5px 10px;
-    font-size: 12px;
+    font-size: 11px;
     border-radius: 999px;
     background: var(--panel-alt);
     border: 1px solid var(--border);
@@ -120,34 +181,53 @@
     cursor: pointer;
   }
   .chip.active { background: var(--accent); color: #09180F; border-color: var(--accent); font-weight: 700; }
-  .trail-list { max-height: 190px; overflow-y: auto; margin-top: 8px; }
+  .trail-list { max-height: 215px; overflow-y: auto; margin-top: 8px; }
   .trail-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 7px 9px;
+    gap: 8px;
+    padding: 8px 9px;
     border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    font-size: 12px;
+    cursor: pointer;
   }
+  .trail-item:hover, .trail-item.selected { background: rgba(46, 204, 113, 0.12); }
   .trail-item:last-child { border-bottom: none; }
+  .badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    background: rgba(46, 204, 113, 0.16);
+    color: var(--accent);
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>AegisHiker Field Companion</h1>
-  <span id="connStatus" class="status-pill">Checking...</span>
+  <div class="header-right">
+    <button id="unitBtn" title="Switch Imperial (mi/ft) and Metric (km/m)" style="padding:4px 8px; font-size:11px;">mi / ft</button>
+    <span id="connStatus" class="status-pill">Checking...</span>
+  </div>
 </header>
 <div id="offTrailBanner" class="alert-banner">
   OFF-TRAIL ALERT: You are more than 45m from the planned route corridor!
 </div>
+<div id="darknessBanner" class="alert-banner warn-banner"></div>
 
 <div class="container">
   <div class="card">
-    <h2>Active Route &amp; Offline Region Pack</h2>
-    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-      <select id="destSelect" style="flex:1;"></select>
-      <select id="routeSelect" style="flex:1;"></select>
-      <button id="cacheBtn" class="primary">Cache Pack Offline</button>
+    <div class="card-head">
+      <h2>Hike &amp; Offline Region Pack</h2>
+      <span id="hikeMetaBadge" class="badge">Offline PWA</span>
+    </div>
+    <div style="display:flex; gap:7px; flex-wrap:wrap; align-items:center;">
+      <select id="destSelect" style="flex:1; min-width:140px;"></select>
+      <select id="routeSelect" style="flex:1; min-width:150px;"></select>
+      <button id="cacheBtn" class="primary">Save Hike Offline</button>
     </div>
     <div id="cacheStatus" style="font-size:11px; color:var(--muted); margin-top:6px;">
       IndexedDB ready for zero-signal trailhead usage.
@@ -155,24 +235,80 @@
   </div>
 
   <div class="card">
-    <h2>Live Trail HUD</h2>
-    <div class="hud-grid">
-      <div class="hud-box"><div class="hud-val" id="hudDist">0.00 km</div><div class="hud-lbl">Traveled</div></div>
-      <div class="hud-box"><div class="hud-val" id="hudRem">0.00 km</div><div class="hud-lbl">Remaining</div></div>
-      <div class="hud-box"><div class="hud-val" id="hudElev">-- m</div><div class="hud-lbl">Altitude</div></div>
-      <div class="hud-box"><div class="hud-val" id="hudDev">0 m</div><div class="hud-lbl">Route Dev</div></div>
+    <div class="card-head">
+      <h2>Live Backcountry HUD</h2>
+      <span id="gpsAccuracyLbl" style="font-size:11px; color:var(--muted);">GPS Standby</span>
     </div>
+    <div class="hud-grid">
+      <div class="hud-box">
+        <div class="hud-val" id="hudDist">0.00 km</div>
+        <div class="hud-sub" id="hudDistPct">0% of hike</div>
+        <div class="hud-lbl">Hiked</div>
+      </div>
+      <div class="hud-box">
+        <div class="hud-val" id="hudRem">0.00 km</div>
+        <div class="hud-sub" id="hudNextLm">To finish</div>
+        <div class="hud-lbl">Remaining</div>
+      </div>
+      <div class="hud-box">
+        <div class="hud-val" id="hudSpeed">0.0 km/h</div>
+        <div class="hud-sub" id="hudPace">-- /km</div>
+        <div class="hud-lbl">Speed</div>
+      </div>
+      <div class="hud-box">
+        <div class="hud-val" id="hudElev">-- m</div>
+        <div class="hud-sub" id="hudClimbRem">+0 m climb left</div>
+        <div class="hud-lbl">Altitude</div>
+      </div>
+      <div class="hud-box">
+        <div class="hud-val" id="hudEta">--</div>
+        <div class="hud-sub" id="hudEtaClock">ETA --:--</div>
+        <div class="hud-lbl">Est. Time Left</div>
+      </div>
+      <div class="hud-box">
+        <div class="hud-val" id="hudDark">--</div>
+        <div class="hud-sub" id="hudSunsetClock">Dusk --:--</div>
+        <div class="hud-lbl">To Darkness</div>
+      </div>
+    </div>
+    <div style="display:none;"><span id="hudDev">0 m</span></div>
     <div class="btn-row">
       <button id="startGpsBtn" class="primary">Start Live GPS</button>
       <button id="simStepBtn">Simulate GPS Step</button>
-      <button id="syncBtn" class="warn">Sync Telemetry to Desktop</button>
+      <button id="syncBtn" class="warn">Sync Track to Desktop</button>
     </div>
   </div>
 
   <div class="card">
-    <h2>Offline Vector Trail Map &amp; Elevation Profile</h2>
-    <canvas id="mapCanvas" width="660" height="270"></canvas>
-    <canvas id="elevCanvas" width="660" height="130"></canvas>
+    <div class="card-head">
+      <h2>Interactive Topo Map &amp; Elevation Profile</h2>
+      <span style="font-size:11px; color:var(--muted);">Pinch/drag to zoom &amp; pan · Tap landmarks</span>
+    </div>
+    <div class="map-wrap">
+      <canvas id="mapCanvas" width="680" height="340"></canvas>
+      <div class="map-tools">
+        <button id="zoomInBtn" title="Zoom in">+</button>
+        <button id="zoomOutBtn" title="Zoom out">−</button>
+        <button id="fitBtn" title="Fit entire hike">⊡</button>
+        <button id="followBtn" title="Center on live GPS">◎</button>
+      </div>
+    </div>
+    <div id="inspectCard" class="inspect-card">
+      <div class="inspect-title" id="inspectTitle"></div>
+      <div class="inspect-meta" id="inspectMeta"></div>
+    </div>
+    <canvas id="elevCanvas" width="680" height="125"></canvas>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Trails Taken &amp; Landmarks on This Hike</h2>
+      <div style="display:flex; gap:5px;">
+        <button id="tabLegsBtn" class="primary" style="padding:4px 9px; font-size:11px;">Trails Taken</button>
+        <button id="tabLandmarksBtn" style="padding:4px 9px; font-size:11px;">Landmarks &amp; Views</button>
+      </div>
+    </div>
+    <div class="trail-list" id="itineraryList"></div>
   </div>
 
   <div class="card">
@@ -195,25 +331,124 @@
   }
 
   const basePath = window.location.pathname.replace(/\/hiker\.html$/, "").replace(/\/$/, "");
+  const LEG_COLORS = ["#2ECC71", "#38BDF8", "#A78BFA", "#FBBF24", "#F472B6", "#34D399"];
+  const KIND_ICONS = {
+    peak: "▲",
+    viewpoint: "👁",
+    waterfall: "💧",
+    hut: "⌂",
+    shelter: "⌂",
+    campsite: "⛺",
+    camp: "⛺",
+    spring: "🚰",
+    drinking_water: "🚰",
+    water: "💧",
+    trailhead: "P",
+    parking: "P",
+    saddle: "⌒",
+    ranger_station: "★",
+    guidepost: "🪧"
+  };
+
   const state = {
+    units: localStorage.getItem("aegishiker_units") || "metric", // "metric" or "us"
     destinations: [],
     routes: [],
     activeDest: null,
     activeRoute: null,
+    activeBundle: null,
     excludedConditions: new Set(["closed"]),
     telemetry: [],
     watchId: null,
-    simIdx: 0
+    wakeLock: null,
+    simIdx: 0,
+    itineraryTab: "legs", // "legs" or "landmarks"
+    selectedItem: null,   // { type: "leg"|"landmark"|"scrub", ... }
+    scrubAlongM: null,
+    followGps: false,
+    // Interactive map viewport (center lat/lon & metres-per-CSS-pixel)
+    view: {
+      centerLat: 44.15,
+      centerLon: -71.65,
+      metersPerPx: 15.0,
+      initialized: false
+    }
   };
 
-  // IndexedDB wrapper for offline packs
+  function updateUnitButtonLabel() {
+    const btn = document.getElementById("unitBtn");
+    btn.textContent = state.units === "us" ? "US (mi / ft)" : "Metric (km / m)";
+  }
+  updateUnitButtonLabel();
+
+  document.getElementById("unitBtn").addEventListener("click", () => {
+    state.units = state.units === "us" ? "metric" : "us";
+    localStorage.setItem("aegishiker_units", state.units);
+    updateUnitButtonLabel();
+    updateHud();
+    renderAll();
+  });
+
+  // ── Unit Formatting Helpers ──────────────────────────────────────────────
+  function fmtDist(m) {
+    if (state.units === "us") {
+      const mi = m / 1609.344;
+      return mi.toFixed(2) + " mi";
+    }
+    return (m / 1000.0).toFixed(2) + " km";
+  }
+
+  function fmtEle(m) {
+    if (state.units === "us") {
+      return Math.round(m * 3.28084).toLocaleString() + " ft";
+    }
+    return Math.round(m).toLocaleString() + " m";
+  }
+
+  function fmtSpeed(mps) {
+    if (!mps || mps < 0.05) {
+      return state.units === "us" ? "0.0 mph" : "0.0 km/h";
+    }
+    if (state.units === "us") {
+      return (mps * 2.236936).toFixed(1) + " mph";
+    }
+    return (mps * 3.6).toFixed(1) + " km/h";
+  }
+
+  function fmtPace(mps) {
+    if (!mps || mps < 0.15) {
+      return state.units === "us" ? "-- min/mi" : "-- min/km";
+    }
+    const secPerUnit = (state.units === "us" ? 1609.344 : 1000.0) / mps;
+    const mins = Math.floor(secPerUnit / 60);
+    const secs = Math.round(secPerUnit % 60);
+    return `${mins}:${String(secs).padStart(2, "0")} /${state.units === "us" ? "mi" : "km"}`;
+  }
+
+  function fmtDurationMin(totalMin) {
+    if (!isFinite(totalMin) || totalMin < 0) return "--";
+    const m = Math.round(totalMin);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    const rem = m % 60;
+    return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+  }
+
+  function fmtClock(tsMs) {
+    const d = new Date(tsMs);
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  // ── IndexedDB wrapper for offline packs, routes, bundles & telemetry ────
   function openIdb() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open("aegishiker_offline_db", 1);
+      const req = indexedDB.open("aegishiker_offline_db", 2);
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains("packs")) db.createObjectStore("packs", { keyPath: "id" });
         if (!db.objectStoreNames.contains("routes")) db.createObjectStore("routes", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("bundles")) db.createObjectStore("bundles", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("tracks")) db.createObjectStore("tracks", { keyPath: "route_id" });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -221,25 +456,46 @@
   }
 
   async function idbPut(storeName, obj) {
-    const db = await openIdb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, "readwrite");
-      tx.objectStore(storeName).put(obj);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    try {
+      const db = await openIdb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).put(obj);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (_) {}
+  }
+
+  async function idbGet(storeName, key) {
+    try {
+      const db = await openIdb();
+      return new Promise((resolve) => {
+        const tx = db.transaction(storeName, "readonly");
+        const req = tx.objectStore(storeName).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (_) {
+      return null;
+    }
   }
 
   async function idbGetAll(storeName) {
-    const db = await openIdb();
-    return new Promise((resolve) => {
-      const tx = db.transaction(storeName, "readonly");
-      const req = tx.objectStore(storeName).getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
-    });
+    try {
+      const db = await openIdb();
+      return new Promise((resolve) => {
+        const tx = db.transaction(storeName, "readonly");
+        const req = tx.objectStore(storeName).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      });
+    } catch (_) {
+      return [];
+    }
   }
 
+  // ── Geodesic & NOAA Solar Position Math (100% Offline) ──────────────────
   function haversineM(lat1, lon1, lat2, lon2) {
     const R = 6371000;
     const toRad = (d) => d * Math.PI / 180;
@@ -249,12 +505,208 @@
     return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  function sunElevationDeg(tsSec, lat, lon) {
+    const rad = Math.PI / 180;
+    const deg = 180 / Math.PI;
+    const jd = tsSec / 86400.0 + 2440587.5;
+    const t = (jd - 2451545.0) / 36525.0;
+    const l0 = ((280.46646 + t * (36000.76983 + 0.0003032 * t)) % 360.0 + 360.0) % 360.0;
+    const m = (357.52911 + t * (35999.05029 - 0.0001537 * t)) * rad;
+    const e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+    const c = Math.sin(m) * (1.914602 - t * (0.004817 + 0.000014 * t))
+            + Math.sin(2 * m) * (0.019993 - 0.000101 * t)
+            + Math.sin(3 * m) * 0.000289;
+    const omega = (125.04 - 1934.136 * t) * rad;
+    const app = (l0 + c - 0.00569 - 0.00478 * Math.sin(omega)) * rad;
+    const eps = (23.0 + (26.0 + (21.448 - t * (46.815 + t * (0.00059 - t * 0.001813))) / 60.0) / 60.0
+               + 0.00256 * Math.cos(omega)) * rad;
+    const decl = Math.asin(Math.sin(eps) * Math.sin(app));
+    const y = Math.tan(eps / 2) ** 2;
+    const l0r = l0 * rad;
+    const eqTime = 4 * deg * (
+      y * Math.sin(2 * l0r)
+      - 2 * e * Math.sin(m)
+      + 4 * e * y * Math.sin(m) * Math.cos(2 * l0r)
+      - 0.5 * y * y * Math.sin(4 * l0r)
+      - 1.25 * e * e * Math.sin(2 * m)
+    );
+    const minutes = ((tsSec % 86400.0) + 86400.0) % 86400.0 / 60.0;
+    const hourAngle = (((minutes + eqTime + 4 * lon) / 4.0) - 180.0) * rad;
+    const phi = lat * rad;
+    const cosZen = Math.sin(phi) * Math.sin(decl) + Math.cos(phi) * Math.cos(decl) * Math.cos(hourAngle);
+    const zen = Math.acos(Math.max(-1.0, Math.min(1.0, cosZen)));
+    return 90.0 - zen * deg;
+  }
+
+  function computeDarknessInfo(lat, lon, nowMs) {
+    const nowSec = (nowMs || Date.now()) / 1000.0;
+    const curEl = sunElevationDeg(nowSec, lat, lon);
+    const step = 300; // 5 min
+    let sunsetSec = null;
+    let duskSec = null;
+    let prevT = nowSec;
+    let prevEl = curEl;
+    for (let k = 1; k <= 290; k++) {
+      const t = nowSec + k * step;
+      const el = sunElevationDeg(t, lat, lon);
+      if (sunsetSec === null && prevEl >= 0.0 && el < 0.0) {
+        let lo = prevT, hi = t;
+        for (let i = 0; i < 10; i++) {
+          const mid = 0.5 * (lo + hi);
+          if (sunElevationDeg(mid, lat, lon) > 0.0) lo = mid; else hi = mid;
+        }
+        sunsetSec = 0.5 * (lo + hi);
+      }
+      if (duskSec === null && prevEl >= -6.0 && el < -6.0) {
+        let lo = prevT, hi = t;
+        for (let i = 0; i < 10; i++) {
+          const mid = 0.5 * (lo + hi);
+          if (sunElevationDeg(mid, lat, lon) > -6.0) lo = mid; else hi = mid;
+        }
+        duskSec = 0.5 * (lo + hi);
+      }
+      if (sunsetSec !== null && duskSec !== null) break;
+      prevT = t;
+      prevEl = el;
+    }
+    const isDark = curEl < -6.0;
+    const minToDusk = (!isDark && duskSec !== null) ? Math.max(0, (duskSec - nowSec) / 60.0) : 0;
+    return {
+      curEl,
+      isDark,
+      sunsetMs: sunsetSec ? sunsetSec * 1000 : null,
+      duskMs: duskSec ? duskSec * 1000 : null,
+      minToDusk
+    };
+  }
+
+  function sampleBundleDem(lat, lon) {
+    const dem = state.activeBundle && state.activeBundle.basemap && state.activeBundle.basemap.dem;
+    if (!dem || !dem.elevations_m || !dem.elevations_m.length) return null;
+    if (lat < dem.min_lat || lat > dem.max_lat || lon < dem.min_lon || lon > dem.max_lon) return null;
+    const fy = ((lat - dem.min_lat) / Math.max(1e-6, dem.max_lat - dem.min_lat)) * (dem.rows - 1);
+    const fx = ((lon - dem.min_lon) / Math.max(1e-6, dem.max_lon - dem.min_lon)) * (dem.cols - 1);
+    const r0 = Math.min(dem.rows - 2, Math.max(0, Math.floor(fy)));
+    const c0 = Math.min(dem.cols - 2, Math.max(0, Math.floor(fx)));
+    const ty = fy - r0, tx = fx - c0;
+    const g = dem.elevations_m;
+    const top = g[r0][c0] + (g[r0][c0 + 1] - g[r0][c0]) * tx;
+    const bot = g[r0 + 1][c0] + (g[r0 + 1][c0 + 1] - g[r0 + 1][c0]) * tx;
+    return top + (bot - top) * ty;
+  }
+
+  // Return [[lon, lat, ele_m, cum_m], ...] for the current hike
+  function getRouteCoords4d() {
+    if (state.activeBundle && state.activeBundle.coords_3d && state.activeBundle.coords_3d.length) {
+      return state.activeBundle.coords_3d;
+    }
+    const rc = (state.activeRoute && state.activeRoute.coordinates) || [];
+    let cum = 0;
+    return rc.map((c, idx) => {
+      if (idx > 0) cum += haversineM(rc[idx - 1][0], rc[idx - 1][1], c[0], c[1]);
+      return [c[1], c[0], c[2] || 0, cum];
+    });
+  }
+
+  function projectOntoRoute(lat, lon) {
+    const pts = getRouteCoords4d();
+    if (!pts.length) return { along_m: 0, offset_m: 0, ele_m: 0, lat, lon };
+    if (pts.length === 1) {
+      return { along_m: 0, offset_m: haversineM(lat, lon, pts[0][1], pts[0][0]), ele_m: pts[0][2], lat: pts[0][1], lon: pts[0][0] };
+    }
+    const kx = 111320.0 * Math.cos(lat * Math.PI / 180);
+    const ky = 110540.0;
+    let bestD = Infinity, bestAlong = 0, bestEle = pts[0][2], bestLat = pts[0][1], bestLon = pts[0][0];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const ax = (a[0] - lon) * kx, ay = (a[1] - lat) * ky;
+      const bx = (b[0] - lon) * kx, by = (b[1] - lat) * ky;
+      const dx = bx - ax, dy = by - ay;
+      const seg2 = dx * dx + dy * dy;
+      const t = seg2 <= 1e-12 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / seg2));
+      const d = Math.hypot(ax + t * dx, ay + t * dy);
+      if (d < bestD) {
+        bestD = d;
+        bestAlong = a[3] + t * (b[3] - a[3]);
+        bestEle = a[2] + t * (b[2] - a[2]);
+        bestLon = a[0] + t * (b[0] - a[0]);
+        bestLat = a[1] + t * (b[1] - a[1]);
+      }
+    }
+    return { along_m: bestAlong, offset_m: bestD, ele_m: bestEle, lat: bestLat, lon: bestLon };
+  }
+
+  function remainingGainFrom(alongM) {
+    const pts = getRouteCoords4d();
+    if (pts.length < 2) return 0;
+    let gain = 0;
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i][3] <= alongM) continue;
+      const diff = pts[i][2] - pts[i - 1][2];
+      if (diff > 0) gain += diff;
+    }
+    return gain;
+  }
+
+  // ── Viewport Management (Pan & Pinch-Zoom) ──────────────────────────────
+  function fitViewToCoords(coordsLonLat) {
+    const canvas = document.getElementById("mapCanvas");
+    const pts = coordsLonLat && coordsLonLat.length ? coordsLonLat : getRouteCoords4d();
+    if (!pts.length) {
+      const tr = (state.activeDest && state.activeDest.trails) || [];
+      tr.forEach(t => (t.coordinates || []).forEach(c => pts.push([c[1], c[0]])));
+    }
+    if (!pts.length) return;
+    let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+    pts.forEach(p => {
+      const lon = p[0], lat = p[1];
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+    });
+    state.view.centerLat = 0.5 * (minLat + maxLat);
+    state.view.centerLon = 0.5 * (minLon + maxLon);
+    const kx = 111320.0 * Math.cos(state.view.centerLat * Math.PI / 180);
+    const ky = 110540.0;
+    const spanX = Math.max(400, (maxLon - minLon) * kx);
+    const spanY = Math.max(400, (maxLat - minLat) * ky);
+    const w = Math.max(280, canvas.clientWidth || 680);
+    const h = Math.max(220, canvas.clientHeight || 340);
+    state.view.metersPerPx = Math.max(1.2, Math.max(spanX / (w * 0.78), spanY / (h * 0.78)));
+    state.view.initialized = true;
+    renderMap();
+  }
+
+  function geoToScreen(lat, lon, w, h) {
+    const kx = 111320.0 * Math.cos(state.view.centerLat * Math.PI / 180);
+    const ky = 110540.0;
+    const dxM = (lon - state.view.centerLon) * kx;
+    const dyM = (lat - state.view.centerLat) * ky;
+    return [
+      w * 0.5 + dxM / state.view.metersPerPx,
+      h * 0.5 - dyM / state.view.metersPerPx
+    ];
+  }
+
+  function screenToGeo(x, y, w, h) {
+    const kx = 111320.0 * Math.cos(state.view.centerLat * Math.PI / 180);
+    const ky = 110540.0;
+    const lon = state.view.centerLon + ((x - w * 0.5) * state.view.metersPerPx) / kx;
+    const lat = state.view.centerLat - ((y - h * 0.5) * state.view.metersPerPx) / ky;
+    return [lat, lon];
+  }
+
+  // ── Initial State & Offline Bundle Loader ───────────────────────────────
   async function loadInitialState() {
     const connEl = document.getElementById("connStatus");
+    const params = new URLSearchParams(window.location.search);
+    const requestedRouteId = params.get("route") || localStorage.getItem("aegishiker_active_route_id") || "";
+
     try {
       const res = await fetch(basePath + "/state");
       const data = await res.json();
-      connEl.textContent = "LAN Connected";
+      connEl.textContent = "LAN Connected · Saved Offline ✓";
       connEl.classList.add("online");
       state.destinations = data.destinations || [];
       state.routes = data.routes || [];
@@ -271,17 +723,52 @@
         state.activeRoute = data.active_route;
         await idbPut("routes", data.active_route);
       }
+      if (data.active_bundle && data.active_bundle.id) {
+        state.activeBundle = data.active_bundle;
+        await idbPut("bundles", data.active_bundle);
+        localStorage.setItem("aegishiker_active_route_id", data.active_bundle.id);
+      }
+      if (requestedRouteId && (!state.activeBundle || state.activeBundle.id !== requestedRouteId)) {
+        try {
+          const bRes = await fetch(basePath + "/bundle/" + encodeURIComponent(requestedRouteId));
+          const bData = await bRes.json();
+          if (bData && bData.id) {
+            state.activeBundle = bData;
+            await idbPut("bundles", bData);
+          }
+        } catch (_) {}
+      }
     } catch (err) {
       connEl.textContent = "Offline Mode (IndexedDB)";
       connEl.classList.remove("online");
       const cachedPacks = await idbGetAll("packs");
       const cachedRoutes = await idbGetAll("routes");
-      state.destinations = cachedPacks.map(p => p.destination);
+      const cachedBundles = await idbGetAll("bundles");
+      state.destinations = cachedPacks.map(p => p.destination).filter(Boolean);
       state.routes = cachedRoutes;
       state.activeDest = cachedPacks[0] || null;
-      state.activeRoute = cachedRoutes[0] || null;
+      state.activeBundle =
+        cachedBundles.find(b => b.id === requestedRouteId) ||
+        cachedBundles[0] ||
+        null;
+      state.activeRoute =
+        cachedRoutes.find(r => state.activeBundle && r.id === state.activeBundle.id) ||
+        cachedRoutes[0] ||
+        null;
     }
+
+    // Restore any previously recorded telemetry for this route
+    const activeId = (state.activeBundle && state.activeBundle.id) || (state.activeRoute && state.activeRoute.id);
+    if (activeId) {
+      const savedTrack = await idbGet("tracks", activeId);
+      if (savedTrack && Array.isArray(savedTrack.points) && savedTrack.points.length) {
+        state.telemetry = savedTrack.points;
+      }
+    }
+
     populateSelectors();
+    fitViewToCoords();
+    updateHud();
     renderAll();
   }
 
@@ -291,7 +778,7 @@
     state.destinations.forEach(d => {
       const opt = document.createElement("option");
       opt.value = d.id;
-      opt.textContent = d.name + " (" + d.region + ")";
+      opt.textContent = d.name;
       if (state.activeDest && state.activeDest.id === d.id) opt.selected = true;
       dSel.appendChild(opt);
     });
@@ -301,28 +788,47 @@
     state.routes.forEach(r => {
       const opt = document.createElement("option");
       opt.value = r.id;
-      opt.textContent = r.name + " (" + Number(r.distance_m/1000).toFixed(1) + " km)";
-      if (state.activeRoute && state.activeRoute.id === r.id) opt.selected = true;
+      opt.textContent = r.name + " (" + fmtDist(r.distance_m || 0) + ")";
+      const curId = (state.activeBundle && state.activeBundle.id) || (state.activeRoute && state.activeRoute.id);
+      if (curId === r.id) opt.selected = true;
       rSel.appendChild(opt);
     });
+
+    if (state.activeBundle) {
+      const nLegs = (state.activeBundle.legs || []).length;
+      const nLm = (state.activeBundle.landmarks || []).length;
+      document.getElementById("hikeMetaBadge").textContent = `${nLegs} trail${nLegs === 1 ? "" : "s"} · ${nLm} landmarks`;
+      document.getElementById("cacheStatus").textContent =
+        `Saved '${state.activeBundle.name}' (${nLegs} trail legs, ${nLm} landmarks & viewpoints, topo contours & DEM) offline in IndexedDB.`;
+    }
   }
 
   document.getElementById("cacheBtn").addEventListener("click", async () => {
     const destId = document.getElementById("destSelect").value;
-    if (!destId) return;
+    const routeId = document.getElementById("routeSelect").value;
     try {
-      const res = await fetch(basePath + "/pack/" + encodeURIComponent(destId));
-      const data = await res.json();
-      if (data.destination) {
-        const packObj = { id: data.destination.id, ...data };
-        await idbPut("packs", packObj);
-        state.activeDest = packObj;
-        document.getElementById("cacheStatus").textContent =
-          "Cached '" + data.destination.name + "' (" + (data.trails || []).length + " trails) in IndexedDB.";
-        renderAll();
+      if (destId) {
+        const res = await fetch(basePath + "/pack/" + encodeURIComponent(destId));
+        const data = await res.json();
+        if (data.destination) {
+          const packObj = { id: data.destination.id, ...data };
+          await idbPut("packs", packObj);
+          state.activeDest = packObj;
+        }
       }
+      if (routeId) {
+        const bRes = await fetch(basePath + "/bundle/" + encodeURIComponent(routeId));
+        const bData = await bRes.json();
+        if (bData && bData.id) {
+          state.activeBundle = bData;
+          await idbPut("bundles", bData);
+          localStorage.setItem("aegishiker_active_route_id", bData.id);
+        }
+      }
+      populateSelectors();
+      renderAll();
     } catch (e) {
-      document.getElementById("cacheStatus").textContent = "Using existing IndexedDB cache.";
+      document.getElementById("cacheStatus").textContent = "Using existing IndexedDB offline cache.";
     }
   });
 
@@ -339,13 +845,29 @@
       const packs = await idbGetAll("packs");
       state.activeDest = packs.find(p => p.id === destId) || state.activeDest;
     }
+    fitViewToCoords([]);
     renderAll();
   });
 
-  document.getElementById("routeSelect").addEventListener("change", (e) => {
+  document.getElementById("routeSelect").addEventListener("change", async (e) => {
     const rId = e.target.value;
     state.activeRoute = state.routes.find(r => r.id === rId) || state.activeRoute;
     state.simIdx = 0;
+    try {
+      const bRes = await fetch(basePath + "/bundle/" + encodeURIComponent(rId));
+      const bData = await bRes.json();
+      if (bData && bData.id) {
+        state.activeBundle = bData;
+        await idbPut("bundles", bData);
+        localStorage.setItem("aegishiker_active_route_id", bData.id);
+      }
+    } catch (_) {
+      const cached = await idbGet("bundles", rId);
+      if (cached) state.activeBundle = cached;
+    }
+    populateSelectors();
+    fitViewToCoords();
+    updateHud();
     renderAll();
   });
 
@@ -364,94 +886,496 @@
     });
   });
 
+  document.getElementById("tabLegsBtn").addEventListener("click", () => {
+    state.itineraryTab = "legs";
+    document.getElementById("tabLegsBtn").className = "primary";
+    document.getElementById("tabLandmarksBtn").className = "";
+    renderItinerary();
+  });
+
+  document.getElementById("tabLandmarksBtn").addEventListener("click", () => {
+    state.itineraryTab = "landmarks";
+    document.getElementById("tabLandmarksBtn").className = "primary";
+    document.getElementById("tabLegsBtn").className = "";
+    renderItinerary();
+  });
+
+  // ── HUD Calculations (Distance, Speed, Altitude, ETA, Darkness) ─────────
+  function computeRollingSpeedMps() {
+    const pts = state.telemetry;
+    if (!pts.length) return 0;
+    const last = pts[pts.length - 1];
+    if (pts.length === 1) return last.speed_mps || 0;
+    const lastMs = Date.parse(last.timestamp) || Date.now();
+    let windowDist = 0;
+    let earliestMs = lastMs;
+    for (let i = pts.length - 1; i >= 1; i--) {
+      const t1 = Date.parse(pts[i].timestamp) || lastMs;
+      const t0 = Date.parse(pts[i - 1].timestamp) || (t1 - 5000);
+      if (lastMs - t0 > 90000 && i < pts.length - 1) break;
+      windowDist += haversineM(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon);
+      earliestMs = t0;
+    }
+    const dtSec = Math.max(1.0, (lastMs - earliestMs) / 1000.0);
+    const derived = windowDist / dtSec;
+    if (last.speed_mps && last.speed_mps > 0.1) {
+      return 0.5 * last.speed_mps + 0.5 * derived;
+    }
+    return derived;
+  }
+
+  function updateHud() {
+    const pts4d = getRouteCoords4d();
+    const totalDist = (state.activeBundle && state.activeBundle.distance_m)
+      || (state.activeRoute && state.activeRoute.distance_m)
+      || (pts4d.length ? pts4d[pts4d.length - 1][3] : 0);
+
+    let odometerM = 0;
+    for (let i = 1; i < state.telemetry.length; i++) {
+      odometerM += haversineM(
+        state.telemetry[i - 1].lat, state.telemetry[i - 1].lon,
+        state.telemetry[i].lat, state.telemetry[i].lon
+      );
+    }
+
+    const lastPt = state.telemetry.length ? state.telemetry[state.telemetry.length - 1] : null;
+    const proj = lastPt ? projectOntoRoute(lastPt.lat, lastPt.lon) : {
+      along_m: 0,
+      offset_m: 0,
+      ele_m: pts4d.length ? pts4d[0][2] : 0,
+      lat: pts4d.length ? pts4d[0][1] : state.view.centerLat,
+      lon: pts4d.length ? pts4d[0][0] : state.view.centerLon
+    };
+
+    const alongM = lastPt ? Math.max(proj.along_m, Math.min(totalDist, odometerM)) : 0;
+    const remM = Math.max(0, totalDist - alongM);
+    const pct = totalDist > 0 ? Math.min(100, Math.round((alongM / totalDist) * 100)) : 0;
+    const curEleM = lastPt
+      ? (lastPt.ele_m || sampleBundleDem(lastPt.lat, lastPt.lon) || proj.ele_m)
+      : (pts4d.length ? pts4d[0][2] : 0);
+    const remGainM = remainingGainFrom(alongM);
+    const speedMps = lastPt ? computeRollingSpeedMps() : 0;
+
+    // Next landmark ahead along the route
+    const lms = (state.activeBundle && state.activeBundle.landmarks) || [];
+    const nextLm = lms.find(lm => lm.on_route && lm.along_m > alongM + 80);
+
+    // Estimated time remaining (Naismith terrain-adjusted blended with observed pace)
+    const naismithRemMin = (remM / 4500.0) * 60.0 + (remGainM / 600.0) * 60.0;
+    let estRemMin = naismithRemMin;
+    if (speedMps > 0.35 && alongM > 200) {
+      const speedRemMin = (remM / speedMps) / 60.0 + (remGainM / 600.0) * 35.0;
+      estRemMin = 0.55 * speedRemMin + 0.45 * naismithRemMin;
+    }
+    const nowMs = Date.now();
+    const etaMs = nowMs + estRemMin * 60000;
+
+    // Solar sunset & civil dusk (time to darkness)
+    const refLat = lastPt ? lastPt.lat : (pts4d.length ? pts4d[0][1] : 44.15);
+    const refLon = lastPt ? lastPt.lon : (pts4d.length ? pts4d[0][0] : -71.65);
+    const dark = computeDarknessInfo(refLat, refLon, nowMs);
+
+    document.getElementById("hudDist").textContent = fmtDist(alongM);
+    document.getElementById("hudDistPct").textContent = `${pct}% of ${fmtDist(totalDist)}`;
+    document.getElementById("hudRem").textContent = fmtDist(remM);
+    document.getElementById("hudNextLm").textContent = nextLm
+      ? `${fmtDist(nextLm.along_m - alongM)} to ${nextLm.name}`
+      : `Dev ${Math.round(proj.offset_m)} m`;
+    document.getElementById("hudSpeed").textContent = fmtSpeed(speedMps);
+    document.getElementById("hudPace").textContent = fmtPace(speedMps);
+    document.getElementById("hudElev").textContent = fmtEle(curEleM);
+    document.getElementById("hudClimbRem").textContent = `+${fmtEle(remGainM)} climb left`;
+    document.getElementById("hudEta").textContent = fmtDurationMin(estRemMin);
+    document.getElementById("hudEtaClock").textContent = remM > 10 ? `ETA ${fmtClock(etaMs)}` : "Arrived";
+
+    if (dark.isDark) {
+      document.getElementById("hudDark").textContent = "Night";
+      document.getElementById("hudSunsetClock").textContent = "Headlamp needed";
+    } else if (dark.duskMs) {
+      document.getElementById("hudDark").textContent = fmtDurationMin(dark.minToDusk);
+      const sunsetStr = dark.sunsetMs ? `Sunset ${fmtClock(dark.sunsetMs)}` : `Dusk ${fmtClock(dark.duskMs)}`;
+      document.getElementById("hudSunsetClock").textContent = sunsetStr;
+    } else {
+      document.getElementById("hudDark").textContent = "--";
+      document.getElementById("hudSunsetClock").textContent = "--";
+    }
+
+    document.getElementById("hudDev").textContent = Math.round(proj.offset_m) + " m";
+    document.getElementById("offTrailBanner").style.display = (lastPt && proj.offset_m > 45) ? "block" : "none";
+
+    const darkBanner = document.getElementById("darknessBanner");
+    if (dark.duskMs && remM > 100 && etaMs > dark.duskMs - 15 * 60000) {
+      const overMin = Math.round((etaMs - dark.duskMs) / 60000);
+      darkBanner.style.display = "block";
+      darkBanner.textContent = overMin > 0
+        ? `⚠ HEADLAMP ALERT: Estimated finish (${fmtClock(etaMs)}) is ${overMin}m after civil dusk (${fmtClock(dark.duskMs)})!`
+        : `⚠ DAYLIGHT MARGIN: Estimated finish (${fmtClock(etaMs)}) is within 15m of civil dusk (${fmtClock(dark.duskMs)}).`;
+    } else {
+      darkBanner.style.display = "none";
+    }
+  }
+
+  // ── Inspect Card Helper ─────────────────────────────────────────────────
+  function showInspect(title, meta) {
+    const card = document.getElementById("inspectCard");
+    document.getElementById("inspectTitle").textContent = title;
+    document.getElementById("inspectMeta").textContent = meta;
+    card.style.display = "block";
+  }
+
+  // ── Itinerary & Trail Lists ─────────────────────────────────────────────
+  function renderItinerary() {
+    const container = document.getElementById("itineraryList");
+    container.innerHTML = "";
+    const bundle = state.activeBundle;
+    if (!bundle) {
+      container.innerHTML = `<div class="trail-item"><span style="color:var(--muted)">Select or cache a hike to inspect its trails and landmarks.</span></div>`;
+      return;
+    }
+
+    if (state.itineraryTab === "legs") {
+      const legs = bundle.legs || [];
+      legs.forEach((lg, idx) => {
+        const row = document.createElement("div");
+        row.className = "trail-item";
+        const color = LEG_COLORS[idx % LEG_COLORS.length];
+        row.innerHTML = `
+          <div>
+            <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px;"></span>
+            <strong>${lg.name}</strong>
+            <small style="color:var(--muted)">(${lg.difficulty} · ${lg.surface})</small>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">
+              Milepost ${fmtDist(lg.from_m)} → ${fmtDist(lg.to_m)} · +${fmtEle(lg.gain_m)} / -${fmtEle(lg.loss_m)}
+            </div>
+          </div>
+          <span class="badge">${fmtDist(lg.distance_m)}</span>
+        `;
+        row.addEventListener("click", () => {
+          state.selectedItem = { type: "leg", index: idx, leg: lg };
+          state.scrubAlongM = 0.5 * (lg.from_m + lg.to_m);
+          showInspect(
+            `${idx + 1}. ${lg.name}`,
+            `${fmtDist(lg.distance_m)} (+${fmtEle(lg.gain_m)} / -${fmtEle(lg.loss_m)}) · ${lg.difficulty}, ${lg.surface}, ${lg.condition}${lg.condition_note ? " — " + lg.condition_note : ""}`
+          );
+          if (lg.coords && lg.coords.length) fitViewToCoords(lg.coords);
+          renderElevation();
+        });
+        container.appendChild(row);
+      });
+    } else {
+      const lms = bundle.landmarks || [];
+      lms.forEach((lm) => {
+        const row = document.createElement("div");
+        row.className = "trail-item";
+        const icon = KIND_ICONS[lm.kind] || "•";
+        row.innerHTML = `
+          <div>
+            <strong>${icon} ${lm.name}</strong>
+            <small style="color:var(--muted)">(${lm.kind.replace("_", " ")} · ${fmtEle(lm.ele_m)})</small>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">
+              At ${fmtDist(lm.along_m)} along hike (${Math.round(lm.offset_m)}m off trail)${lm.info ? " · " + lm.info : ""}
+            </div>
+          </div>
+          <span class="badge">${fmtEle(lm.ele_m)}</span>
+        `;
+        row.addEventListener("click", () => {
+          state.selectedItem = { type: "landmark", landmark: lm };
+          state.scrubAlongM = lm.along_m;
+          state.view.centerLat = lm.lat;
+          state.view.centerLon = lm.lon;
+          state.view.metersPerPx = Math.min(state.view.metersPerPx, 6.0);
+          showInspect(
+            `${icon} ${lm.name} (${fmtEle(lm.ele_m)})`,
+            `${lm.kind.replace("_", " ")} at ${fmtDist(lm.along_m)} along route (${Math.round(lm.offset_m)} m off trail)${lm.info ? " · " + lm.info : ""}`
+          );
+          renderMap();
+          renderElevation();
+        });
+        container.appendChild(row);
+      });
+    }
+  }
+
   function renderTrailList() {
     const container = document.getElementById("trailList");
     container.innerHTML = "";
     const trails = (state.activeDest && state.activeDest.trails) || [];
     const filtered = trails.filter(t => !state.excludedConditions.has((t.condition || "good").toLowerCase()));
-    filtered.forEach(t => {
+    filtered.slice(0, 80).forEach(t => {
       const row = document.createElement("div");
       row.className = "trail-item";
       row.innerHTML = `<span><strong>${t.name}</strong> <small style="color:var(--muted)">(${t.difficulty}, ${t.condition})</small></span>
-                       <span>${(t.length_m/1000).toFixed(1)} km / +${Math.round(t.elevation_gain_m)}m</span>`;
+                       <span>${fmtDist(t.length_m || 0)} / +${fmtEle(t.elevation_gain_m || 0)}</span>`;
+      row.addEventListener("click", () => {
+        if (t.coordinates && t.coordinates.length) {
+          fitViewToCoords(t.coordinates.map(c => [c[1], c[0]]));
+          showInspect(t.name, `${fmtDist(t.length_m || 0)} · +${fmtEle(t.elevation_gain_m || 0)} · ${t.difficulty} (${t.condition})`);
+        }
+      });
       container.appendChild(row);
     });
   }
 
+  // ── Interactive Vector Map Renderer ─────────────────────────────────────
   function renderMap() {
     const canvas = document.getElementById("mapCanvas");
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || 680;
+    const cssH = canvas.clientHeight || 340;
+    if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+    }
     const ctx = canvas.getContext("2d");
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cssW, cssH);
 
-    const trails = (state.activeDest && state.activeDest.trails) || [];
-    const routeCoords = (state.activeRoute && state.activeRoute.coordinates) || [];
-    const allPts = [];
-    trails.forEach(t => (t.coordinates || []).forEach(c => allPts.push([c[0], c[1]])));
-    routeCoords.forEach(c => allPts.push([c[0], c[1]]));
-    if (allPts.length === 0) return;
+    if (!state.view.initialized) {
+      const pts = getRouteCoords4d();
+      if (pts.length) {
+        let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+        pts.forEach(p => {
+          if (p[1] < minLat) minLat = p[1];
+          if (p[1] > maxLat) maxLat = p[1];
+          if (p[0] < minLon) minLon = p[0];
+          if (p[0] > maxLon) maxLon = p[0];
+        });
+        state.view.centerLat = 0.5 * (minLat + maxLat);
+        state.view.centerLon = 0.5 * (minLon + maxLon);
+        state.view.initialized = true;
+      }
+    }
 
-    let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
-    allPts.forEach(p => {
-      if (p[0] < minLat) minLat = p[0];
-      if (p[0] > maxLat) maxLat = p[0];
-      if (p[1] < minLon) minLon = p[1];
-      if (p[1] > maxLon) maxLon = p[1];
-    });
-    const pad = 24;
-    const project = (lat, lon) => {
-      const x = pad + ((lon - minLon) / Math.max(1e-6, maxLon - minLon)) * (w - 2*pad);
-      const y = h - pad - ((lat - minLat) / Math.max(1e-6, maxLat - minLat)) * (h - 2*pad);
-      return [x, y];
-    };
+    const bundle = state.activeBundle;
+    const basemap = bundle && bundle.basemap;
 
-    // Draw background trail segments
-    trails.forEach(t => {
-      const cond = (t.condition || "good").toLowerCase();
-      const excluded = state.excludedConditions.has(cond);
-      ctx.beginPath();
-      (t.coordinates || []).forEach((c, idx) => {
-        const [x, y] = project(c[0], c[1]);
-        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    // 1. Topographic Contour Lines
+    if (basemap && basemap.contours) {
+      const interval = basemap.contour_interval_m || 60.96;
+      basemap.contours.forEach((c) => {
+        const isMajor = Math.round(c.ele_m / interval) % 5 === 0;
+        ctx.beginPath();
+        c.coords.forEach((pt, idx) => {
+          const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
+          if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = isMajor ? "rgba(165, 195, 174, 0.24)" : "rgba(165, 195, 174, 0.11)";
+        ctx.lineWidth = isMajor ? 1.2 : 0.7;
+        ctx.stroke();
       });
-      ctx.strokeStyle = excluded ? "rgba(231, 76, 60, 0.25)" : "rgba(152, 178, 161, 0.55)";
-      ctx.lineWidth = excluded ? 1.5 : 2.5;
-      ctx.stroke();
-    });
+    }
 
-    // Draw active route
-    if (routeCoords.length > 1) {
+    // 2. Streams & Water bodies
+    if (basemap && basemap.water) {
+      basemap.water.forEach((w) => {
+        ctx.beginPath();
+        w.coords.forEach((pt, idx) => {
+          const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
+          if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        if (w.geom === "area") {
+          ctx.fillStyle = "rgba(56, 189, 248, 0.18)";
+          ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.40)";
+        ctx.lineWidth = w.kind === "river" ? 2.0 : 1.1;
+        ctx.stroke();
+      });
+    }
+
+    // 3. Nearby connecting trails
+    const nearby = (basemap && basemap.nearby_trails) || [];
+    if (nearby.length) {
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      nearby.forEach((t) => {
+        const cond = (t.condition || "open").toLowerCase();
+        const excluded = state.excludedConditions.has(cond);
+        ctx.beginPath();
+        t.coords.forEach((pt, idx) => {
+          const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
+          if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = excluded ? "rgba(231, 76, 60, 0.25)" : "rgba(152, 178, 161, 0.42)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      });
+      ctx.restore();
+    } else {
+      const trails = (state.activeDest && state.activeDest.trails) || [];
+      trails.forEach(t => {
+        const cond = (t.condition || "good").toLowerCase();
+        const excluded = state.excludedConditions.has(cond);
+        ctx.beginPath();
+        (t.coordinates || []).forEach((c, idx) => {
+          const [x, y] = geoToScreen(c[0], c[1], cssW, cssH);
+          if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = excluded ? "rgba(231, 76, 60, 0.25)" : "rgba(152, 178, 161, 0.45)";
+        ctx.lineWidth = excluded ? 1.2 : 1.8;
+        ctx.stroke();
+      });
+    }
+
+    // 4. Composed Hike Route & Individual Trails Taken (legs)
+    const legs = (bundle && bundle.legs) || [];
+    const pts4d = getRouteCoords4d();
+    if (legs.length > 0) {
+      legs.forEach((lg, idx) => {
+        const isSel = state.selectedItem && state.selectedItem.type === "leg" && state.selectedItem.index === idx;
+        ctx.beginPath();
+        lg.coords.forEach((pt, i) => {
+          const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = LEG_COLORS[idx % LEG_COLORS.length];
+        ctx.lineWidth = isSel ? 6.0 : 4.0;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+      });
+    } else if (pts4d.length > 1) {
       ctx.beginPath();
-      routeCoords.forEach((c, idx) => {
-        const [x, y] = project(c[0], c[1]);
+      pts4d.forEach((pt, idx) => {
+        const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
         if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
       ctx.strokeStyle = "#2ECC71";
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 4.0;
       ctx.stroke();
     }
 
-    // Draw live telemetry breadcrumb & current position
-    if (state.telemetry.length > 0) {
-      const last = state.telemetry[state.telemetry.length - 1];
-      const [hx, hy] = project(last.lat, last.lon);
+    // Start & Finish markers
+    if (pts4d.length > 1) {
+      const [sx, sy] = geoToScreen(pts4d[0][1], pts4d[0][0], cssW, cssH);
+      const [ex, ey] = geoToScreen(pts4d[pts4d.length - 1][1], pts4d[pts4d.length - 1][0], cssW, cssH);
       ctx.beginPath();
-      ctx.arc(hx, hy, 7, 0, Math.PI * 2);
-      ctx.fillStyle = "#F39C12";
+      ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#2ECC71";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#08110C";
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(ex, ey, 5, 0, Math.PI * 2);
+      ctx.fillStyle = "#E74C3C";
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // 5. Landmarks & Viewpoints
+    const lms = (bundle && bundle.landmarks) || [];
+    ctx.font = "600 11px -apple-system, BlinkMacSystemFont, sans-serif";
+    lms.forEach((lm) => {
+      const [x, y] = geoToScreen(lm.lat, lm.lon, cssW, cssH);
+      if (x < -30 || x > cssW + 30 || y < -30 || y > cssH + 30) return;
+      const isSel = state.selectedItem && state.selectedItem.type === "landmark" && state.selectedItem.landmark.id === lm.id;
+      ctx.beginPath();
+      ctx.arc(x, y, isSel ? 7 : (lm.on_route ? 4.5 : 3.5), 0, Math.PI * 2);
+      ctx.fillStyle = lm.kind === "peak" ? "#FBBF24" : (lm.kind === "viewpoint" ? "#38BDF8" : (lm.kind === "hut" || lm.kind === "shelter" ? "#F472B6" : "#ECF5EE"));
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#08110C";
+      ctx.stroke();
+
+      if (isSel || lm.kind === "peak" || lm.kind === "hut" || (lm.on_route && state.view.metersPerPx < 14)) {
+        const label = (KIND_ICONS[lm.kind] ? KIND_ICONS[lm.kind] + " " : "") + lm.name;
+        ctx.fillStyle = "rgba(8, 17, 12, 0.82)";
+        const tw = ctx.measureText(label).width;
+        ctx.fillRect(x + 7, y - 8, tw + 6, 15);
+        ctx.fillStyle = isSel ? "#2ECC71" : "#ECF5EE";
+        ctx.fillText(label, x + 10, y + 3);
+      }
+    });
+
+    // 6. Scrubbed position marker along route
+    if (state.scrubAlongM !== null && pts4d.length > 1) {
+      let sp = pts4d[0];
+      for (let i = 0; i < pts4d.length; i++) {
+        if (pts4d[i][3] >= state.scrubAlongM) { sp = pts4d[i]; break; }
+      }
+      const [qx, qy] = geoToScreen(sp[1], sp[0], cssW, cssH);
+      ctx.beginPath();
+      ctx.arc(qx, qy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#38BDF8";
       ctx.fill();
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#fff";
       ctx.stroke();
     }
+
+    // 7. Live GPS Breadcrumb Track & Pulsing Hiker Position
+    if (state.telemetry.length > 0) {
+      if (state.telemetry.length > 1) {
+        ctx.beginPath();
+        state.telemetry.forEach((pt, idx) => {
+          const [tx, ty] = geoToScreen(pt.lat, pt.lon, cssW, cssH);
+          if (idx === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
+        });
+        ctx.strokeStyle = "#F39C12";
+        ctx.lineWidth = 3.0;
+        ctx.stroke();
+      }
+      const last = state.telemetry[state.telemetry.length - 1];
+      const [hx, hy] = geoToScreen(last.lat, last.lon, cssW, cssH);
+      const accPx = Math.max(10, Math.min(65, (last.accuracy_m || 8) / state.view.metersPerPx));
+      ctx.beginPath();
+      ctx.arc(hx, hy, accPx, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(243, 156, 18, 0.18)";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(hx, hy, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#F39C12";
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
+    }
+
+    // 8. Scale Bar (bottom-left)
+    const barM = state.view.metersPerPx * 70;
+    const niceM = barM > 2000 ? 2000 : (barM > 1000 ? 1000 : (barM > 500 ? 500 : (barM > 200 ? 200 : 100)));
+    const barPx = niceM / state.view.metersPerPx;
+    ctx.fillStyle = "rgba(8, 17, 12, 0.78)";
+    ctx.fillRect(10, cssH - 26, barPx + 16, 18);
+    ctx.strokeStyle = "#ECF5EE";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(16, cssH - 14);
+    ctx.lineTo(16 + barPx, cssH - 14);
+    ctx.stroke();
+    ctx.fillStyle = "#ECF5EE";
+    ctx.font = "600 10px -apple-system, sans-serif";
+    ctx.fillText(fmtDist(niceM), 18, cssH - 17);
+
+    ctx.restore();
   }
 
+  // ── Interactive Elevation Profile Renderer ──────────────────────────────
   function renderElevation() {
     const canvas = document.getElementById("elevCanvas");
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || 680;
+    const cssH = canvas.clientHeight || 125;
+    if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+    }
     const ctx = canvas.getContext("2d");
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    const prof = (state.activeRoute && state.activeRoute.elevation_profile) || [];
-    if (prof.length < 2) return;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const prof = (state.activeBundle && state.activeBundle.elevation_profile)
+      || (state.activeRoute && state.activeRoute.elevation_profile)
+      || [];
+    if (prof.length < 2) {
+      ctx.restore();
+      return;
+    }
 
     const maxD = Math.max(1, prof[prof.length - 1].distance_m);
     let minE = Infinity, maxE = -Infinity;
@@ -459,84 +1383,358 @@
       if (p.ele_m < minE) minE = p.ele_m;
       if (p.ele_m > maxE) maxE = p.ele_m;
     });
-    const pad = 18;
+    const padL = 42, padR = 14, padT = 16, padB = 20;
+    const plotW = cssW - padL - padR;
+    const plotH = cssH - padT - padB;
+    const xOf = (d) => padL + (Math.max(0, Math.min(maxD, d)) / maxD) * plotW;
+    const yOf = (e) => padT + plotH - ((e - minE) / Math.max(10, maxE - minE)) * plotH;
+
+    // Shaded area under profile
+    ctx.beginPath();
+    ctx.moveTo(xOf(0), padT + plotH);
+    prof.forEach(p => ctx.lineTo(xOf(p.distance_m), yOf(p.ele_m)));
+    ctx.lineTo(xOf(maxD), padT + plotH);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(46, 204, 113, 0.16)";
+    ctx.fill();
+
+    // Elevation polyline
     ctx.beginPath();
     prof.forEach((p, idx) => {
-      const x = pad + (p.distance_m / maxD) * (w - 2*pad);
-      const y = h - pad - ((p.ele_m - minE) / Math.max(10, maxE - minE)) * (h - 2*pad);
+      const x = xOf(p.distance_m), y = yOf(p.ele_m);
       if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.strokeStyle = "#2ECC71";
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.2;
     ctx.stroke();
+
+    // Axis labels
+    ctx.fillStyle = "#98B2A1";
+    ctx.font = "600 10px -apple-system, sans-serif";
+    ctx.fillText(fmtEle(maxE), 4, padT + 6);
+    ctx.fillText(fmtEle(minE), 4, padT + plotH);
+    ctx.fillText("0", padL, cssH - 5);
+    const endLbl = fmtDist(maxD);
+    ctx.fillText(endLbl, cssW - padR - ctx.measureText(endLbl).width, cssH - 5);
+
+    // On-route peak/hut landmark ticks
+    const lms = (state.activeBundle && state.activeBundle.landmarks) || [];
+    lms.filter(lm => lm.on_route && (lm.kind === "peak" || lm.kind === "hut" || lm.kind === "viewpoint")).slice(0, 8).forEach(lm => {
+      const lx = xOf(lm.along_m);
+      const ly = yOf(lm.ele_m);
+      ctx.beginPath();
+      ctx.arc(lx, ly, 3.2, 0, Math.PI * 2);
+      ctx.fillStyle = lm.kind === "peak" ? "#FBBF24" : "#38BDF8";
+      ctx.fill();
+    });
+
+    // Scrub cursor line
+    if (state.scrubAlongM !== null) {
+      const sx = xOf(state.scrubAlongM);
+      ctx.strokeStyle = "#38BDF8";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(sx, padT);
+      ctx.lineTo(sx, padT + plotH);
+      ctx.stroke();
+    }
+
+    // Live GPS hiker dot on elevation chart
+    if (state.telemetry.length > 0) {
+      const last = state.telemetry[state.telemetry.length - 1];
+      const proj = projectOntoRoute(last.lat, last.lon);
+      const gx = xOf(proj.along_m);
+      const gy = yOf(last.ele_m || proj.ele_m);
+      ctx.beginPath();
+      ctx.arc(gx, gy, 5.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#F39C12";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
-  function recordPoint(lat, lon, ele_m, accuracy_m) {
+  // ── Map Touch / Pointer Pan, Pinch-Zoom & Tap-to-Inspect ────────────────
+  (function setupMapInteractions() {
+    const canvas = document.getElementById("mapCanvas");
+    let dragging = false;
+    let moved = false;
+    let lastX = 0, lastY = 0;
+    let pinchDist = null;
+
+    function handleTap(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      const lms = (state.activeBundle && state.activeBundle.landmarks) || [];
+      let bestLm = null, bestD = 22;
+      lms.forEach(lm => {
+        const [lx, ly] = geoToScreen(lm.lat, lm.lon, rect.width, rect.height);
+        const d = Math.hypot(lx - x, ly - y);
+        if (d < bestD) { bestD = d; bestLm = lm; }
+      });
+      if (bestLm) {
+        const icon = KIND_ICONS[bestLm.kind] || "•";
+        state.selectedItem = { type: "landmark", landmark: bestLm };
+        state.scrubAlongM = bestLm.along_m;
+        showInspect(
+          `${icon} ${bestLm.name} (${fmtEle(bestLm.ele_m)})`,
+          `${bestLm.kind.replace("_", " ")} · At ${fmtDist(bestLm.along_m)} along hike (${Math.round(bestLm.offset_m)} m off trail)${bestLm.info ? " · " + bestLm.info : ""}`
+        );
+        renderMap();
+        renderElevation();
+        return;
+      }
+      // Check proximity to route
+      const [tapLat, tapLon] = screenToGeo(x, y, rect.width, rect.height);
+      const proj = projectOntoRoute(tapLat, tapLon);
+      if (proj.offset_m <= state.view.metersPerPx * 18) {
+        state.scrubAlongM = proj.along_m;
+        const legs = (state.activeBundle && state.activeBundle.legs) || [];
+        const leg = legs.find(l => l.from_m <= proj.along_m && proj.along_m <= l.to_m) || legs[0];
+        const remGain = remainingGainFrom(proj.along_m);
+        showInspect(
+          leg ? leg.name : "Planned Route",
+          `Milepost ${fmtDist(proj.along_m)} · Altitude ${fmtEle(proj.ele_m)} · +${fmtEle(remGain)} climb left to finish`
+        );
+        renderMap();
+        renderElevation();
+      }
+    }
+
+    canvas.addEventListener("mousedown", (e) => {
+      dragging = true;
+      moved = false;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      if (Math.hypot(dx, dy) > 3) moved = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      const kx = 111320.0 * Math.cos(state.view.centerLat * Math.PI / 180);
+      const ky = 110540.0;
+      state.view.centerLon -= (dx * state.view.metersPerPx) / kx;
+      state.view.centerLat += (dy * state.view.metersPerPx) / ky;
+      state.followGps = false;
+      renderMap();
+    });
+    window.addEventListener("mouseup", (e) => {
+      if (dragging && !moved) handleTap(e.clientX, e.clientY);
+      dragging = false;
+    });
+
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 0.8 : 1.25;
+      state.view.metersPerPx = Math.max(0.8, Math.min(250.0, state.view.metersPerPx * factor));
+      renderMap();
+    }, { passive: false });
+
+    canvas.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 1) {
+        dragging = true;
+        moved = false;
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+        pinchDist = null;
+      } else if (e.touches.length === 2) {
+        dragging = false;
+        moved = true;
+        pinchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    }, { passive: true });
+
+    canvas.addEventListener("touchmove", (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && dragging) {
+        const dx = e.touches[0].clientX - lastX;
+        const dy = e.touches[0].clientY - lastY;
+        if (Math.hypot(dx, dy) > 4) moved = true;
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+        const kx = 111320.0 * Math.cos(state.view.centerLat * Math.PI / 180);
+        const ky = 110540.0;
+        state.view.centerLon -= (dx * state.view.metersPerPx) / kx;
+        state.view.centerLat += (dy * state.view.metersPerPx) / ky;
+        state.followGps = false;
+        renderMap();
+      } else if (e.touches.length === 2 && pinchDist) {
+        const newDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if (newDist > 10) {
+          const scale = pinchDist / newDist;
+          state.view.metersPerPx = Math.max(0.8, Math.min(250.0, state.view.metersPerPx * scale));
+          pinchDist = newDist;
+          renderMap();
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener("touchend", (e) => {
+      if (dragging && !moved && e.changedTouches.length === 1) {
+        handleTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      }
+      if (e.touches.length === 0) {
+        dragging = false;
+        pinchDist = null;
+      }
+    });
+
+    // Elevation profile scrub
+    const elevCanvas = document.getElementById("elevCanvas");
+    function scrubElev(clientX) {
+      const prof = (state.activeBundle && state.activeBundle.elevation_profile)
+        || (state.activeRoute && state.activeRoute.elevation_profile)
+        || [];
+      if (prof.length < 2) return;
+      const rect = elevCanvas.getBoundingClientRect();
+      const padL = 42, padR = 14;
+      const plotW = Math.max(10, rect.width - padL - padR);
+      const frac = Math.max(0, Math.min(1, (clientX - rect.left - padL) / plotW));
+      const maxD = prof[prof.length - 1].distance_m;
+      const along = frac * maxD;
+      state.scrubAlongM = along;
+      const sample = prof.find(p => p.distance_m >= along) || prof[prof.length - 1];
+      showInspect(
+        `Elevation Profile at ${fmtDist(along)}`,
+        `Altitude ${fmtEle(sample.ele_m)} · Grade ${(sample.grade_pct || 0).toFixed(1)}% · +${fmtEle(remainingGainFrom(along))} climb left`
+      );
+      renderMap();
+      renderElevation();
+    }
+    elevCanvas.addEventListener("click", (e) => scrubElev(e.clientX));
+    elevCanvas.addEventListener("touchmove", (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1) scrubElev(e.touches[0].clientX);
+    }, { passive: false });
+
+    document.getElementById("zoomInBtn").addEventListener("click", () => {
+      state.view.metersPerPx = Math.max(0.8, state.view.metersPerPx * 0.65);
+      renderMap();
+    });
+    document.getElementById("zoomOutBtn").addEventListener("click", () => {
+      state.view.metersPerPx = Math.min(250.0, state.view.metersPerPx * 1.5);
+      renderMap();
+    });
+    document.getElementById("fitBtn").addEventListener("click", () => {
+      state.followGps = false;
+      fitViewToCoords();
+    });
+    document.getElementById("followBtn").addEventListener("click", () => {
+      state.followGps = !state.followGps;
+      document.getElementById("followBtn").classList.toggle("active", state.followGps);
+      if (state.telemetry.length > 0) {
+        const last = state.telemetry[state.telemetry.length - 1];
+        state.view.centerLat = last.lat;
+        state.view.centerLon = last.lon;
+        renderMap();
+      }
+    });
+  })();
+
+  // ── Recording GPS Points & Persisting to IndexedDB ──────────────────────
+  async function recordPoint(lat, lon, ele_m, accuracy_m, speed_mps) {
+    const resolvedEle = (ele_m && ele_m !== 0)
+      ? ele_m
+      : (sampleBundleDem(lat, lon) || projectOntoRoute(lat, lon).ele_m || 0);
     const pt = {
       timestamp: new Date().toISOString(),
       lat: lat,
       lon: lon,
-      ele_m: ele_m || 0,
+      ele_m: resolvedEle,
       accuracy_m: accuracy_m || 5.0,
-      speed_mps: 1.25
+      speed_mps: (speed_mps !== undefined && speed_mps !== null && speed_mps >= 0) ? speed_mps : null
     };
     state.telemetry.push(pt);
-    let traveled = 0;
-    for (let i = 1; i < state.telemetry.length; i++) {
-      traveled += haversineM(
-        state.telemetry[i-1].lat, state.telemetry[i-1].lon,
-        state.telemetry[i].lat, state.telemetry[i].lon
-      );
+    if (state.followGps) {
+      state.view.centerLat = lat;
+      state.view.centerLon = lon;
     }
-    const routeCoords = (state.activeRoute && state.activeRoute.coordinates) || [];
-    let minDev = 0;
-    if (routeCoords.length > 0) {
-      minDev = Infinity;
-      routeCoords.forEach(c => {
-        const d = haversineM(lat, lon, c[0], c[1]);
-        if (d < minDev) minDev = d;
-      });
-    }
-    const totalDist = (state.activeRoute && state.activeRoute.distance_m) || 0;
-    document.getElementById("hudDist").textContent = (traveled / 1000).toFixed(2) + " km";
-    document.getElementById("hudRem").textContent = (Math.max(0, totalDist - traveled) / 1000).toFixed(2) + " km";
-    document.getElementById("hudElev").textContent = Math.round(pt.ele_m) + " m";
-    document.getElementById("hudDev").textContent = Math.round(minDev) + " m";
-    document.getElementById("offTrailBanner").style.display = minDev > 45 ? "block" : "none";
+    document.getElementById("gpsAccuracyLbl").textContent =
+      `GPS ±${Math.round(pt.accuracy_m)}m · ${state.telemetry.length} pts`;
+    updateHud();
     renderMap();
+    renderElevation();
+
+    const activeId = (state.activeBundle && state.activeBundle.id) || (state.activeRoute && state.activeRoute.id);
+    if (activeId) {
+      await idbPut("tracks", { route_id: activeId, updated_at: pt.timestamp, points: state.telemetry });
+    }
   }
 
-  document.getElementById("startGpsBtn").addEventListener("click", () => {
-    if (!navigator.geolocation) return;
+  document.getElementById("startGpsBtn").addEventListener("click", async () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation API is not available in this browser.");
+      return;
+    }
     if (state.watchId !== null) {
       navigator.geolocation.clearWatch(state.watchId);
       state.watchId = null;
+      if (state.wakeLock) {
+        try { await state.wakeLock.release(); } catch (_) {}
+        state.wakeLock = null;
+      }
       document.getElementById("startGpsBtn").textContent = "Start Live GPS";
+      document.getElementById("gpsAccuracyLbl").textContent = "GPS Paused";
       return;
     }
+
+    if ("wakeLock" in navigator) {
+      try { state.wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+    }
+
     document.getElementById("startGpsBtn").textContent = "Stop Live GPS";
-    state.watchId = navigator.geolocation.watchPosition((pos) => {
-      recordPoint(
-        pos.coords.latitude,
-        pos.coords.longitude,
-        pos.coords.altitude || 0,
-        pos.coords.accuracy || 5
-      );
-    });
+    document.getElementById("gpsAccuracyLbl").textContent = "Acquiring GPS satellites…";
+    state.followGps = true;
+    document.getElementById("followBtn").classList.add("active");
+
+    state.watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        recordPoint(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          pos.coords.altitude || 0,
+          pos.coords.accuracy || 5,
+          pos.coords.speed
+        );
+      },
+      (err) => {
+        document.getElementById("gpsAccuracyLbl").textContent = "GPS Error: " + err.message;
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000
+      }
+    );
   });
 
   document.getElementById("simStepBtn").addEventListener("click", () => {
-    const coords = (state.activeRoute && state.activeRoute.coordinates) || [];
-    if (coords.length === 0) return;
-    const c = coords[state.simIdx % coords.length];
-    state.simIdx += 1;
-    recordPoint(c[0], c[1], c[2] || 500, 4.0);
+    const pts = getRouteCoords4d();
+    if (pts.length === 0) return;
+    const step = Math.max(1, Math.floor(pts.length / 25));
+    const idx = Math.min(pts.length - 1, state.simIdx * step);
+    const c = pts[idx];
+    state.simIdx = (idx >= pts.length - 1) ? 0 : state.simIdx + 1;
+    recordPoint(c[1], c[0], c[2] || 500, 4.0, 1.35);
   });
 
   document.getElementById("syncBtn").addEventListener("click", async () => {
     const payload = {
-      route_id: state.activeRoute ? state.activeRoute.id : null,
-      destination_id: state.activeDest ? state.activeDest.id : null,
+      route_id: (state.activeBundle && state.activeBundle.id) || (state.activeRoute ? state.activeRoute.id : null),
+      destination_id: (state.activeBundle && state.activeBundle.pack_id) || (state.activeDest ? state.activeDest.id : null),
       notes: "Synced from AegisHiker Field Companion PWA",
       telemetry_points: state.telemetry
     };
@@ -549,11 +1747,12 @@
       const out = await res.json();
       alert("Synced to desktop! Session ID: " + out.session_id + " (" + out.points_saved + " GPS pts)");
     } catch (e) {
-      alert("Currently offline; telemetry stays buffered on device until back on LAN.");
+      alert("Currently offline; telemetry stays safely buffered in IndexedDB on your iPhone until back on Wi-Fi.");
     }
   });
 
   function renderAll() {
+    renderItinerary();
     renderTrailList();
     renderMap();
     renderElevation();
@@ -564,4 +1763,3 @@
 </script>
 </body>
 </html>
-

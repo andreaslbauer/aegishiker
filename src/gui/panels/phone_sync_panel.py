@@ -66,22 +66,31 @@ class PhoneSyncPanel(QWidget):
         body.addWidget(qr_frame, 5)
 
         # Right: Offline architecture instructions
-        info_frame = Card("How it works")
+        info_frame = Card("How it works on iPhone (HTTPS PWA & Offline GPS)")
         info_col = info_frame.body
+        self.bundle_summary_lbl = QLabel("")
+        self.bundle_summary_lbl.setWordWrap(True)
+        info_col.addWidget(self.bundle_summary_lbl)
         info_lbl = QLabel(
             "<ol style='margin-left:-14px; line-height:150%'>"
-            "<li><b>Before Leaving Home (On Wi-Fi):</b> Click <i>Start Mobile Companion Server</i> and scan the QR code "
-            "with your phone's camera.</li>"
-            "<li><b>Cache Regional Pack Offline:</b> Tap <i>Cache Pack Offline</i> in the mobile web app. "
-            "The full trail graph, elevation profiles, and POIs are saved in browser IndexedDB + Service Worker cache.</li>"
-            "<li><b>At the Trailhead (Zero Cell Signal):</b> Open the cached companion app to filter out muddy, icy, or "
-            "closed trails, view your live GPS dot on the vector map, and get off-trail alerts (&gt;45m).</li>"
-            "<li><b>Back Home:</b> Tap <i>Sync Telemetry to Desktop</i> to upload your recorded GPS breadcrumbs into "
-            "AegisHiker's Telemetry &amp; Re-experience studios.</li>"
+            "<li><b>Scan the HTTPS QR Code on Wi-Fi:</b> Click <i>Start Mobile Companion Server</i> (or click "
+            "<i>📱 Send to iPhone</i> in the Trail Composer) and scan the QR code with your iPhone's camera.</li>"
+            "<li><b>One-Time Self-Signed HTTPS Prompt:</b> In Safari, tap <i>Show Details → visit this website</i> "
+            "(or install the local Root CA at the HTTP link below) so iOS enables hardware GPS over HTTPS.</li>"
+            "<li><b>Keep It Offline (Add to Home Screen):</b> The page automatically saves the hike's trails, "
+            "landmarks, viewpoints, contours, and elevation DEM into IndexedDB + Service Worker cache. Tap "
+            "<i>Share → Add to Home Screen</i> in Safari to keep it as a standalone app.</li>"
+            "<li><b>On the Trail (Zero Cell Signal):</b> Pinch-zoom and pan the topo map, tap viewpoints and "
+            "trail legs, and tap <i>Start Live GPS</i> to track distance hiked/left, speed, altitude, ETA, and "
+            "time to darkness.</li>"
             "</ol>"
         )
         info_lbl.setWordWrap(True)
         info_col.addWidget(info_lbl)
+        self.ca_url_lbl = QLabel("")
+        self.ca_url_lbl.setWordWrap(True)
+        self.ca_url_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        info_col.addWidget(self.ca_url_lbl)
         info_col.addStretch(1)
         body.addWidget(info_frame, 5)
 
@@ -93,18 +102,33 @@ class PhoneSyncPanel(QWidget):
 
     def refresh_labels(self) -> None:
         dest = self.app_state.get_active_destination()
-        route = self.app_state.get_active_route()
+        route = self.app_state.trail_server.active_draft_route or self.app_state.get_active_route()
         self.dest_card.set_value(dest.name if dest else "--", dest.region if dest else "")
         self.route_card.set_value(route.name if route else "--")
         if self.app_state.trail_server.is_running:
-            url = self.app_state.trail_server.get_pairing_url()
-            self.server_card.set_value("Running (LAN)", f"Port {self.app_state.trail_server.port}")
+            url = self.app_state.trail_server.get_pairing_url(https=True)
+            if route:
+                url = f"{url}?route={route.id}"
+            self.server_card.set_value("Running (HTTPS LAN)", f"Port {self.app_state.trail_server.port}")
             self.url_edit.setText(url)
             self._render_qr(url)
             self.toggle_btn.setText("Stop Mobile Companion Server")
+            self.ca_url_lbl.setText(
+                f"<small>Optional iOS Root CA certificate: <code>{self.app_state.trail_server.get_ca_cert_url()}</code></small>"
+            )
+            bundle = self.app_state.trail_server.get_active_bundle_payload(route.id if route else None)
+            if bundle:
+                n_legs = len(bundle.get("legs") or [])
+                n_lm = len(bundle.get("landmarks") or [])
+                self.bundle_summary_lbl.setText(
+                    f"<b>Ready for iPhone:</b> {bundle.get('name')} — {n_legs} trail segment(s), "
+                    f"{n_lm} landmarks &amp; viewpoints, contour lines, and elevation DEM."
+                )
         else:
             self.server_card.set_value("Stopped", "Click Start below")
             self.toggle_btn.setText("Start Mobile Companion Server")
+            self.ca_url_lbl.setText("")
+            self.bundle_summary_lbl.setText("")
 
     def toggle_server(self) -> None:
         if self.app_state.trail_server.is_running:

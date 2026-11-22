@@ -64,11 +64,14 @@ class ComposerPanel(QWidget):
         self.play3d_btn = QPushButton("▶  3D Play Hike")
         self.play3d_btn.setToolTip("Fly along this hike over 3D terrain")
         self.play3d_btn.clicked.connect(self.play_hike_3d)
+        self.send_phone_btn = QPushButton("📱  Send to iPhone")
+        self.send_phone_btn.setToolTip("Show an HTTPS QR code to open and cache this hike on your iPhone with live GPS tracking")
+        self.send_phone_btn.clicked.connect(self.open_send_to_phone_qr)
         self.i_hiked_btn = QPushButton("✓  I Hiked This Trail")
         self.i_hiked_btn.setObjectName("PrimaryButton")
         self.i_hiked_btn.setToolTip(TOOLTIPS["i_hiked_this"])
         self.i_hiked_btn.clicked.connect(self.open_i_hiked_this_wizard)
-        for b in (import_btn, export_btn, self.play3d_btn, self.i_hiked_btn):
+        for b in (import_btn, export_btn, self.play3d_btn, self.send_phone_btn, self.i_hiked_btn):
             header.actions_layout.addWidget(b)
         layout.addWidget(header)
 
@@ -213,6 +216,7 @@ class ComposerPanel(QWidget):
     def _on_draft_changed(self, route: Optional[ComposedRoute]) -> None:
         had_draft = self._draft is not None
         self._draft = route
+        self.app_state.trail_server.set_draft_route(route)
         self.map_canvas.set_hike_legs(self.segment_builder.hike_legs() if route is not None else [])
         if route is not None or had_draft:
             self.refresh_from_active_route()
@@ -300,7 +304,75 @@ class ComposerPanel(QWidget):
             self._update_metrics(route)
         else:
             self.elev_chart.set_profile([], unit_system=unit)
-        self.play3d_btn.setEnabled(route is not None and len(route.coords_3d) >= 2)
+        has_hike = route is not None and len(route.coords_3d) >= 2
+        self.play3d_btn.setEnabled(has_hike)
+        self.send_phone_btn.setEnabled(has_hike)
+
+    def open_send_to_phone_qr(self) -> None:
+        """Start TrailServer over HTTPS, package the shown hike (draft or saved) into a
+        FieldHikeBundle, and display a scannable QR code dialog for the iPhone."""
+        from PySide6.QtGui import QImage, QPixmap
+        from PySide6.QtWidgets import QDialog
+        from src.core.trail_server import qr_png
+        from src.hiking.units import format_distance, format_elevation
+
+        route = self._draft or self.app_state.get_active_route()
+        if route is None or len(route.coords_3d) < 2:
+            self.app_state.status_message.emit("Build or pick a hike first to send it to your iPhone.")
+            return
+        self.app_state.trail_server.set_draft_route(self._draft)
+        if not self.app_state.trail_server.is_running:
+            self.app_state.trail_server.start()
+
+        bundle = self.app_state.trail_server.get_active_bundle_payload(route.id)
+        url = f"{self.app_state.trail_server.get_pairing_url(https=True)}?route={route.id}"
+        unit = str(self.app_state.settings.get("unit_system", "metric"))
+        n_legs = len(bundle.get("legs") or [])
+        n_lm = len(bundle.get("landmarks") or [])
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Send Hike to iPhone — {route.name}")
+        dlg.setMinimumWidth(460)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(20, 18, 20, 18)
+        lay.setSpacing(12)
+
+        title = QLabel(f"<b>{route.name}</b>")
+        title.setStyleSheet("font-size: 16px;")
+        lay.addWidget(title)
+
+        meta = QLabel(
+            f"{format_distance(route.distance_m, unit)} · +{format_elevation(route.elevation_gain_m, unit)} · "
+            f"{n_legs} trail segment(s) · {n_lm} landmarks & viewpoints"
+        )
+        meta.setObjectName("Muted")
+        lay.addWidget(meta)
+
+        qr_label = QLabel()
+        qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        img = QImage.fromData(qr_png(url, scale=7), "PNG")
+        qr_label.setPixmap(QPixmap.fromImage(img))
+        lay.addWidget(qr_label)
+
+        url_box = QLineEdit(url)
+        url_box.setReadOnly(True)
+        lay.addWidget(url_box)
+
+        tip = QLabel(
+            "<small>1. Scan with your iPhone Camera on home Wi-Fi to open the HTTPS PWA.<br>"
+            "2. The hike (trails, viewpoints, altitudes, contours &amp; DEM) is automatically cached in IndexedDB for "
+            "offline trailhead use.<br>"
+            "3. Tap <b>Start Live GPS</b> on the trail to track distance hiked/left, speed, altitude, ETA, and time to darkness.</small>"
+        )
+        tip.setWordWrap(True)
+        lay.addWidget(tip)
+
+        close_btn = QPushButton("Done")
+        close_btn.setObjectName("PrimaryButton")
+        close_btn.clicked.connect(dlg.accept)
+        lay.addWidget(close_btn)
+        dlg.exec()
+        dlg.deleteLater()
 
     def play_hike_3d(self) -> None:
         """3D replay of the hike shown: the draft being built, else the saved route (with the

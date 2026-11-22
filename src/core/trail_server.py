@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, Optional
 from urllib.parse import parse_qs, urlparse
 
 from . import paths
+from .tls_cert import create_server_ssl_context, wrap_client_socket_auto_tls
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,10 @@ class TrailServer:
         self.token: str = secrets.token_urlsafe(16)
         self.active_destination_id: Optional[str] = "white_mountains_nh"
         self.active_route_id: Optional[str] = None
+        self.active_draft_route: Optional[Any] = None
+        self._ssl_ctx: Optional[Any] = None
+        self._ca_cert_path: Optional[Any] = None
+        self._bundle_cache: Dict[str, tuple[str, Dict[str, Any]]] = {}
 
     @property
     def running(self) -> bool:
@@ -125,8 +130,58 @@ class TrailServer:
     def port(self) -> int:
         return self._httpd.server_port if self._httpd else 0
 
-    def get_pairing_url(self) -> str:
-        return f"http://{self.host}:{self.port}/h/{self.token}/hiker.html"
+    def get_pairing_url(self, https: bool = True) -> str:
+        scheme = "https" if https else "http"
+        return f"{scheme}://{self.host}:{self.port}/h/{self.token}/hiker.html"
+
+    def get_ca_cert_url(self) -> str:
+        return f"http://{self.host}:{self.port}/h/{self.token}/ca.cer"
+
+    def set_draft_route(self, route: Optional[Any]) -> None:
+        with self._lock:
+            self.active_draft_route = route
+            if route is not None and getattr(route, "pack_id", None):
+                self.active_destination_id = route.pack_id
+
+    def _resolve_active_route(self, route_id: Optional[str] = None) -> Optional[Any]:
+        if route_id and self.active_draft_route is not None and getattr(self.active_draft_route, "id", None) == route_id:
+            return self.active_draft_route
+        if route_id and self.db:
+            r = self.db.get_route(route_id)
+            if r is not None:
+                return r
+        if self.active_draft_route is not None and len(getattr(self.active_draft_route, "coords_3d", []) or []) >= 2:
+            return self.active_draft_route
+        if not self.db:
+            return None
+        if self.active_route_id:
+            r = self.db.get_route(self.active_route_id)
+            if r is not None:
+                return r
+        routes = self.db.list_routes(self.active_destination_id) or self.db.list_routes()
+        return routes[0] if routes else None
+
+    def get_active_bundle_payload(self, route_id: Optional[str] = None) -> Dict[str, Any]:
+        from src.hiking.field_bundle import build_field_hike_bundle
+        from src.hiking.routing import route_from_trail_segment
+
+        route = self._resolve_active_route(route_id)
+        pack = None
+        if self.db:
+            pack_id = (getattr(route, "pack_id", None) if route else None) or self.active_destination_id or "white_mountains_nh"
+            pack = self.db.get_destination_pack(pack_id, with_map=True)
+            if route is None and pack and pack.trails:
+                route = route_from_trail_segment(pack.trails[0])
+        if route is None:
+            return {}
+        cache_key = f"{route.id}:{getattr(route, 'modified', '')}:{len(route.coords_3d)}:{pack.id if pack else ''}"
+        cached = self._bundle_cache.get(route.id)
+        if cached and cached[0] == cache_key:
+            return cached[1]
+        bundle = build_field_hike_bundle(route, pack)
+        payload = bundle.model_dump()
+        self._bundle_cache[route.id] = (cache_key, payload)
+        return payload
 
     def _default_pack_payload(self, dest_id: Optional[str] = None) -> Dict[str, Any]:
         if not self.db:
@@ -182,19 +237,20 @@ class TrailServer:
                 for p in packs
             ]
         routes = self.db.list_routes()
-        active_route = (
-            self.db.get_route(self.active_route_id)
-            if self.active_route_id
-            else (routes[0] if routes else None)
-        )
+        if self.active_draft_route is not None and all(r.id != self.active_draft_route.id for r in routes):
+            routes = [self.active_draft_route, *routes]
+        active_route = self._resolve_active_route()
         return {
             "destinations": destinations,
             "routes": [
                 {
                     "id": r.id,
                     "name": r.name,
+                    "pack_id": r.pack_id,
                     "distance_m": r.distance_m,
                     "elevation_gain_m": r.elevation_gain_m,
+                    "elevation_loss_m": r.elevation_loss_m,
+                    "estimated_duration_min": r.estimated_duration_min,
                     "coordinates": r.coordinates,
                     "elevation_profile": [ep.model_dump() for ep in r.elevation_profile],
                 }
@@ -205,14 +261,18 @@ class TrailServer:
                 {
                     "id": active_route.id,
                     "name": active_route.name,
+                    "pack_id": active_route.pack_id,
                     "distance_m": active_route.distance_m,
                     "elevation_gain_m": active_route.elevation_gain_m,
+                    "elevation_loss_m": active_route.elevation_loss_m,
+                    "estimated_duration_min": active_route.estimated_duration_min,
                     "coordinates": active_route.coordinates,
                     "elevation_profile": [ep.model_dump() for ep in active_route.elevation_profile],
                 }
                 if active_route
                 else None
             ),
+            "active_bundle": self.get_active_bundle_payload(active_route.id if active_route else None),
         }
 
     def _default_sync_handler(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -320,6 +380,20 @@ class TrailServer:
                         self._send_bytes(200, body, "application/manifest+json; charset=utf-8")
                     elif subpath == "/state":
                         self._send_json(200, server_ref._default_state_payload())
+                    elif subpath == "/bundle":
+                        self._send_json(200, server_ref.get_active_bundle_payload(query.get("id")))
+                    elif subpath.startswith("/bundle/"):
+                        route_id = subpath.split("/bundle/", 1)[1].strip("/")
+                        self._send_json(200, server_ref.get_active_bundle_payload(route_id))
+                    elif subpath in ("/ca.cer", "/aegishiker-ca.cer"):
+                        if server_ref._ca_cert_path and server_ref._ca_cert_path.exists():
+                            self._send_bytes(
+                                200,
+                                server_ref._ca_cert_path.read_bytes(),
+                                "application/x-x509-ca-cert",
+                            )
+                        else:
+                            self._send_bytes(404, b"CA certificate not available", "text/plain")
                     elif subpath == "/pack":
                         try:
                             payload = sess.get_pack_payload(query)
@@ -376,15 +450,31 @@ class TrailServer:
                     else:
                         self._send_bytes(404, b"Not Found", "text/plain")
 
+            try:
+                self._ssl_ctx, self._ca_cert_path = create_server_ssl_context(self.host)
+            except Exception as e:
+                logger.warning(f"TrailServer TLS setup fallback to HTTP only: {e}")
+                self._ssl_ctx, self._ca_cert_path = None, None
+
+            ssl_ctx_ref = self._ssl_ctx
+
+            class DualTLSHTTPServer(ThreadingHTTPServer):
+                daemon_threads = True
+
+                def get_request(self):
+                    conn, addr = self.socket.accept()
+                    wrapped = wrap_client_socket_auto_tls(conn, ssl_ctx_ref)
+                    return wrapped, addr
+
             bind_host = "127.0.0.1" if self.host == "127.0.0.1" else "0.0.0.0"
-            self._httpd = ThreadingHTTPServer((bind_host, self.requested_port), Handler)
+            self._httpd = DualTLSHTTPServer((bind_host, self.requested_port), Handler)
             self._thread = threading.Thread(
                 target=self._httpd.serve_forever,
                 name="AegisHikerTrailServer",
                 daemon=True,
             )
             self._thread.start()
-            logger.info(f"TrailServer listening on http://{self.host}:{self.port}")
+            logger.info(f"TrailServer listening on https://{self.host}:{self.port} (and http://)")
 
     def open_session(
         self,
