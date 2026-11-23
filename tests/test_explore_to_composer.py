@@ -335,3 +335,54 @@ def test_scrolling_out_of_region_loads_entered_region_and_continues_map(seeded_d
     explore.hide()
     explore.deleteLater()
 
+
+def test_pick_unnamed_and_minor_trails_from_region_explorer_to_start_hike(seeded_db: Database, tmp_path: Path) -> None:
+    """Users can pick both minor named trails and unnamed map trails in Explore Regions
+    (from the table or by clicking them on the map) and start building a hike from them."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.main_window import MainWindow
+    from src.hiking.segment_chain import is_map_path
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    state.set_active_destination("boxborough_ma")
+    win = MainWindow(app_state=state)
+    win.show()
+    explore, composer = win.explore_panel, win.composer_panel
+    builder = composer.segment_builder
+
+    # 1. Minor and unnamed paths are listed in ExplorePanel's trail table
+    minor_row = next(
+        i for i, t in enumerate(explore._filtered_trails)
+        if is_map_path(t) and "unnamed" not in t.tags
+    )
+    minor_seg = explore._filtered_trails[minor_row]
+    explore.trail_table.selectRow(minor_row)
+    explore._compose_selected_trail()
+    app.processEvents()
+
+    assert win.tabs.currentWidget() is composer
+    assert builder.chain.legs and builder.chain.legs[0].trail.id == minor_seg.id
+
+    # 2. Switch back to Explore Regions and pick an unnamed trail to start a hike
+    win.tabs.setCurrentWidget(explore)
+    unnamed_row = next(
+        i for i, t in enumerate(explore._filtered_trails)
+        if is_map_path(t) and "unnamed" in t.tags
+    )
+    unnamed_seg = explore._filtered_trails[unnamed_row]
+    mid_pt = unnamed_seg.coords_3d[len(unnamed_seg.coords_3d) // 2]
+    explore._on_map_trail_clicked(mid_pt[1], mid_pt[0])
+    explore.trail_table.selectRow(unnamed_row)
+    explore._compose_selected_trail()
+    app.processEvents()
+
+    assert win.tabs.currentWidget() is composer
+    assert builder.chain.legs and builder.chain.legs[0].trail.id == unnamed_seg.id
+    assert builder.start_combo.currentData() == unnamed_seg.id
+    win.hide()
+    win.deleteLater()
+
+

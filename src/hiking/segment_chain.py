@@ -58,6 +58,11 @@ def map_paths_from_features(
         pts.append(list(f.coords[-1][:2]))
         coords = [[lon, lat, round(sample_dem(dem, lat, lon), 1)] for lon, lat in pts]
         length = sum(haversine_m(a[1], a[0], b[1], b[0]) for a, b in zip(f.coords, f.coords[1:]))
+        lats = [c[1] for c in coords]
+        lons = [c[0] for c in coords]
+        eles = [c[2] for c in coords]
+        gain = round(sum(max(0.0, b - a) for a, b in zip(eles, eles[1:])), 1)
+        loss = round(sum(max(0.0, a - b) for a, b in zip(eles, eles[1:])), 1)
         is_road = f.kind in ("road_minor", "road_major")
         if f.kind == "path":
             unnamed = "Unnamed path"
@@ -77,7 +82,16 @@ def map_paths_from_features(
         surface = "paved" if f.kind == "road_major" else ("gravel" if f.kind == "road_minor" else "rocky")
         out.append(TrailSegment(
             id=f"mappath_{i}", pack_id=pack_id, name=f.name or unnamed, coords_3d=coords,
-            distance_m=round(length, 1), surface=surface,  # type: ignore[arg-type]
+            distance_m=round(length, 1),
+            elevation_gain_m=gain,
+            elevation_loss_m=loss,
+            min_ele_m=min(eles) if eles else 0.0,
+            max_ele_m=max(eles) if eles else 0.0,
+            min_lat=min(lats) if lats else 0.0,
+            max_lat=max(lats) if lats else 0.0,
+            min_lon=min(lons) if lons else 0.0,
+            max_lon=max(lons) if lons else 0.0,
+            surface=surface,  # type: ignore[arg-type]
             tags=tags,
             description="Road connector from the map" if is_road else "Path from the map (not one of the region's listed trails)",
         ))
@@ -228,6 +242,21 @@ class SegmentChain:
                        if ti not in self._shadows and "unnamed" not in self.trails[ti].tags
                        and "road_major" not in self.trails[ti].tags),
                       key=lambda t: t.name.lower())
+
+    def unnamed_paths(self, min_length_m: float = MIN_LEG_M) -> List[TrailSegment]:
+        """The map's unnamed footpaths and tracks (excluding shadow duplicates and roads) of at
+        least `min_length_m`, longest first."""
+        return sorted(
+            (
+                self.trails[ti]
+                for ti in range(self._n_named, len(self.trails))
+                if ti not in self._shadows
+                and "unnamed" in self.trails[ti].tags
+                and not is_road_path(self.trails[ti])
+                and self.trails[ti].distance_m >= min_length_m
+            ),
+            key=lambda t: (-t.distance_m, t.id),
+        )
 
     # ── building ──────────────────────────────────────────────────────────
 

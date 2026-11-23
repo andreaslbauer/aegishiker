@@ -250,8 +250,7 @@ class SegmentBuilder(QWidget):
         return True
 
     def _fill_start_combo(self) -> None:
-        """The region's trails, then (when included) the map's minor named paths. Unnamed paths are
-        too many to list: click one on the map to start there."""
+        """The region's trails, then (when included) the map's minor named paths and unnamed paths."""
         current = self.start_combo.currentData()
         self.start_combo.clear()
         if not self.chain:
@@ -265,6 +264,14 @@ class SegmentBuilder(QWidget):
                 self.start_combo.insertSeparator(self.start_combo.count())
             for t in minor:
                 self.start_combo.addItem(f"{t.name}  ({format_distance(t.distance_m, unit)}, minor path)", t.id)
+            unnamed = self.chain.unnamed_paths()
+            if unnamed:
+                self.start_combo.insertSeparator(self.start_combo.count())
+            for t in unnamed:
+                mid = t.coords_3d[len(t.coords_3d) // 2] if t.coords_3d else [0.0, 0.0]
+                near = self.chain.place_near(mid[0], mid[1], 600.0) if t.coords_3d else None
+                where = f" near {near}" if near else ""
+                self.start_combo.addItem(f"{t.name}{where}  ({format_distance(t.distance_m, unit)})", t.id)
         idx = self.start_combo.findData(current)
         if idx >= 0:
             self.start_combo.setCurrentIndex(idx)
@@ -295,10 +302,13 @@ class SegmentBuilder(QWidget):
         self._refresh()
 
     def start_on_trail(self, trail_id: str) -> bool:
-        """Preselect a starting trail (e.g. from Explore Regions) and start the hike on it.
-        Asks before replacing an unsaved multi-segment hike. Returns False if cancelled/unknown."""
-        idx = self.start_combo.findData(trail_id)
-        if idx < 0:
+        """Preselect a starting trail — including minor or unnamed map paths — (e.g. from Explore
+        Regions) and start the hike on it. Asks before replacing an unsaved multi-segment hike.
+        Returns False if cancelled/unknown."""
+        if not self.chain:
+            return False
+        trail = next((t for t in self.chain.trails if t.id == trail_id), None)
+        if trail is None:
             return False
         if self.chain and len(self.chain.legs) > 1:
             answer = QMessageBox.question(
@@ -307,9 +317,20 @@ class SegmentBuilder(QWidget):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return False
-        self.start_combo.setCurrentIndex(idx)
+        if is_map_path(trail) and not self.minor_chk.isChecked():
+            self.minor_chk.setChecked(True)
+        idx = self.start_combo.findData(trail_id)
+        if idx < 0:
+            unit = self._unit()
+            self.start_combo.addItem(f"{trail.name}  ({format_distance(trail.distance_m, unit)}, map path)", trail.id)
+            idx = self.start_combo.findData(trail_id)
+        if idx >= 0:
+            self.start_combo.setCurrentIndex(idx)
         self.reverse_chk.setChecked(False)
-        self.start_chain()
+        self.chain.start(trail, reverse=False)
+        self._name_edited = False
+        self._refresh()
+        self._focus([(p[1], p[0]) for p in trail.coords_3d])
         return True
 
     TRAILHEAD_REACH_M = 300.0  # trails this close to a chosen trailhead can start the hike

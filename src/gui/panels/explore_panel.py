@@ -24,8 +24,9 @@ from src.gui.dialogs.region_download_dialog import RegionDownloadDialog
 from src.gui.widgets import Card, PillToggle, SectionHeader, StatCard, page_layout, stat_row
 from src.hiking.filters import TrailFilterCriteria, filter_trail_segments
 from src.hiking.hike_report import dist_to_line_m, named_places
-from src.hiking.models import TrailCondition, TrailDifficulty
+from src.hiking.models import TrailCondition, TrailDifficulty, TrailSegment
 from src.hiking.routing import route_from_trail_segment
+from src.hiking.segment_chain import SegmentChain, is_map_path, is_road_path, map_paths_from_features
 from src.hiking.units import format_distance, format_duration_min, format_elevation
 
 
@@ -128,9 +129,23 @@ class ExplorePanel(QWidget):
             pill.toggled.connect(lambda _: self.refresh_trails())
             self.cond_toggles[cond] = pill
             chip_row.addWidget(pill)
+        chip_row.addSpacing(12)
+        show_lbl = QLabel("Include")
+        show_lbl.setObjectName("Muted")
+        chip_row.addWidget(show_lbl)
+        self.minor_paths_pill = PillToggle(
+            "Minor & unnamed trails",
+            checked=bool(self.app_state.settings.get("include_minor_paths", True)),
+        )
+        self.minor_paths_pill.setToolTip(
+            "List and allow picking minor named paths and unnamed footpaths/tracks from the map to start building a hike"
+        )
+        self.minor_paths_pill.toggled.connect(self._on_minor_paths_toggled)
+        chip_row.addWidget(self.minor_paths_pill)
         chip_row.addStretch(1)
         filters.body.addLayout(chip_row)
         layout.addWidget(filters)
+        self._map_paths_cache: dict = {}
 
         # Summary stat cards
         self.trails_card = StatCard("Available Trails", "0")
@@ -164,6 +179,7 @@ class ExplorePanel(QWidget):
         self.trail_table.setTextElideMode(Qt.TextElideMode.ElideNone)
         header.sectionResized.connect(lambda idx, _old, _new: idx == 0 and self._fit_name_rows())
         self.trail_table.itemSelectionChanged.connect(self._on_trail_row_selected)
+        self.trail_table.cellDoubleClicked.connect(lambda *_: self._compose_selected_trail())
         trails_lay.addWidget(self.trail_table, 1)
 
         action_row = QHBoxLayout()
@@ -219,6 +235,7 @@ class ExplorePanel(QWidget):
 
         self.map_canvas = MapCanvas()
         self.map_canvas.viewport_changed.connect(self._on_map_viewport_changed)
+        self.map_canvas.waypoint_clicked.connect(self._on_map_trail_clicked)
         self._preserve_map_view: Optional[tuple] = None
         self._scrolling_viewport_bbox: Optional[tuple] = None
         splitter.addWidget(list_card)
@@ -255,9 +272,46 @@ class ExplorePanel(QWidget):
             pill._update_style()
         self.refresh_trails()
 
+    def _on_minor_paths_toggled(self, checked: bool) -> None:
+        self.app_state.settings.set("include_minor_paths", checked)
+        self.app_state.settings.save()
+        self.refresh_trails()
+
+    def _extra_map_paths_for_dest(self, dest_id: Optional[str]) -> list[TrailSegment]:
+        """Minor named paths and unnamed footpaths/tracks from the region's basemap features
+        (excluding shadow copies of listed trails and roads), cached per pack."""
+        if not dest_id:
+            return []
+        pack = self.app_state.db.get_destination_pack(dest_id)
+        if pack is None or not pack.features:
+            return []
+        key = (pack.id, pack.pack_version, len(pack.features), len(pack.trails))
+        cached = self._map_paths_cache.get(key)
+        if cached is not None:
+            return cached
+        places = [(name, lon, lat) for name, _kind, lon, lat in named_places(pack)]
+        raw_paths = map_paths_from_features(pack.features, pack.dem, pack.id)
+        chain = SegmentChain(pack.trails, places, map_paths=raw_paths, include_map_paths=True)
+        minor = chain.minor_paths()
+        unnamed: list[TrailSegment] = []
+        for t in chain.unnamed_paths():
+            tc = t.model_copy(deep=True)
+            if tc.coords_3d:
+                mid = tc.coords_3d[len(tc.coords_3d) // 2]
+                near = chain.place_near(mid[0], mid[1], 750.0)
+                if near and f"near {near}" not in tc.name:
+                    tc.name = f"{tc.name} — near {near}"
+                    tc.description = f"Unnamed map path near {near}"
+            unnamed.append(tc)
+        result = minor + unnamed
+        self._map_paths_cache[key] = result
+        return result
+
     def refresh_all(self) -> None:
         self._fill_region_combos()
-        names = sorted({t.name for t in self.app_state.get_active_trails()}, key=str.casefold)
+        dest_id = self.app_state.active_destination_id
+        extra = self._extra_map_paths_for_dest(dest_id) if self.minor_paths_pill.isChecked() else []
+        names = sorted({t.name for t in (self.app_state.get_active_trails() + extra)}, key=str.casefold)
         self._places = self._region_places()
         self.trail_completer.model().setStringList(names + sorted(self._places, key=str.casefold))
         self._place = None
@@ -301,7 +355,12 @@ class ExplorePanel(QWidget):
     def _on_trail_suggestion(self, name: str) -> None:
         """A type-ahead suggestion was picked: show and select that trail (zooms the map to it),
         or show a place with the trails there."""
-        is_trail = any(t.name == name for t in self.app_state.get_active_trails())
+        all_trails = self.app_state.get_active_trails() + (
+            self._extra_map_paths_for_dest(self.app_state.active_destination_id)
+            if self.minor_paths_pill.isChecked()
+            else []
+        )
+        is_trail = any(t.name == name for t in all_trails)
         if name.startswith(PLACE_PREFIX) or not is_trail:
             if self.select_place(name):
                 return
@@ -368,12 +427,19 @@ class ExplorePanel(QWidget):
 
     def refresh_trails(self) -> None:
         dest = self.app_state.get_active_destination()
+        dest_id = self.app_state.active_destination_id
         unit = str(self.app_state.settings.get("unit_system", "metric"))
         query = self.search_edit.text().strip()
+        extra_paths = self._extra_map_paths_for_dest(dest_id) if self.minor_paths_pill.isChecked() else []
         if query:
-            raw_trails = self.app_state.db.search_trails(query, self.app_state.active_destination_id)
+            q_cf = query.casefold()
+            raw_trails = self.app_state.db.search_trails(query, dest_id)
+            seen_ids = {t.id for t in raw_trails}
+            for mp in extra_paths:
+                if mp.id not in seen_ids and (q_cf in mp.name.casefold() or q_cf in (mp.description or "").casefold()):
+                    raw_trails.append(mp)
         else:
-            raw_trails = self.app_state.get_active_trails()
+            raw_trails = list(self.app_state.get_active_trails()) + list(extra_paths)
         near = None
         if self._place and not query:
             name, kind, plon, plat = self._place
@@ -596,10 +662,53 @@ class ExplorePanel(QWidget):
             return self._filtered_trails[idx]
         return None
 
+    def _on_map_trail_clicked(self, lat: float, lon: float) -> None:
+        """Clicking a trail (listed, minor, or unnamed path) on the Region Explorer map selects it
+        in the table so the user can inspect it or click 'Build a Hike from This Trail →'."""
+        if self.list_tabs.currentIndex() != 0:
+            return
+        candidates = list(getattr(self, "_filtered_trails", []) or [])
+        if not candidates and not self.minor_paths_pill.isChecked():
+            candidates = self.app_state.get_active_trails() + self._extra_map_paths_for_dest(
+                self.app_state.active_destination_id
+            )
+        if not candidates:
+            return
+        tol_m = max(25.0, 14.0 * self.map_canvas.metres_per_pixel())
+        best_row = None
+        best_seg = None
+        best_key = None
+        for idx, seg in enumerate(candidates):
+            if not seg.coords_3d:
+                continue
+            if not (
+                seg.min_lat - 0.01 <= lat <= seg.max_lat + 0.01
+                and seg.min_lon - 0.01 <= lon <= seg.max_lon + 0.01
+            ):
+                continue
+            d = dist_to_line_m(lat, lon, seg.coords_3d)
+            if d <= tol_m:
+                # Prefer listed trails over map paths when both lie under the click
+                key = (1 if is_map_path(seg) else 0, d)
+                if best_key is None or key < best_key:
+                    best_key = key
+                    best_row = idx
+                    best_seg = seg
+        if best_seg is not None and best_row is not None:
+            saved_view = self.map_canvas.save_view_state()
+            self._keep_view_on_row_select = saved_view
+            self.trail_table.selectRow(best_row)
+            self.trail_table.scrollToItem(self.trail_table.item(best_row, 0))
+            self.app_state.status_message.emit(
+                f"Selected '{best_seg.name}' — click 'Build a Hike from This Trail →' (or double-click the row) to start your hike."
+            )
+
     def _on_trail_row_selected(self) -> None:
         seg = self._selected_segment()
         if not seg:
             return
+        keep_view = getattr(self, "_keep_view_on_row_select", None)
+        self._keep_view_on_row_select = None
         dest_id = self.app_state.active_destination_id
         seg_bbox = (seg.min_lat, seg.max_lat, seg.min_lon, seg.max_lon) if seg.coords_3d else None
         preview = route_from_trail_segment(seg)
@@ -609,12 +718,18 @@ class ExplorePanel(QWidget):
             if dest_id and seg_bbox and hasattr(self.app_state.db, "get_composite_pack")
             else None
         )
+        base_trails = comp.trails if comp else self.app_state.get_active_trails()
+        if is_map_path(seg) and all(t.id != seg.id for t in base_trails):
+            base_trails = list(base_trails) + [seg]
         self.map_canvas.set_scene_data(
-            trails=comp.trails if comp else self.app_state.get_active_trails(),
+            trails=base_trails,
             pois=comp.pois if comp else self.app_state.get_active_pois(),
             route=preview,
         )
-        self.map_canvas.zoom_to_coordinates(seg.coordinates)
+        if keep_view is not None:
+            self.map_canvas.restore_view_state(keep_view)
+        else:
+            self.map_canvas.zoom_to_coordinates(seg.coordinates)
 
     def _edit_selected_condition(self) -> None:
         seg = self._selected_segment()
