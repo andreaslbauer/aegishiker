@@ -14,15 +14,43 @@
     --bg: #0B1510;
     --panel: #13231A;
     --panel-alt: #1B3024;
+    --header-bg: rgba(19, 35, 26, 0.96);
+    --map-bg: #08110C;
+    --elev-bg: #08110C;
     --glass: rgba(11, 21, 16, 0.84);
     --glass-card: rgba(19, 35, 26, 0.88);
+    --hud-box-glass: rgba(27, 48, 36, 0.72);
+    --tool-bg: rgba(19, 35, 26, 0.9);
+    --progress-track: rgba(255, 255, 255, 0.08);
     --text: #ECF5EE;
     --muted: #98B2A1;
     --accent: #2ECC71;
+    --accent-fg: #07150D;
     --cyan: #38BDF8;
     --warn: #F39C12;
     --danger: #E74C3C;
     --border: #2A4535;
+  }
+  body.light-mode {
+    --bg: #F4F7F4;
+    --panel: #FFFFFF;
+    --panel-alt: #EBF1EC;
+    --header-bg: rgba(255, 255, 255, 0.96);
+    --map-bg: #F3EFE4;
+    --elev-bg: #FAF9F5;
+    --glass: rgba(250, 252, 250, 0.88);
+    --glass-card: rgba(255, 255, 255, 0.94);
+    --hud-box-glass: rgba(235, 241, 236, 0.88);
+    --tool-bg: rgba(255, 255, 255, 0.92);
+    --progress-track: rgba(18, 36, 26, 0.10);
+    --text: #12241A;
+    --muted: #4A6355;
+    --accent: #15803D;
+    --accent-fg: #FFFFFF;
+    --cyan: #0284C7;
+    --warn: #D97706;
+    --danger: #DC2626;
+    --border: #C8D9CE;
   }
   * {
     box-sizing: border-box;
@@ -50,7 +78,7 @@
     touch-action: manipulation;
   }
   header {
-    background: rgba(19, 35, 26, 0.96);
+    background: var(--header-bg);
     border-bottom: 1px solid var(--border);
     padding: 10px 14px;
     display: flex;
@@ -126,7 +154,7 @@
   .progress-track {
     width: 100%;
     height: 5px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--progress-track);
     border-radius: 999px;
     overflow: hidden;
     margin-bottom: 8px;
@@ -134,7 +162,7 @@
   .progress-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #2ECC71, #38BDF8);
+    background: linear-gradient(90deg, var(--accent), var(--cyan));
     border-radius: 999px;
     transition: width 0.25s ease;
   }
@@ -143,16 +171,16 @@
     border-radius: 10px;
     overflow: hidden;
     border: 1px solid var(--border);
-    background: #08110C;
+    background: var(--map-bg);
   }
   canvas {
     width: 100%;
-    background: #08110C;
+    background: var(--map-bg);
     display: block;
     touch-action: none;
   }
   #mapCanvas { height: 350px; touch-action: none; cursor: grab; }
-  #elevCanvas { height: 120px; margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; touch-action: none; }
+  #elevCanvas { height: 120px; margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; touch-action: none; background: var(--elev-bg); }
   .map-tools {
     position: absolute;
     top: 8px;
@@ -167,7 +195,7 @@
     height: 36px;
     padding: 0;
     border-radius: 8px;
-    background: rgba(19, 35, 26, 0.9);
+    background: var(--tool-bg);
     border: 1px solid var(--border);
     color: var(--text);
     font-size: 16px;
@@ -204,7 +232,7 @@
     font-weight: 600;
     cursor: pointer;
   }
-  button.primary { background: var(--accent); color: #07150D; border-color: var(--accent); font-weight: 700; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
   button.warn { background: var(--warn); color: #191003; border-color: var(--warn); font-weight: 700; }
   button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
@@ -217,7 +245,7 @@
     color: var(--muted);
     cursor: pointer;
   }
-  .chip.active { background: var(--accent); color: #09180F; border-color: var(--accent); font-weight: 700; }
+  .chip.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
   .trail-list { max-height: 215px; overflow-y: auto; margin-top: 8px; -webkit-overflow-scrolling: touch; }
   .trail-item {
     display: flex;
@@ -274,7 +302,7 @@
     border: none;
     border-radius: 0;
     z-index: 1;
-    background: #08110C;
+    background: var(--map-bg);
   }
   body.map-only-mode .map-wrap {
     width: 100vw;
@@ -307,7 +335,7 @@
     gap: 5px;
   }
   body.map-only-mode .hud-box {
-    background: rgba(27, 48, 36, 0.72);
+    background: var(--hud-box-glass);
     padding: 5px 4px;
     border-radius: 7px;
   }
@@ -373,6 +401,7 @@
   <h1>AegisHiker Field Companion</h1>
   <div class="header-right">
     <button id="mapModeHeaderBtn" class="primary" title="Full-screen map with hike HUD overlay" style="padding:4px 9px; font-size:11px;">⛶ Map Mode</button>
+    <button id="themeBtn" title="Switch between Light and Dark mode" style="padding:4px 8px; font-size:11px;">☀ Light</button>
     <button id="unitBtn" title="Switch Imperial (mi/ft) and Metric (km/m)" style="padding:4px 8px; font-size:11px;">mi / ft</button>
     <span id="connStatus" class="status-pill">Checking...</span>
   </div>
@@ -456,6 +485,7 @@
       <canvas id="mapCanvas" width="680" height="350"></canvas>
       <div class="map-tools">
         <button id="mapModeFabBtn" title="Toggle Full-Screen Map &amp; HUD Overlay Mode">⛶</button>
+        <button id="themeFabBtn" title="Switch between Light and Dark mode">☀</button>
         <button id="zoomInBtn" title="Zoom in">+</button>
         <button id="zoomOutBtn" title="Zoom out">−</button>
         <button id="fitBtn" title="Fit entire hike">⊡</button>
@@ -529,7 +559,11 @@
   }, { passive: false });
 
   const basePath = window.location.pathname.replace(/\/hiker\.html$/, "").replace(/\/$/, "");
-  const LEG_COLORS = ["#2ECC71", "#38BDF8", "#A78BFA", "#FBBF24", "#F472B6", "#34D399"];
+  const LEG_COLORS_DARK = ["#2ECC71", "#38BDF8", "#A78BFA", "#FBBF24", "#F472B6", "#34D399"];
+  const LEG_COLORS_LIGHT = ["#15803D", "#0284C7", "#7C3AED", "#D97706", "#DB2777", "#059669"];
+  function getLegColors() {
+    return state.theme === "light" ? LEG_COLORS_LIGHT : LEG_COLORS_DARK;
+  }
   const KIND_ICONS = {
     peak: "▲",
     viewpoint: "👁",
@@ -549,6 +583,7 @@
   };
 
   const state = {
+    theme: localStorage.getItem("aegishiker_theme") || "dark", // "dark" or "light"
     units: localStorage.getItem("aegishiker_units") || "metric", // "metric" or "us"
     mapOnlyMode: localStorage.getItem("aegishiker_map_only") === "1",
     destinations: [],
@@ -573,6 +608,29 @@
       initialized: false
     }
   };
+
+  // ── Light / Dark Theme Toggle ───────────────────────────────────────────
+  function applyTheme(theme) {
+    state.theme = theme === "light" ? "light" : "dark";
+    localStorage.setItem("aegishiker_theme", state.theme);
+    const isLight = state.theme === "light";
+    document.body.classList.toggle("light-mode", isLight);
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute("content", isLight ? "#F4F7F4" : "#0B1510");
+    const themeBtn = document.getElementById("themeBtn");
+    if (themeBtn) themeBtn.textContent = isLight ? "🌙 Dark" : "☀ Light";
+    const themeFabBtn = document.getElementById("themeFabBtn");
+    if (themeFabBtn) themeFabBtn.textContent = isLight ? "🌙" : "☀";
+    renderAll();
+  }
+
+  document.getElementById("themeBtn").addEventListener("click", () => {
+    applyTheme(state.theme === "light" ? "dark" : "light");
+  });
+  document.getElementById("themeFabBtn").addEventListener("click", () => {
+    applyTheme(state.theme === "light" ? "dark" : "light");
+  });
+  applyTheme(state.theme);
 
   // ── Full-Screen Map & HUD Overlay Mode Toggle ───────────────────────────
   function applyMapOnlyMode(on) {
@@ -1280,10 +1338,11 @@
 
     if (state.itineraryTab === "legs") {
       const legs = bundle.legs || [];
+      const legColors = getLegColors();
       legs.forEach((lg, idx) => {
         const row = document.createElement("div");
         row.className = "trail-item";
-        const color = LEG_COLORS[idx % LEG_COLORS.length];
+        const color = legColors[idx % legColors.length];
         row.innerHTML = `
           <div>
             <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px;"></span>
@@ -1372,9 +1431,12 @@
       canvas.height = Math.round(cssH * dpr);
     }
     const ctx = canvas.getContext("2d");
+    const isLight = state.theme === "light";
+    const legColors = getLegColors();
     ctx.save();
     ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.fillStyle = isLight ? "#F3EFE4" : "#08110C";
+    ctx.fillRect(0, 0, cssW, cssH);
 
     if (!state.view.initialized) {
       const pts = getRouteCoords4d();
@@ -1405,7 +1467,9 @@
           const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
           if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
-        ctx.strokeStyle = isMajor ? "rgba(165, 195, 174, 0.24)" : "rgba(165, 195, 174, 0.11)";
+        ctx.strokeStyle = isLight
+          ? (isMajor ? "rgba(139, 94, 52, 0.36)" : "rgba(139, 94, 52, 0.17)")
+          : (isMajor ? "rgba(165, 195, 174, 0.24)" : "rgba(165, 195, 174, 0.11)");
         ctx.lineWidth = isMajor ? 1.2 : 0.7;
         ctx.stroke();
       });
@@ -1420,10 +1484,10 @@
           if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
         if (w.geom === "area") {
-          ctx.fillStyle = "rgba(56, 189, 248, 0.18)";
+          ctx.fillStyle = isLight ? "rgba(2, 132, 199, 0.22)" : "rgba(56, 189, 248, 0.18)";
           ctx.fill();
         }
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.40)";
+        ctx.strokeStyle = isLight ? "rgba(2, 132, 199, 0.62)" : "rgba(56, 189, 248, 0.40)";
         ctx.lineWidth = w.kind === "river" ? 2.0 : 1.1;
         ctx.stroke();
       });
@@ -1442,7 +1506,9 @@
           const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
           if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
-        ctx.strokeStyle = excluded ? "rgba(231, 76, 60, 0.25)" : "rgba(152, 178, 161, 0.42)";
+        ctx.strokeStyle = excluded
+          ? (isLight ? "rgba(220, 38, 38, 0.35)" : "rgba(231, 76, 60, 0.25)")
+          : (isLight ? "rgba(74, 99, 85, 0.55)" : "rgba(152, 178, 161, 0.42)");
         ctx.lineWidth = 1.4;
         ctx.stroke();
       });
@@ -1457,7 +1523,9 @@
           const [x, y] = geoToScreen(c[0], c[1], cssW, cssH);
           if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
-        ctx.strokeStyle = excluded ? "rgba(231, 76, 60, 0.25)" : "rgba(152, 178, 161, 0.45)";
+        ctx.strokeStyle = excluded
+          ? (isLight ? "rgba(220, 38, 38, 0.35)" : "rgba(231, 76, 60, 0.25)")
+          : (isLight ? "rgba(74, 99, 85, 0.55)" : "rgba(152, 178, 161, 0.45)");
         ctx.lineWidth = excluded ? 1.2 : 1.8;
         ctx.stroke();
       });
@@ -1474,7 +1542,7 @@
           const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
-        ctx.strokeStyle = LEG_COLORS[idx % LEG_COLORS.length];
+        ctx.strokeStyle = legColors[idx % legColors.length];
         ctx.lineWidth = isSel ? 6.0 : 4.0;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
@@ -1486,7 +1554,7 @@
         const [x, y] = geoToScreen(pt[1], pt[0], cssW, cssH);
         if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
-      ctx.strokeStyle = "#2ECC71";
+      ctx.strokeStyle = isLight ? "#15803D" : "#2ECC71";
       ctx.lineWidth = 4.0;
       ctx.stroke();
     }
@@ -1497,15 +1565,15 @@
       const [ex, ey] = geoToScreen(pts4d[pts4d.length - 1][1], pts4d[pts4d.length - 1][0], cssW, cssH);
       ctx.beginPath();
       ctx.arc(sx, sy, 6, 0, Math.PI * 2);
-      ctx.fillStyle = "#2ECC71";
+      ctx.fillStyle = isLight ? "#15803D" : "#2ECC71";
       ctx.fill();
       ctx.lineWidth = 2;
-      ctx.strokeStyle = "#08110C";
+      ctx.strokeStyle = isLight ? "#FFFFFF" : "#08110C";
       ctx.stroke();
 
       ctx.beginPath();
       ctx.arc(ex, ey, 5, 0, Math.PI * 2);
-      ctx.fillStyle = "#E74C3C";
+      ctx.fillStyle = isLight ? "#DC2626" : "#E74C3C";
       ctx.fill();
       ctx.stroke();
     }
@@ -1519,18 +1587,21 @@
       const isSel = state.selectedItem && state.selectedItem.type === "landmark" && state.selectedItem.landmark.id === lm.id;
       ctx.beginPath();
       ctx.arc(x, y, isSel ? 7 : (lm.on_route ? 4.5 : 3.5), 0, Math.PI * 2);
-      ctx.fillStyle = lm.kind === "peak" ? "#FBBF24" : (lm.kind === "viewpoint" ? "#38BDF8" : (lm.kind === "hut" || lm.kind === "shelter" ? "#F472B6" : "#ECF5EE"));
+      ctx.fillStyle = lm.kind === "peak"
+        ? (isLight ? "#D97706" : "#FBBF24")
+        : (lm.kind === "viewpoint" ? (isLight ? "#0284C7" : "#38BDF8")
+        : (lm.kind === "hut" || lm.kind === "shelter" ? (isLight ? "#DB2777" : "#F472B6") : (isLight ? "#12241A" : "#ECF5EE")));
       ctx.fill();
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = "#08110C";
+      ctx.strokeStyle = isLight ? "#FFFFFF" : "#08110C";
       ctx.stroke();
 
       if (isSel || lm.kind === "peak" || lm.kind === "hut" || (lm.on_route && state.view.metersPerPx < 14)) {
         const label = (KIND_ICONS[lm.kind] ? KIND_ICONS[lm.kind] + " " : "") + lm.name;
-        ctx.fillStyle = "rgba(8, 17, 12, 0.82)";
+        ctx.fillStyle = isLight ? "rgba(255, 255, 255, 0.88)" : "rgba(8, 17, 12, 0.82)";
         const tw = ctx.measureText(label).width;
         ctx.fillRect(x + 7, y - 8, tw + 6, 15);
-        ctx.fillStyle = isSel ? "#2ECC71" : "#ECF5EE";
+        ctx.fillStyle = isSel ? (isLight ? "#15803D" : "#2ECC71") : (isLight ? "#12241A" : "#ECF5EE");
         ctx.fillText(label, x + 10, y + 3);
       }
     });
@@ -1544,7 +1615,7 @@
       const [qx, qy] = geoToScreen(sp[1], sp[0], cssW, cssH);
       ctx.beginPath();
       ctx.arc(qx, qy, 6, 0, Math.PI * 2);
-      ctx.fillStyle = "#38BDF8";
+      ctx.fillStyle = isLight ? "#0284C7" : "#38BDF8";
       ctx.fill();
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#fff";
@@ -1559,7 +1630,7 @@
           const [tx, ty] = geoToScreen(pt.lat, pt.lon, cssW, cssH);
           if (idx === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
         });
-        ctx.strokeStyle = "#F39C12";
+        ctx.strokeStyle = isLight ? "#D97706" : "#F39C12";
         ctx.lineWidth = 3.2;
         ctx.stroke();
       }
@@ -1573,7 +1644,7 @@
 
       ctx.beginPath();
       ctx.arc(hx, hy, 7.5, 0, Math.PI * 2);
-      ctx.fillStyle = "#F39C12";
+      ctx.fillStyle = isLight ? "#D97706" : "#F39C12";
       ctx.fill();
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = "#fff";
@@ -1585,15 +1656,15 @@
     const niceM = barM > 2000 ? 2000 : (barM > 1000 ? 1000 : (barM > 500 ? 500 : (barM > 200 ? 200 : 100)));
     const barPx = niceM / state.view.metersPerPx;
     const sbY = state.mapOnlyMode ? (cssH - 102) : (cssH - 26);
-    ctx.fillStyle = "rgba(8, 17, 12, 0.78)";
+    ctx.fillStyle = isLight ? "rgba(255, 255, 255, 0.86)" : "rgba(8, 17, 12, 0.78)";
     ctx.fillRect(10, sbY, barPx + 16, 18);
-    ctx.strokeStyle = "#ECF5EE";
+    ctx.strokeStyle = isLight ? "#12241A" : "#ECF5EE";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(16, sbY + 12);
     ctx.lineTo(16 + barPx, sbY + 12);
     ctx.stroke();
-    ctx.fillStyle = "#ECF5EE";
+    ctx.fillStyle = isLight ? "#12241A" : "#ECF5EE";
     ctx.font = "600 10px -apple-system, sans-serif";
     ctx.fillText(fmtDist(niceM), 18, sbY + 9);
 
@@ -1611,6 +1682,7 @@
       canvas.height = Math.round(cssH * dpr);
     }
     const ctx = canvas.getContext("2d");
+    const isLight = state.theme === "light";
     ctx.save();
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, cssW, cssH);
@@ -1641,7 +1713,7 @@
     prof.forEach(p => ctx.lineTo(xOf(p.distance_m), yOf(p.ele_m)));
     ctx.lineTo(xOf(maxD), padT + plotH);
     ctx.closePath();
-    ctx.fillStyle = "rgba(46, 204, 113, 0.16)";
+    ctx.fillStyle = isLight ? "rgba(21, 128, 61, 0.18)" : "rgba(46, 204, 113, 0.16)";
     ctx.fill();
 
     // Elevation polyline
@@ -1650,12 +1722,12 @@
       const x = xOf(p.distance_m), y = yOf(p.ele_m);
       if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
-    ctx.strokeStyle = "#2ECC71";
+    ctx.strokeStyle = isLight ? "#15803D" : "#2ECC71";
     ctx.lineWidth = 2.2;
     ctx.stroke();
 
     // Axis labels
-    ctx.fillStyle = "#98B2A1";
+    ctx.fillStyle = isLight ? "#4A6355" : "#98B2A1";
     ctx.font = "600 10px -apple-system, sans-serif";
     ctx.fillText(fmtEle(maxE), 4, padT + 6);
     ctx.fillText(fmtEle(minE), 4, padT + plotH);
@@ -1670,14 +1742,14 @@
       const ly = yOf(lm.ele_m);
       ctx.beginPath();
       ctx.arc(lx, ly, 3.2, 0, Math.PI * 2);
-      ctx.fillStyle = lm.kind === "peak" ? "#FBBF24" : "#38BDF8";
+      ctx.fillStyle = lm.kind === "peak" ? (isLight ? "#D97706" : "#FBBF24") : (isLight ? "#0284C7" : "#38BDF8");
       ctx.fill();
     });
 
     // Scrub cursor line
     if (state.scrubAlongM !== null) {
       const sx = xOf(state.scrubAlongM);
-      ctx.strokeStyle = "#38BDF8";
+      ctx.strokeStyle = isLight ? "#0284C7" : "#38BDF8";
       ctx.lineWidth = 1.4;
       ctx.beginPath();
       ctx.moveTo(sx, padT);

@@ -151,6 +151,9 @@ class ComposerPanel(QWidget):
         splitter.setHandleWidth(12)
         self.map_canvas = MapCanvas()
         self.map_canvas.waypoint_clicked.connect(self._on_map_waypoint_clicked)
+        self.map_canvas.viewport_changed.connect(self._on_map_viewport_changed)
+        self._preserve_map_view: Optional[tuple] = None
+        self._scrolling_viewport_bbox: Optional[tuple] = None
         self.elev_chart = ElevationChart()
         self.elev_chart.hover_distance_changed.connect(self.map_canvas.set_highlight_distance)
 
@@ -286,15 +289,26 @@ class ComposerPanel(QWidget):
     def refresh_from_active_route(self) -> None:
         route = self._draft or self.app_state.get_active_route()
         dest_id = self.app_state.active_destination_id
+        saved_view = getattr(self, "_preserve_map_view", None)
+        scroll_bbox = getattr(self, "_scrolling_viewport_bbox", None)
+        self._preserve_map_view = None
+        self._scrolling_viewport_bbox = None
+        if saved_view is None and self._draft is not None and self.map_canvas.trails:
+            saved_view = self.map_canvas.save_view_state()
         route_bbox = None
         if route is not None and route.coords_3d:
             lats = [p[1] for p in route.coords_3d] + [w[0] for w in self.waypoints]
             lons = [p[0] for p in route.coords_3d] + [w[1] for w in self.waypoints]
+            if scroll_bbox:
+                lats.extend([scroll_bbox[0], scroll_bbox[1]])
+                lons.extend([scroll_bbox[2], scroll_bbox[3]])
             route_bbox = (min(lats), max(lats), min(lons), max(lons))
         elif self.waypoints:
             lats = [w[0] for w in self.waypoints]
             lons = [w[1] for w in self.waypoints]
             route_bbox = (min(lats), max(lats), min(lons), max(lons))
+        elif scroll_bbox:
+            route_bbox = scroll_bbox
 
         comp = (
             self.app_state.db.get_composite_pack(dest_id, bbox=route_bbox, with_map=False)
@@ -310,8 +324,10 @@ class ComposerPanel(QWidget):
         self.map_canvas.units = "metric" if unit == "metric" else "us"
         self.map_canvas.sync_basemap(self.app_state.db, dest_id, bbox=route_bbox)
         self.map_canvas.set_scene_data(trails=trails, pois=pois, route=route, photo_pins=pins)
+        if saved_view is not None:
+            self.map_canvas.restore_view_state(saved_view)
 
-        if route is not None and self._draft is None and route.id != getattr(self, "_fitted_route_id", None):
+        if route is not None and self._draft is None and saved_view is None and route.id != getattr(self, "_fitted_route_id", None):
             self._fitted_route_id = route.id
             self.map_canvas.fit_when_shown(route.coordinates)
         if route:
@@ -323,6 +339,48 @@ class ComposerPanel(QWidget):
         has_hike = route is not None and len(route.coords_3d) >= 2
         self.play3d_btn.setEnabled(has_hike)
         self.send_phone_btn.setEnabled(has_hike)
+
+    def _on_map_viewport_changed(self, min_lat: float, max_lat: float, min_lon: float, max_lon: float) -> None:
+        """When the user pans the Composer map into an adjacent region, pull that region's map
+        and trails in seamlessly so the map continues without interruption."""
+        dest_id = self.app_state.active_destination_id
+        if not dest_id or not hasattr(self.app_state.db, "adjacent_pack_ids"):
+            return
+        v_bbox = (min_lat, max_lat, min_lon, max_lon)
+        saved_view = self.map_canvas.save_view_state()
+        if not self.segment_builder.has_draft() and not self.waypoints and hasattr(self.app_state.db, "find_pack_for_view"):
+            clat = 0.5 * (min_lat + max_lat)
+            clon = 0.5 * (min_lon + max_lon)
+            new_pack_id = self.app_state.db.find_pack_for_view(clat, clon, dest_id, bbox=v_bbox)
+            if new_pack_id and new_pack_id != dest_id:
+                self._preserve_map_view = saved_view
+                self._scrolling_viewport_bbox = v_bbox
+                self.app_state.set_active_destination(new_pack_id)
+                return
+
+        self.segment_builder._ensure_adjacent_packs_for_bbox(v_bbox)
+        route = self._draft or self.app_state.get_active_route()
+        lats = [min_lat, max_lat]
+        lons = [min_lon, max_lon]
+        if route is not None and route.coords_3d:
+            lats.extend(p[1] for p in route.coords_3d)
+            lons.extend(p[0] for p in route.coords_3d)
+        union_bbox = (min(lats), max(lats), min(lons), max(lons))
+        adj_ids = tuple(self.app_state.db.adjacent_pack_ids(dest_id, bbox=union_bbox))
+        if not adj_ids:
+            return
+        comp_key = (dest_id, adj_ids)
+        if comp_key != getattr(self.map_canvas, "_basemap_comp_key", None):
+            self.map_canvas.sync_basemap(self.app_state.db, dest_id, bbox=union_bbox)
+            comp = self.app_state.db.get_composite_pack(dest_id, bbox=union_bbox, with_map=False)
+            if comp is not None:
+                self.map_canvas.set_scene_data(
+                    trails=comp.trails,
+                    pois=comp.pois,
+                    route=route,
+                    photo_pins=self.map_canvas.photo_pins,
+                )
+            self.map_canvas.restore_view_state(saved_view)
 
     def open_send_to_phone_qr(self) -> None:
         """Start TrailServer over HTTPS, package the shown hike (draft or saved) into a

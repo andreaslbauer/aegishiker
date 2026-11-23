@@ -203,20 +203,11 @@ class SegmentChain:
         if len(t.coords_3d) < 2:
             return False
         pts = t.coords_3d
-        t_name_norm = t.name.strip().lower()
         samples = [pts[int(f * (len(pts) - 1))] for f in (0.1, 0.3, 0.5, 0.7, 0.9)]
         for tj in range(self._n_named):
             lo_lat, lo_lon, hi_lat, hi_lon = self._bounds[tj]
-            listed = self.trails[tj]
-            # If the map path has the exact same name as a listed trail and overlaps its bbox, it's a shadow
-            if (
-                "unnamed" not in t.tags
-                and t_name_norm == listed.name.strip().lower()
-                and any(lo_lat - 0.002 <= p[1] <= hi_lat + 0.002 and lo_lon - 0.002 <= p[0] <= hi_lon + 0.002 for p in samples)
-            ):
-                return True
             if all(lo_lat - 0.0004 <= p[1] <= hi_lat + 0.0004 and lo_lon - 0.0005 <= p[0] <= hi_lon + 0.0005 for p in samples):
-                line = listed.coords_3d
+                line = self.trails[tj].coords_3d
                 near_count = sum(1 for p in samples if self._dist_to_line_m(p[1], p[0], line) <= self.SHADOW_M)
                 if near_count >= 4:
                     return True
@@ -610,25 +601,61 @@ class SegmentChain:
         ti = bisect.bisect_right(offsets, node) - 1
         return ti, node - offsets[ti]
 
-    def _route_legs(self, start, goal: Tuple[int, int]) -> Optional[List[Leg]]:
+    def _walked_nodes(self, offsets: List[int]) -> set:
+        """Graph nodes already traversed by `self.legs`, so `_route_legs` penalizes retracing
+        the way the hiker already came when a forward loop path exists."""
+        walked = set()
+        index_by_id = {t.id: i for i, t in enumerate(self.trails)}
+        for leg in self.legs:
+            ti = index_by_id.get(leg.trail.id)
+            if ti is None:
+                continue
+            base = offsets[ti]
+            lo, hi = sorted((leg.start, leg.end))
+            for v in range(lo, hi + 1):
+                walked.add(base + v)
+        return walked
+
+    RETRACE_COST = 4.5  # penalty multiplier for walking back over already-walked trail vertices
+    CUT_OFF_COST = 2.5  # penalty per metre of the current segment cut off when turning back before its end
+
+    def _route_legs(
+        self,
+        start,
+        goal: Tuple[int, int],
+        start_costs: Optional[Dict[Tuple[int, int], float]] = None,
+        forbid_direct_on_trail: Optional[int] = None,
+    ) -> Optional[List[Leg]]:
         """Shortest walk over the trail network as legs, or None if not reachable. `start` is one
-        (trail, vertex) or a list of them (any may be the start: the nearest one is used)."""
+        (trail, vertex) or a list of them (any may be the start: the lowest-cost one is used)."""
         offsets, adj = self._network()
         starts = start if isinstance(start, list) else [start]
+        walked = self._walked_nodes(offsets)
         sources = {offsets[t] + v for t, v in starts}
         dst = offsets[goal[0]] + goal[1]
-        dist = {src: 0.0 for src in sources}
+        dist: Dict[int, float] = {}
+        heap: List[Tuple[float, int]] = []
+        for t, v in starts:
+            node = offsets[t] + v
+            c = start_costs.get((t, v), 0.0) if start_costs else 0.0
+            if c < dist.get(node, math.inf):
+                dist[node] = c
+                heapq.heappush(heap, (c, node))
         prev: Dict[int, int] = {}
-        heap = [(0.0, src) for src in sources]
-        heapq.heapify(heap)
+        forbid_lo = offsets[forbid_direct_on_trail] if forbid_direct_on_trail is not None else -1
+        forbid_hi = (offsets[forbid_direct_on_trail] + len(self.trails[forbid_direct_on_trail].coords_3d)) if forbid_direct_on_trail is not None else -1
         while heap:
             d, u = heapq.heappop(heap)
             if u == dst:
                 break
-            if d > dist.get(u, math.inf) or d > self.MAX_ROUTE_M:
+            if d > dist.get(u, math.inf) or d > self.MAX_ROUTE_M * 3.0:
                 continue
+            u_on_forbidden = forbid_lo <= u < forbid_hi
             for v, w in adj[u]:
-                nd = d + w
+                if u_on_forbidden and (forbid_lo <= v < forbid_hi):
+                    continue  # must leave the current trail onto another trail to form a loop
+                step_w = w * self.RETRACE_COST if (u in walked and v in walked) else w
+                nd = d + step_w
                 if nd < dist.get(v, math.inf):
                     dist[v] = nd
                     prev[v] = u
@@ -700,47 +727,113 @@ class SegmentChain:
         pts = trail.coords_3d
         click_v = min(range(len(pts)), key=lambda i: haversine_m(lat, lon, pts[i][1], pts[i][0]))
 
-        # 0. Clicking further ahead on the current trail itself (when the last leg stopped partway)
+        cum = [0.0]
+        for a, b in zip(leg_pts, leg_pts[1:]):
+            cum.append(cum[-1] + haversine_m(a[1], a[0], b[1], b[0]))
+
+        # 0. Clicking on the current trail itself:
+        #    - If ahead of `last.end` (when the last leg stopped partway), continue forward along it.
+        #    - If behind `last.end` (e.g. clicking Camp Rich Tentsite after reaching Mt Passaconaway
+        #      summit on Dicey's Mill Trail), find the forward loop over connecting trails back to that spot!
         if trail.id == last.trail.id:
             if (click_v - last.end) * last.step > 0:
                 cont_leg = Leg(trail, last.end, click_v)
                 if cont_leg.stats()["distance_m"] >= MIN_LEG_M:
                     return self._multi_candidate([cont_leg], gap_m=0.0, cut_at=len(leg_pts) - 1)
+                return None
+            # Clicked an earlier spot on the current trail: route a loop from the current end (`last.end`)
+            end_starts = [
+                (last_ti, last.start + k * last.step)
+                for k in range(max(1, len(leg_pts) - 4), len(leg_pts))
+            ]
+            loop_legs = self._route_legs(
+                end_starts, (ti, click_v), forbid_direct_on_trail=last_ti
+            )
+            if loop_legs:
+                first = loop_legs[0]
+                start_pt = first.trail.coords_3d[first.start]
+                cut_k = min(
+                    range(max(1, len(leg_pts) - 4), len(leg_pts)),
+                    key=lambda i: haversine_m(start_pt[1], start_pt[0], leg_pts[i][1], leg_pts[i][0]),
+                )
+                return self._multi_candidate(loop_legs, gap_m=0.0, cut_at=cut_k)
             return None
 
         # 1. Check direct connection between `last` and `trail`
         direct_cand: Optional[Candidate] = None
-        direct_touches: List[Tuple[float, int, int]] = []
+        direct_cut_off_m = 0.0
+        direct_touches: List[Tuple[float, int, int, float]] = []
         for k in range(1, len(leg_pts)):
             lp = leg_pts[k]
             is_leg_end = (k == len(leg_pts) - 1)
+            cut_off = max(0.0, cum[-1] - cum[k])
             for v, tp in enumerate(pts):
                 is_t_end = (v == 0 or v == len(pts) - 1)
                 d = haversine_m(lp[1], lp[0], tp[1], tp[0])
                 if d <= JUNCTION_M or ((is_leg_end or is_t_end) and d <= END_JUNCTION_M):
                     walk_leg = Leg(trail, v, click_v) if click_v != v else None
                     walk_m = walk_leg.stats()["distance_m"] if walk_leg else 0.0
-                    direct_touches.append((d + walk_m, k, v))
+                    # Penalize cutting off the end of `last` so a direct connection at the summit/end
+                    # is always preferred over rewinding to an earlier junction
+                    score = d + walk_m + cut_off * self.CUT_OFF_COST
+                    direct_touches.append((score, k, v, cut_off))
         if direct_touches:
-            _score, best_k, best_v = min(direct_touches, key=lambda x: x[0])
+            _score, best_k, best_v, direct_cut_off_m = min(direct_touches, key=lambda x: x[0])
             target = click_v
-            if target == best_v:
+            clicked_at_junction = (target == best_v or Leg(trail, best_v, target).stats()["distance_m"] < MIN_LEG_M)
+            if clicked_at_junction and direct_cut_off_m <= END_JUNCTION_M:
                 target = len(pts) - 1 if (len(pts) - 1 - best_v) >= best_v else 0
-            if target != best_v:
+            if target != best_v and not (clicked_at_junction and direct_cut_off_m > END_JUNCTION_M):
                 direct_leg = Leg(trail, best_v, target)
                 if direct_leg.stats()["distance_m"] >= MIN_LEG_M:
                     direct_cand = self._multi_candidate([direct_leg], gap_m=0.0, cut_at=best_k)
 
-        # 2. Shortest path over the trail/path/road network
+        # 2. Shortest path over the trail/path/road network, penalizing cutting off the end of `last`
+        #    and penalizing retracing already-walked segments so loops go forward instead of backtracking.
         starts = [(last_ti, last.start + k * last.step) for k in range(1, len(leg_pts))]
-        legs = self._route_legs(starts, (ti, click_v))
+        start_costs = {
+            (last_ti, last.start + k * last.step): max(0.0, cum[-1] - cum[k]) * self.CUT_OFF_COST
+            for k in range(1, len(leg_pts))
+        }
+        legs = self._route_legs(starts, (ti, click_v), start_costs=start_costs)
+        if legs and legs[-1].trail.id == trail.id and legs[-1].stats()["distance_m"] < 80.0:
+            # If the user clicked `trail` near the junction where the route enters it, walk `trail`
+            # to its far end (e.g. clicking East Loop Trail near Walden Trail walks it to Camp Rich)
+            entry_v = legs[-1].start
+            far_end = len(pts) - 1 if (len(pts) - 1 - entry_v) >= entry_v else 0
+            if far_end != entry_v:
+                legs[-1] = Leg(trail, entry_v, far_end)
+        elif legs and legs[-1].trail.id != trail.id:
+            # The route ended at a junction node on the neighboring trail within JUNCTION_M of `trail`:
+            # append the walk along `trail` so the clicked trail itself is traversed
+            end_pt = legs[-1].trail.coords_3d[legs[-1].end]
+            entry_v = min(range(len(pts)), key=lambda i: haversine_m(end_pt[1], end_pt[0], pts[i][1], pts[i][0]))
+            target_v = click_v
+            if target_v == entry_v or Leg(trail, entry_v, target_v).stats()["distance_m"] < 80.0:
+                target_v = len(pts) - 1 if (len(pts) - 1 - entry_v) >= entry_v else 0
+            if target_v != entry_v:
+                legs.append(Leg(trail, entry_v, target_v))
 
-        # Prefer direct connection unless multi-trail network routing is genuinely shorter
+        # Prefer direct connection unless multi-trail network routing is lower effective cost
+        # (e.g. continuing forward from the summit around a loop instead of cutting off the summit)
         if direct_cand is not None:
             if not legs:
                 return direct_cand
+            first_routed = legs[0]
+            if first_routed.trail.id == last.trail.id:
+                rk = (first_routed.end - last.start) * last.step
+                routed_cut_k = rk if 0 < rk < len(leg_pts) else len(leg_pts) - 1
+            else:
+                sp = first_routed.trail.coords_3d[first_routed.start]
+                routed_cut_k = min(
+                    range(1, len(leg_pts)),
+                    key=lambda i: haversine_m(sp[1], sp[0], leg_pts[i][1], leg_pts[i][0]),
+                )
+            routed_cut_off_m = max(0.0, cum[-1] - cum[routed_cut_k])
             routed_dist = sum(leg.stats()["distance_m"] for leg in legs)
-            if direct_cand.distance_m <= routed_dist * 1.15 + 50.0:
+            direct_eff = direct_cand.distance_m + direct_cut_off_m * self.CUT_OFF_COST
+            routed_eff = routed_dist + routed_cut_off_m * self.CUT_OFF_COST
+            if direct_eff <= routed_eff * 1.15 + 50.0:
                 return direct_cand
 
         # Nearest straight-line way across, for the jump
@@ -755,7 +848,8 @@ class SegmentChain:
         if legs:
             routed = sum(leg.stats()["distance_m"] for leg in legs)
             lo, hi = sorted((entry_v, click_v))
-            jump_total = gap + Leg(trail, lo, hi).stats()["distance_m"]  # across, then along to the click
+            gap_cut_off_m = max(0.0, cum[-1] - cum[gap_k])
+            jump_total = gap + gap_cut_off_m * self.CUT_OFF_COST + Leg(trail, lo, hi).stats()["distance_m"]
             if gap <= self.CLOSE_GAP_M and routed > max(3 * jump_total, jump_total + 800.0):
                 legs = None  # a long detour around to something right next to us: offer the jump
         if legs:

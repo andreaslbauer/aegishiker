@@ -402,3 +402,78 @@ def test_clicking_trail_point_ahead_fills_in_all_segments_along_shortest_path(tm
     builder.deleteLater()
 
 
+def test_passaconaway_loop_back_to_camp_rich_tentsite_never_backtracks() -> None:
+    """Regression: after climbing to Mt. Passaconaway (either up Dicey's Mill Trail or up Walden Trail),
+    continuing the loop back to Camp Rich Tentsite must follow the unwalked side of the loop rather
+    than putting the hiker back the way they came."""
+    from pathlib import Path
+
+    from src.hiking.models import DestinationPack
+    from src.hiking.segment_chain import map_paths_from_features
+
+    pack_file = Path(__file__).resolve().parent.parent / "data" / "packs" / "white_mountains_pemigewasset.json"
+    pack = DestinationPack.model_validate_json(pack_file.read_text(encoding="utf-8"))
+    by_name = {t.name: t for t in pack.trails}
+    places = [
+        (f.name, f.coords[0][0], f.coords[0][1])
+        for f in pack.features
+        if f.geom == "point" and f.name
+    ]
+    map_paths = map_paths_from_features(pack.features, pack.dem, pack.id)
+    chain = SegmentChain(pack.trails, places, map_paths=map_paths)
+
+    dicey = by_name["Dicey's Mill Trail"]
+    walden = by_name["Walden Trail"]
+    east_loop = by_name["East Loop Trail"]
+    camp_rich_lat, camp_rich_lon = 43.95111, -71.38459
+
+    # 1. Climb Dicey's Mill Trail to Mt. Passaconaway summit
+    chain.start(dicey)
+    cands = chain.candidates()
+    assert any(c.trail_name == "Walden Trail" and not c.turnaround for c in cands), "Walden Trail offered at Passaconaway summit"
+
+    # Clicking East Loop Trail (near Camp Rich) from Mt. Passaconaway summit routes forward down Walden Trail -> East Loop Trail
+    el_west = east_loop.coords_3d[-1]
+    loop_cand = chain.candidate_to(east_loop, el_west[1], el_west[0])
+    assert loop_cand is not None
+    assert loop_cand.via_names == ["Walden Trail"], f"Expected forward loop via Walden Trail, got {loop_cand.via_names}"
+    chain.apply(loop_cand)
+    assert [leg.trail.name for leg in chain.legs] == [
+        "Dicey's Mill Trail",
+        "Walden Trail",
+        "East Loop Trail",
+    ]
+
+    # 2. Clicking Camp Rich Tentsite on Dicey's Mill Trail itself from Mt. Passaconaway summit also routes via Walden -> East Loop
+    chain.start(dicey)
+    camp_cand = chain.candidate_to(dicey, camp_rich_lat, camp_rich_lon)
+    assert camp_cand is not None
+    chain.apply(camp_cand)
+    assert [leg.trail.name for leg in chain.legs][:3] == [
+        "Dicey's Mill Trail",
+        "Walden Trail",
+        "East Loop Trail",
+    ]
+
+    # 3. Counter-clockwise: climb Dicey's Mill to Camp Rich -> East Loop -> Walden to Mt. Passaconaway summit,
+    #    then select Dicey's Mill Trail back to Camp Rich Tentsite
+    chain.start(dicey)
+    el_from_camp = next(c for c in chain.candidates() if c.trail_name == "East Loop Trail")
+    chain.apply(el_from_camp)
+    walden_to_summit = next(
+        c for c in chain.candidates()
+        if c.trail_name == "Walden Trail" and c.toward_place == "Mount Passaconaway"
+    )
+    chain.apply(walden_to_summit)
+    return_cand = chain.candidate_to(dicey, camp_rich_lat, camp_rich_lon)
+    assert return_cand is not None and return_cand.via_names == []
+    chain.apply(return_cand)
+    assert [leg.trail.name for leg in chain.legs] == [
+        "Dicey's Mill Trail",
+        "East Loop Trail",
+        "Walden Trail",
+        "Dicey's Mill Trail",
+    ]
+
+
+

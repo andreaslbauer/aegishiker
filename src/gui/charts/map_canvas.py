@@ -110,6 +110,7 @@ class MapCanvas(BaseChartWidget):
     photo_clicked = Signal(str)  # photo_pin_id
     hover_distance_changed = Signal(float)  # distance_along_route_m
     hover_geo = Signal(float, float)  # (lat, lon) under the cursor while not dragging
+    viewport_changed = Signal(float, float, float, float)  # (min_lat, max_lat, min_lon, max_lon) after pan/zoom
 
     DIFFICULTY_COLORS = {
         "easy": "#2ECC71",
@@ -462,6 +463,36 @@ class MapCanvas(BaseChartWidget):
         p = inv.map(QPointF(pos))
         return (-p.y(), p.x() / self._kx)
 
+    def visible_bbox(self) -> Tuple[float, float, float, float]:
+        """Return (min_lat, max_lat, min_lon, max_lon) of the currently visible map viewport."""
+        w = max(1.0, float(self.width()))
+        h = max(1.0, float(self.height()))
+        lat1, lon1 = self.unproject(QPointF(0.0, h))
+        lat2, lon2 = self.unproject(QPointF(w, 0.0))
+        return (min(lat1, lat2), max(lat1, lat2), min(lon1, lon2), max(lon1, lon2))
+
+    def save_view_state(self) -> Tuple[float, float, float]:
+        """Capture (center_lat, center_lon, scale_px_per_deg_lat) so the viewport can be restored
+        seamlessly when adjacent regions are loaded into `_bbox`."""
+        cx, cy = max(1.0, self.width()) / 2.0, max(1.0, self.height()) / 2.0
+        clat, clon = self.unproject(QPointF(cx, cy))
+        return (clat, clon, self._view_transform().m11())
+
+    def restore_view_state(self, state: Tuple[float, float, float]) -> None:
+        """Restore the exact geographic center and zoom scale after `_bbox` or `_kx` changes."""
+        clat, clon, target_s = state
+        min_lat, min_lon, max_lat, max_lon = self._bbox
+        w = max(10.0, float(self.width()) - 40.0)
+        h = max(10.0, float(self.height()) - 40.0)
+        world_w = max(1e-6, (max_lon - min_lon) * self._kx)
+        world_h = max(1e-6, max_lat - min_lat)
+        base_s = min(w / world_w, h / world_h)
+        self.zoom = max(0.05, min(80.0, target_s / max(1e-9, base_s)))
+        self.pan_offset = QPointF(0.0, 0.0)
+        centre = self.project(clat, clon)
+        self.pan_offset = QPointF(self.width() / 2.0, self.height() / 2.0) - centre
+        self.update()
+
     # ── Painting ──────────────────────────────────────────────────────────────
 
     # ── Base layer cache ──────────────────────────────────────────────────────
@@ -484,6 +515,8 @@ class MapCanvas(BaseChartWidget):
     def _settled(self) -> None:
         self._interacting = False
         self.update()
+        if self.width() > 50 and self.height() > 50 and self.trails:
+            self.viewport_changed.emit(*self.visible_bbox())
 
     def _render_base(self, xf: QTransform, key: tuple) -> None:
         dpr = self.devicePixelRatioF() or 1.0

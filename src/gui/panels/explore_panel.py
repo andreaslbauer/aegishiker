@@ -218,6 +218,9 @@ class ExplorePanel(QWidget):
         list_card.body.addWidget(self.list_tabs, 1)
 
         self.map_canvas = MapCanvas()
+        self.map_canvas.viewport_changed.connect(self._on_map_viewport_changed)
+        self._preserve_map_view: Optional[tuple] = None
+        self._scrolling_viewport_bbox: Optional[tuple] = None
         splitter.addWidget(list_card)
         splitter.addWidget(self.map_canvas)
         splitter.setStretchFactor(0, 4)
@@ -406,10 +409,15 @@ class ExplorePanel(QWidget):
 
         self.map_canvas.excluded_conditions = {c.value for c in excluded}
         self.map_canvas.units = "metric" if unit == "metric" else "us"
-        self.map_canvas.sync_basemap(self.app_state.db, self.app_state.active_destination_id)
+        scroll_bbox = getattr(self, "_scrolling_viewport_bbox", None)
+        saved_view = getattr(self, "_preserve_map_view", None)
+        self._scrolling_viewport_bbox = None
+        self._preserve_map_view = None
+        dest_id = self.app_state.active_destination_id
+        self.map_canvas.sync_basemap(self.app_state.db, dest_id, bbox=scroll_bbox)
         # A route from another region would stretch the map's extent across both regions
         route = self.app_state.get_active_route()
-        if route is not None and route.pack_id != self.app_state.active_destination_id:
+        if route is not None and route.pack_id != dest_id:
             route = None
         if self._place and not query:
             name, kind, plon, plat = self._place
@@ -429,7 +437,57 @@ class ExplorePanel(QWidget):
             return
         self.place_row.hide()
         self.map_canvas.waypoints = []
-        self.map_canvas.set_scene_data(trails=raw_trails, pois=pois, route=route)
+        comp = (
+            self.app_state.db.get_composite_pack(dest_id, bbox=scroll_bbox, with_map=False)
+            if dest_id and scroll_bbox and not query and hasattr(self.app_state.db, "get_composite_pack")
+            else None
+        )
+        scene_trails = comp.trails if comp else raw_trails
+        scene_pois = comp.pois if comp else pois
+        self.map_canvas.set_scene_data(trails=scene_trails, pois=scene_pois, route=route)
+        if saved_view is not None:
+            self.map_canvas.restore_view_state(saved_view)
+
+    def _on_map_viewport_changed(self, min_lat: float, max_lat: float, min_lon: float, max_lon: float) -> None:
+        """When the user pans/scrolls out of the current region into another region we have in the
+        database, automatically load that region and continue the map seamlessly."""
+        dest_id = self.app_state.active_destination_id
+        if not dest_id or not hasattr(self.app_state.db, "find_pack_for_view"):
+            return
+        v_bbox = (min_lat, max_lat, min_lon, max_lon)
+        clat = 0.5 * (min_lat + max_lat)
+        clon = 0.5 * (min_lon + max_lon)
+        saved_view = self.map_canvas.save_view_state()
+
+        # 1. Did the viewport center scroll out of the active region into another installed region?
+        new_pack_id = self.app_state.db.find_pack_for_view(clat, clon, dest_id, bbox=v_bbox)
+        if new_pack_id and new_pack_id != dest_id:
+            self._preserve_map_view = saved_view
+            self._scrolling_viewport_bbox = v_bbox
+            self.app_state.set_active_destination(new_pack_id)
+            new_dest = self.app_state.get_active_destination()
+            if new_dest:
+                self.app_state.status_message.emit(
+                    f"Scrolled into {new_dest.name} — loaded region trails and continued map."
+                )
+            return
+
+        # 2. Even before the center crosses completely, if the viewport edge extends into an
+        #    adjacent installed region, pull that region's map and trails into the canvas seamlessly.
+        adj_ids = tuple(self.app_state.db.adjacent_pack_ids(dest_id, bbox=v_bbox))
+        if not adj_ids:
+            return
+        comp_key = (dest_id, adj_ids)
+        if comp_key != getattr(self.map_canvas, "_basemap_comp_key", None):
+            self.map_canvas.sync_basemap(self.app_state.db, dest_id, bbox=v_bbox)
+            comp = self.app_state.db.get_composite_pack(dest_id, bbox=v_bbox, with_map=False)
+            if comp is not None:
+                self.map_canvas.set_scene_data(
+                    trails=comp.trails,
+                    pois=comp.pois,
+                    route=self.map_canvas.active_route,
+                )
+            self.map_canvas.restore_view_state(saved_view)
 
     def refresh_hikes(self) -> None:
         """The hikes composed in this region (or crossing into it from an adjacent pack), narrowed by search."""

@@ -575,19 +575,98 @@ class Database:
         for oid, (o_min_lat, o_max_lat, o_min_lon, o_max_lon) in by_id.items():
             if oid == pack_id:
                 continue
-            # Must be adjacent/overlapping with the primary pack AND intersect the query bbox
-            if (
+            # When bbox is given (e.g. a scrolled viewport or multi-region hike), include any
+            # installed pack intersecting `q_bbox`; otherwise check adjacency to `primary_box`.
+            if bbox is None and not (
                 o_max_lat >= p_min_lat - margin_deg
                 and o_min_lat <= p_max_lat + margin_deg
                 and o_max_lon >= p_min_lon - margin_deg
                 and o_min_lon <= p_max_lon + margin_deg
-                and o_max_lat >= q_min_lat
+            ):
+                continue
+            if (
+                o_max_lat >= q_min_lat
                 and o_min_lat <= q_max_lat
                 and o_max_lon >= q_min_lon
                 and o_min_lon <= q_max_lon
             ):
                 out.append(oid)
         return out
+
+    def find_pack_for_view(
+        self,
+        center_lat: float,
+        center_lon: float,
+        current_pack_id: Optional[str] = None,
+        bbox: Optional[Tuple[float, float, float, float]] = None,
+    ) -> Optional[str]:
+        """When the user scrolls/pans the map, check if the viewport has moved out of
+        `current_pack_id` into another installed region pack and return that pack's ID."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, min_lat, max_lat, min_lon, max_lon FROM destination_pack ORDER BY id ASC"
+            ).fetchall()
+        by_id = {r["id"]: (r["min_lat"], r["max_lat"], r["min_lon"], r["max_lon"]) for r in rows}
+        if not by_id:
+            return None
+
+        def _norm_dist2(lat: float, lon: float, box: Tuple[float, float, float, float]) -> float:
+            b_min_lat, b_max_lat, b_min_lon, b_max_lon = box
+            clat = 0.5 * (b_min_lat + b_max_lat)
+            clon = 0.5 * (b_min_lon + b_max_lon)
+            h_lat = max(0.01, 0.5 * (b_max_lat - b_min_lat))
+            h_lon = max(0.01, 0.5 * (b_max_lon - b_min_lon))
+            return ((lat - clat) / h_lat) ** 2 + ((lon - clon) / h_lon) ** 2
+
+        cur_box = by_id.get(current_pack_id or "")
+        in_current = False
+        in_current_core = False
+        if cur_box is not None:
+            c0, c1, c2, c3 = cur_box
+            in_current = (c0 <= center_lat <= c1 and c2 <= center_lon <= c3)
+            # Core = inner 72% of the pack (outside the 14% overlap border strip on each side)
+            m_lat = (c1 - c0) * 0.14
+            m_lon = (c3 - c2) * 0.14
+            in_current_core = (c0 + m_lat <= center_lat <= c1 - m_lat and c2 + m_lon <= center_lon <= c3 - m_lon)
+            if in_current_core:
+                return None
+
+        # Find other installed packs containing (center_lat, center_lon)
+        containing: List[Tuple[float, str]] = []
+        for oid, obox in by_id.items():
+            if oid == current_pack_id:
+                continue
+            o0, o1, o2, o3 = obox
+            if o0 <= center_lat <= o1 and o2 <= center_lon <= o3:
+                containing.append((_norm_dist2(center_lat, center_lon, obox), oid))
+
+        if containing:
+            containing.sort()
+            best_d2, best_id = containing[0]
+            if not in_current:
+                return best_id
+            # In the overlap strip between `current_pack_id` and `best_id`: switch if we are
+            # noticeably closer to `best_id`'s center than `current_pack_id`'s center
+            cur_d2 = _norm_dist2(center_lat, center_lon, cur_box) if cur_box else 999.0
+            if best_d2 < cur_d2 * 0.72:
+                return best_id
+            return None
+
+        # If center is completely outside `current_pack_id` and no pack contains the exact center
+        # point, check if any other installed pack intersects the visible `bbox`
+        if not in_current and bbox is not None:
+            b0, b1, b2, b3 = bbox
+            intersecting: List[Tuple[float, str]] = []
+            for oid, obox in by_id.items():
+                if oid == current_pack_id:
+                    continue
+                o0, o1, o2, o3 = obox
+                if o1 >= b0 and o0 <= b1 and o3 >= b2 and o2 <= b3:
+                    intersecting.append((_norm_dist2(center_lat, center_lon, obox), oid))
+            if intersecting:
+                intersecting.sort()
+                return intersecting[0][1]
+        return None
 
     def get_composite_pack(
         self,

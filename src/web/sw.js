@@ -1,4 +1,4 @@
-const CACHE_NAME = "aegishiker-pwa-v2";
+const CACHE_NAME = "aegishiker-pwa-v3";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

@@ -286,3 +286,43 @@ def test_builder_lists_minor_paths_to_start_on_when_included(seeded_db: Database
     combo.setCurrentIndex(combo.findData(minor[0].id))
     builder.start_chain()
     assert builder.chain.legs[0].trail.id == minor[0].id
+
+
+def test_scrolling_out_of_region_loads_entered_region_and_continues_map(seeded_db: Database, tmp_path: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPointF
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.panels.explore_panel import ExplorePanel
+
+    app = QApplication.instance() or QApplication([])
+    state = AppState(db=seeded_db, settings=Settings(settings_file=tmp_path / "settings.json"))
+    state.set_active_destination("white_mountains_nh")
+    explore = ExplorePanel(app_state=state)
+    explore.resize(1200, 800)
+    explore.show()
+    app.processEvents()
+
+    canvas = explore.map_canvas
+    # Pan the map east/northeast so the viewport center is on Mt. Washington in white_mountains_presidentials
+    target_lat, target_lon = 44.2705, -71.3032
+    canvas.zoom = 2.0
+    canvas.pan_offset = QPointF(0.0, 0.0)
+    pt = canvas.project(target_lat, target_lon)
+    canvas.pan_offset = QPointF(canvas.width() / 2.0, canvas.height() / 2.0) - pt
+    before_center = canvas.unproject(QPointF(canvas.width() / 2.0, canvas.height() / 2.0))
+    assert abs(before_center[0] - target_lat) < 1e-3 and abs(before_center[1] - target_lon) < 1e-3
+
+    # Trigger settle after scrolling/panning
+    canvas._settled()
+    app.processEvents()
+
+    # The scrolled-into region (white_mountains_presidentials) is loaded and the map camera continues seamlessly
+    assert state.active_destination_id == "white_mountains_presidentials"
+    assert explore.dest_combo.currentData() == "white_mountains_presidentials"
+    after_center = canvas.unproject(QPointF(canvas.width() / 2.0, canvas.height() / 2.0))
+    assert abs(after_center[0] - target_lat) < 1e-3 and abs(after_center[1] - target_lon) < 1e-3
+    assert any("Tuckerman" in t.name for t in canvas.trails)
+    explore.hide()
+    explore.deleteLater()
+
