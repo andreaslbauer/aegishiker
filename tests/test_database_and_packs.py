@@ -18,6 +18,11 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
         "mount_rainier_paradise",
         "mount_monadnock",
         "acton_boxborough_harvard",
+        "boxborough_ma",
+        "acton_ma",
+        "littleton_ma",
+        "harvard_ma",
+        "stow_ma",
         "pioneer_valley",
         "great_smoky_mountains",
         "grand_canyon",
@@ -36,6 +41,23 @@ def test_seven_starter_packs_including_white_mountains(seeded_db: Database) -> N
     abh = seeded_db.get_destination("acton_boxborough_harvard")
     assert abh is not None and len(abh.trails) >= 100
     assert {"Holy Hill (yellow blaze)", "Nashua Acton & Boston Railroad Trail"} <= {t.name for t in abh.trails}
+
+    # 5 overlapping Massachusetts town packs: Boxborough, Acton, Littleton, Harvard, Stow
+    box = seeded_db.get_destination("boxborough_ma")
+    act = seeded_db.get_destination("acton_ma")
+    lit = seeded_db.get_destination("littleton_ma")
+    har = seeded_db.get_destination("harvard_ma")
+    sto = seeded_db.get_destination("stow_ma")
+    for town_pack in (box, act, lit, har, sto):
+        assert town_pack is not None
+        assert len(town_pack.trails) >= 30
+        assert len(town_pack.pois) >= 6
+    # Verify overlap and shared border-crossing trails between Boxborough and each neighboring town
+    box_ids = {t.id for t in box.trails}
+    assert box_ids & {t.id for t in act.trails}, "Boxborough and Acton share trails in their overlap"
+    assert box_ids & {t.id for t in lit.trails}, "Boxborough and Littleton share trails in their overlap"
+    assert box_ids & {t.id for t in har.trails}, "Boxborough and Harvard share trails in their overlap"
+    assert box_ids & {t.id for t in sto.trails}, "Boxborough and Stow share trails in their overlap"
 
     fsf = seeded_db.get_destination("fitchburg_state_forest")
     assert fsf is not None and len(fsf.trails) >= 150

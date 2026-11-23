@@ -610,13 +610,15 @@ class Database:
         if not by_id:
             return None
 
-        def _norm_dist2(lat: float, lon: float, box: Tuple[float, float, float, float]) -> float:
+        def _norm_dist2(lat: float, lon: float, box: Tuple[float, float, float, float], pid: str = "") -> float:
             b_min_lat, b_max_lat, b_min_lon, b_max_lon = box
             clat = 0.5 * (b_min_lat + b_max_lat)
             clon = 0.5 * (b_min_lon + b_max_lon)
             h_lat = max(0.01, 0.5 * (b_max_lat - b_min_lat))
             h_lon = max(0.01, 0.5 * (b_max_lon - b_min_lon))
-            return ((lat - clat) / h_lat) ** 2 + ((lon - clon) / h_lon) ** 2
+            d2 = ((lat - clat) / h_lat) ** 2 + ((lon - clon) / h_lon) ** 2
+            # Prefer specific town packs (acton_ma, boxborough_ma, etc.) over the multi-town umbrella pack
+            return d2 + (2.0 if pid == "acton_boxborough_harvard" else 0.0)
 
         cur_box = by_id.get(current_pack_id or "")
         in_current = False
@@ -638,7 +640,7 @@ class Database:
                 continue
             o0, o1, o2, o3 = obox
             if o0 <= center_lat <= o1 and o2 <= center_lon <= o3:
-                containing.append((_norm_dist2(center_lat, center_lon, obox), oid))
+                containing.append((_norm_dist2(center_lat, center_lon, obox, oid), oid))
 
         if containing:
             containing.sort()
@@ -647,7 +649,7 @@ class Database:
                 return best_id
             # In the overlap strip between `current_pack_id` and `best_id`: switch if we are
             # noticeably closer to `best_id`'s center than `current_pack_id`'s center
-            cur_d2 = _norm_dist2(center_lat, center_lon, cur_box) if cur_box else 999.0
+            cur_d2 = _norm_dist2(center_lat, center_lon, cur_box, current_pack_id or "") if cur_box else 999.0
             if best_d2 < cur_d2 * 0.72:
                 return best_id
             return None
@@ -662,7 +664,7 @@ class Database:
                     continue
                 o0, o1, o2, o3 = obox
                 if o1 >= b0 and o0 <= b1 and o3 >= b2 and o2 <= b3:
-                    intersecting.append((_norm_dist2(center_lat, center_lon, obox), oid))
+                    intersecting.append((_norm_dist2(center_lat, center_lon, obox, oid), oid))
             if intersecting:
                 intersecting.sort()
                 return intersecting[0][1]

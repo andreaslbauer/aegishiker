@@ -250,6 +250,101 @@
       "bundled_file": "packs/acton_boxborough_harvard.json"
     },
     {
+      "id": "boxborough_ma",
+      "name": "Boxborough, MA",
+      "state_or_region": "Massachusetts (Boxborough \u2014 Steele Farm, Beaver Brook, Patch Hill, Flagg Hill & Flerra Meadows)",
+      "agency": "Boxborough Conservation Commission, SVT, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Woodland loops, glacial eskers, boardwalks and historic stone-walled pastures in Boxborough: Steele Farm, Patch Hill, Beaver Brook Valley Preserve, Flerra Meadows, Flagg Hill and Wolf Swamp \u2014 with generous overlap into Acton, Littleton, Harvard and Stow.",
+      "bbox": [
+        -71.568,
+        42.442,
+        -71.456,
+        42.526
+      ],
+      "base_ele_m": 55.0,
+      "max_ele_m": 165.0,
+      "trail_count": 46,
+      "poi_count": 7,
+      "bundled_file": "packs/boxborough_ma.json"
+    },
+    {
+      "id": "acton_ma",
+      "name": "Acton, MA",
+      "state_or_region": "Massachusetts (Acton \u2014 Nashoba Brook, Great Hill, Acton Arboretum, Nagog Hill & Spring Hill)",
+      "agency": "Acton Conservation Trust, Town of Acton, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Acton interconnected town conservation lands and rail trails: Nashoba Brook and the Wheeler Farm pencil-mill ruins, Acton Arboretum, Great Hill, Nagog Hill, Grassy Pond, Spring Hill, Wills Hole and Annursnac Hill \u2014 overlapping Boxborough, Littleton and Stow.",
+      "bbox": [
+        -71.49,
+        42.438,
+        -71.381,
+        42.538
+      ],
+      "base_ele_m": 40.0,
+      "max_ele_m": 135.0,
+      "trail_count": 40,
+      "poi_count": 9,
+      "bundled_file": "packs/acton_ma.json"
+    },
+    {
+      "id": "littleton_ma",
+      "name": "Littleton, MA",
+      "state_or_region": "Massachusetts (Littleton \u2014 Oak Hill, Tophet Chasm, Long Lake, Newtown Hill & Cloverdale)",
+      "agency": "Littleton Conservation Trust, Town of Littleton, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Glacial kettle ponds, dramatic rocky chasms and drumlin woods in Littleton: Oak Hill and Tophet Chasm, Newtown Hill, Long Lake Park, Cloverdale, Prouty Woods and Yapp Conservation Land \u2014 overlapping Boxborough, Acton and Harvard.",
+      "bbox": [
+        -71.555,
+        42.502,
+        -71.425,
+        42.578
+      ],
+      "base_ele_m": 55.0,
+      "max_ele_m": 165.0,
+      "trail_count": 53,
+      "poi_count": 6,
+      "bundled_file": "packs/littleton_ma.json"
+    },
+    {
+      "id": "harvard_ma",
+      "name": "Harvard, MA",
+      "state_or_region": "Massachusetts (Harvard \u2014 Prospect Hill, Fruitlands, Bare Hill Pond, Holy Hill & Oxbow NWR)",
+      "agency": "Harvard Conservation Trust, Town of Harvard, USFWS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Orchard hilltops, Shaker historic lands, glacial ponds and Nashua River floodplain woods in Harvard: Prospect Hill, Fruitlands, Oak Hill, Holy Hill, Bare Hill Pond, Bare Hill Wildlife Sanctuary, Bowers Springs and Oxbow National Wildlife Refuge \u2014 overlapping Boxborough, Littleton and Stow.",
+      "bbox": [
+        -71.643,
+        42.454,
+        -71.522,
+        42.556
+      ],
+      "base_ele_m": 50.0,
+      "max_ele_m": 200.0,
+      "trail_count": 98,
+      "poi_count": 8,
+      "bundled_file": "packs/harvard_ma.json"
+    },
+    {
+      "id": "stow_ma",
+      "name": "Stow, MA",
+      "state_or_region": "Massachusetts (Stow \u2014 Assabet River NWR, Delaney Pond, Marble Hill, Town Forest & Lake Boon)",
+      "agency": "Stow Conservation Trust, Town of Stow, USFWS, USGS 3DEP & OpenStreetMap Contributors",
+      "license": "Public Domain (USGS 3DEP / Federal Lands) & ODbL (OpenStreetMap)",
+      "summary": "Pine forests, kettle ponds, drumlins and river marshes in Stow: Assabet River National Wildlife Refuge, Delaney Wildlife Management Area, Marble Hill, Gardner Hill, Stow Town Forest, Captain Sargent Conservation Area and Lake Boon \u2014 overlapping Boxborough, Acton and Harvard.",
+      "bbox": [
+        -71.58,
+        42.395,
+        -71.44,
+        42.482
+      ],
+      "base_ele_m": 45.0,
+      "max_ele_m": 155.0,
+      "trail_count": 46,
+      "poi_count": 7,
+      "bundled_file": "packs/stow_ma.json"
+    },
+    {
       "id": "pioneer_valley",
       "name": "Pioneer Valley",
       "state_or_region": "Massachusetts (Connecticut River valley \u2014 Mt. Tom, Holyoke Range, Northampton, Amherst, Mt. Sugarloaf & Mt. Toby)",

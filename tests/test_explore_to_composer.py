@@ -190,7 +190,16 @@ def test_regions_are_chosen_by_state(seeded_db: Database, tmp_path: Path, monkey
     # Choosing a state opens its first region (by name); a park across state lines is in each state
     explore.state_combo.setCurrentIndex(explore.state_combo.findData("Massachusetts"))
     app.processEvents()
-    assert regions() == ["acton_boxborough_harvard", "fitchburg_state_forest", "pioneer_valley"]
+    assert regions() == [
+        "acton_boxborough_harvard",
+        "acton_ma",
+        "boxborough_ma",
+        "fitchburg_state_forest",
+        "harvard_ma",
+        "littleton_ma",
+        "pioneer_valley",
+        "stow_ma",
+    ]
     assert state.active_destination_id == "acton_boxborough_harvard"
     explore.state_combo.setCurrentIndex(explore.state_combo.findData("North Carolina"))
     assert regions() == ["great_smoky_mountains"] and state.active_destination_id == "great_smoky_mountains"
